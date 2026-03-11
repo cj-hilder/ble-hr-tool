@@ -6,7 +6,7 @@
     <style>
         body { font-family: sans-serif; text-align: center; margin-top: 50px; }
         button { padding: 15px 30px; font-size: 18px; border-radius: 8px; background: #007bff; color: white; border: none; }
-        #log { margin-top: 30px; color: #555; font-size: 14px; padding: 0 20px; word-wrap: break-word;}
+        #log { margin-top: 30px; color: #555; font-size: 14px; padding: 0 20px; word-wrap: break-word; }
         .error { color: red; font-weight: bold; }
     </style>
 </head>
@@ -58,29 +58,6 @@
             let heartRate;
             if (is16Bit) {
                 heartRate = value.getUint16(1, true); 
-            } else {
-                heartRate = value.getUint8(1);
-            }
-            
-            document.getElementById('heartRateDisplay').innerText = heartRate + ' BPM ❤️';
-        }
-    </script>
-</body>
-</html>
-            }
-        });
-
-        function handleHeartRate(event) {
-            const value = event.target.value;
-            // The first byte (index 0) contains the format flags
-            const flags = value.getUint8(0);
-            
-            // Check the least significant bit to see if HR is 8-bit or 16-bit
-            const is16Bit = flags & 0x01;
-            
-            let heartRate;
-            if (is16Bit) {
-                heartRate = value.getUint16(1, true); // true = little-endian
             } else {
                 heartRate = value.getUint8(1);
             }
