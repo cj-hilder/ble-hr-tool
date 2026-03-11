@@ -3,37 +3,70 @@
 <head>
     <title>Polar Heart Rate Monitor</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body { font-family: sans-serif; text-align: center; margin-top: 50px; }
+        button { padding: 15px 30px; font-size: 18px; border-radius: 8px; background: #007bff; color: white; border: none; }
+        #log { margin-top: 30px; color: #555; font-size: 14px; padding: 0 20px; word-wrap: break-word;}
+        .error { color: red; font-weight: bold; }
+    </style>
 </head>
 <body>
     <h2>BLE Heart Rate Monitor</h2>
     <button id="connectBtn">Connect to Watch</button>
     <h1 id="heartRateDisplay">-- BPM</h1>
+    <p id="log">Ready to connect...</p>
 
     <script>
+        const logElement = document.getElementById('log');
+
+        function log(message, isError = false) {
+            logElement.innerText = message;
+            if (isError) logElement.classList.add('error');
+            else logElement.classList.remove('error');
+        }
+
         document.getElementById('connectBtn').addEventListener('click', async () => {
             try {
-                // 1. Prompt the user to select a Bluetooth device with a Heart Rate service
-                console.log('Requesting Bluetooth Device...');
+                log('1. Waiting for you to select the watch in the menu...');
                 const device = await navigator.bluetooth.requestDevice({
                     filters: [{ services: ['heart_rate'] }]
                 });
 
-                // 2. Connect to the device
-                console.log('Connecting to GATT Server...');
+                log('2. Device selected! Connecting to Bluetooth server...');
                 const server = await device.gatt.connect();
 
-                // 3. Get the Heart Rate service and characteristic
-                console.log('Getting Heart Rate Service...');
+                log('3. Connected! Requesting Heart Rate data...');
                 const service = await server.getPrimaryService('heart_rate');
                 const characteristic = await service.getCharacteristic('heart_rate_measurement');
 
-                // 4. Start listening for notifications (heart beats)
+                log('4. Starting live notifications...');
                 await characteristic.startNotifications();
                 characteristic.addEventListener('characteristicvaluechanged', handleHeartRate);
-                console.log('Notifications started!');
+                
+                log('✅ Success! Listening for heartbeats...');
 
             } catch (error) {
-                console.error('Error:', error);
+                log('❌ Error: ' + error.message, true);
+            }
+        });
+
+        function handleHeartRate(event) {
+            const value = event.target.value;
+            const flags = value.getUint8(0);
+            const is16Bit = flags & 0x01;
+            
+            let heartRate;
+            if (is16Bit) {
+                heartRate = value.getUint16(1, true); 
+            } else {
+                heartRate = value.getUint8(1);
+            }
+            
+            document.getElementById('heartRateDisplay').innerText = heartRate + ' BPM ❤️';
+        }
+    </script>
+</body>
+</html>
             }
         });
 
