@@ -4,84 +4,40 @@
     <title>Dysautonomia HR Pacer</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
-        /* Base Styles */
-        body { 
-            font-family: sans-serif; 
-            text-align: center; 
-            margin: 0;
-            background-color: white;
-            transition: background-color 0.3s; 
-        }
-        
+        body { font-family: sans-serif; text-align: center; margin: 0; background-color: white; transition: background-color 0.3s; }
         button { cursor: pointer; border: none; font-weight: bold; }
         
-        /* Setup Screen UI */
         #setupUI { margin-top: 50px; }
         #connectBtn { padding: 15px 30px; font-size: 18px; border-radius: 8px; background: #007bff; color: white; }
         #log { margin-top: 30px; color: #555; font-size: 14px; padding: 0 20px; word-wrap: break-word; }
         .error { color: red; font-weight: bold; }
 
-        /* Training Screen UI (Hidden by default) */
         #trainingUI { display: none; }
 
-        /* Styles applied ONLY when connected */
-        body.connected {
-            background-color: black;
-            color: white;
-        }
-        
+        body.connected { background-color: black; color: white; }
         body.connected #setupUI { display: none; }
-        
         body.connected #trainingUI {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: flex-start;
-            height: 100vh;
-            padding-top: 5vh; /* Pushes the HR display slightly down from the very top */
-            box-sizing: border-box;
+            display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+            height: 100vh; padding-top: 5vh; box-sizing: border-box;
         }
 
-        /* Heart Rate Display */
-        #heartRateDisplay {
-            font-size: 25vw; /* Slightly smaller to fit the new UI */
-            margin: 0;
-            line-height: 1;
-        }
+        #heartRateDisplay { font-size: 25vw; margin: 0; line-height: 1; }
 
-        /* State Indicator Dot */
         .state-dot {
-            width: 150px;
-            height: 150px;
-            border-radius: 50%;
-            margin: 6vh 0; /* Space above and below */
-            transition: background-color 0.3s;
+            width: 150px; height: 150px; border-radius: 50%; margin: 6vh 0; transition: background-color 0.3s;
         }
-        .state-dot.stopped { background-color: #333333; } /* Dark gray before start */
-        .state-dot.active { background-color: #28a745; }  /* Green */
-        .state-dot.rest { background-color: #fd7e14; }    /* Orange */
-        .state-dot.reset { background-color: #dc3545; }   /* Red */
+        .state-dot.stopped { background-color: #333333; }
+        .state-dot.active { background-color: #28a745; }
+        .state-dot.rest { background-color: #fd7e14; }
+        .state-dot.reset { background-color: #dc3545; }
 
-        /* Timer Display */
-        #sessionTimer {
-            font-size: 15vw;
-            font-family: monospace;
-            margin-bottom: 6vh;
-        }
+        #sessionTimer { font-size: 15vw; font-family: monospace; margin-bottom: 6vh; }
 
-        /* Play/Stop Button */
         #toggleSessionBtn {
-            padding: 20px 0;
-            width: 80%;
-            max-width: 350px;
-            font-size: 24px;
-            border-radius: 12px;
-            background: #28a745; /* Green for start */
-            color: white;
+            padding: 20px 0; width: 80%; max-width: 350px; font-size: 24px; border-radius: 12px;
+            background: #28a745; color: white;
         }
-        #toggleSessionBtn.running {
-            background: #dc3545; /* Red for stop */
-        }
+        #toggleSessionBtn.running { background: #dc3545; }
     </style>
 </head>
 <body>
@@ -100,6 +56,13 @@
     </div>
 
     <script>
+        // --- Hardcoded Thresholds & Rules ---
+        const ACTIVE_THRESHOLD = 80;
+        const REST_THRESHOLD = 80;
+        const RESTING_HR = 65;
+        const MAX_RECOVERY_PERIOD = 240; // 4 minutes in seconds
+        const MAX_RESPONSE_LAG = 60;     // 60 seconds
+
         // --- Bluetooth & UI Variables ---
         const logElement = document.getElementById('log');
         let bluetoothDevice;
@@ -109,8 +72,18 @@
         // --- Training Session Variables ---
         let isSessionRunning = false;
         let sessionSeconds = 0;
+        let stateSeconds = 0; // Tracks how long we've been in the CURRENT state
         let timerInterval = null;
         let currentTrainingState = 'stopped';
+
+        // --- Rule Tracking Counters ---
+        let consecutiveHighActive = 0;
+        let consecutiveLowActive = 0;
+        let consecutiveLowRest = 0;
+        let consecutiveRangeReset = 0;
+        
+        let restMaxHR = 0;
+        let timeOfRestMaxHR = 0;
 
         const stateIndicator = document.getElementById('stateIndicator');
         const sessionTimerDisplay = document.getElementById('sessionTimer');
@@ -131,30 +104,30 @@
         }
 
         function releaseWakeLock() {
-            if (wakeLock !== null) {
-                wakeLock.release().then(() => { wakeLock = null; });
-            }
+            if (wakeLock !== null) { wakeLock.release().then(() => { wakeLock = null; }); }
         }
 
-        // --- Timer & State Logic ---
         function updateTimerDisplay() {
             const hrs = Math.floor(sessionSeconds / 3600);
             const mins = Math.floor((sessionSeconds % 3600) / 60);
             const secs = sessionSeconds % 60;
-            
             const paddedMins = mins.toString().padStart(2, '0');
             const paddedSecs = secs.toString().padStart(2, '0');
-            
-            if (hrs > 0) {
-                sessionTimerDisplay.innerText = `${hrs}:${paddedMins}:${paddedSecs}`;
-            } else {
-                sessionTimerDisplay.innerText = `${paddedMins}:${paddedSecs}`;
-            }
+            sessionTimerDisplay.innerText = hrs > 0 ? `${hrs}:${paddedMins}:${paddedSecs}` : `${paddedMins}:${paddedSecs}`;
         }
 
         function setTrainingState(newState) {
             currentTrainingState = newState;
             stateIndicator.className = `state-dot ${newState}`;
+            
+            // Reset state time and all rule counters
+            stateSeconds = 0; 
+            consecutiveHighActive = 0;
+            consecutiveLowActive = 0;
+            consecutiveLowRest = 0;
+            consecutiveRangeReset = 0;
+            restMaxHR = 0;
+            timeOfRestMaxHR = 0;
         }
 
         function stopSession() {
@@ -169,7 +142,6 @@
             if (isSessionRunning) {
                 stopSession();
             } else {
-                // Start a new session
                 sessionSeconds = 0;
                 updateTimerDisplay();
                 isSessionRunning = true;
@@ -177,14 +149,17 @@
                 toggleSessionBtn.innerText = 'Stop Session';
                 toggleSessionBtn.classList.add('running');
                 
-                // Always start in the active state
                 setTrainingState('active'); 
                 
                 timerInterval = setInterval(() => {
                     sessionSeconds++;
+                    stateSeconds++; // Tick the current state duration
                     updateTimerDisplay();
                     
-                    // Future state change rules will be evaluated here!
+                    // TIME-BASED RULE: Rest -> Reset (Max Recovery Period Exceeded)
+                    if (currentTrainingState === 'rest' && stateSeconds > MAX_RECOVERY_PERIOD) {
+                        setTrainingState('reset');
+                    }
                     
                 }, 1000);
             }
@@ -194,7 +169,7 @@
         function handleDisconnect() {
             clearTimeout(heartbeatTimeout);
             releaseWakeLock();
-            stopSession(); // Stop the timer if watch disconnects
+            stopSession();
             document.body.classList.remove('connected');
             document.getElementById('heartRateDisplay').innerText = '--';
             log('❌ Connection lost. Ready to reconnect.', true);
@@ -205,19 +180,14 @@
             heartbeatTimeout = setTimeout(() => {
                 if (bluetoothDevice && bluetoothDevice.gatt.connected) {
                     bluetoothDevice.gatt.disconnect();
-                } else {
-                    handleDisconnect();
-                }
+                } else { handleDisconnect(); }
             }, 3000);
         }
 
         document.getElementById('connectBtn').addEventListener('click', async () => {
             try {
                 log('1. Waiting for you to select the watch...');
-                bluetoothDevice = await navigator.bluetooth.requestDevice({
-                    filters: [{ services: ['heart_rate'] }]
-                });
-
+                bluetoothDevice = await navigator.bluetooth.requestDevice({ filters: [{ services: ['heart_rate'] }] });
                 bluetoothDevice.addEventListener('gattserverdisconnected', handleDisconnect);
 
                 log('2. Connecting to Bluetooth server...');
@@ -232,13 +202,9 @@
                 characteristic.addEventListener('characteristicvaluechanged', handleHeartRate);
                 
                 log('✅ Success! Waiting for first heartbeat...');
-                
                 document.body.classList.add('connected');
                 requestWakeLock();
-
-            } catch (error) {
-                log('❌ Error: ' + error.message, true);
-            }
+            } catch (error) { log('❌ Error: ' + error.message, true); }
         });
 
         function handleHeartRate(event) {
@@ -247,10 +213,61 @@
             const value = event.target.value;
             const flags = value.getUint8(0);
             const is16Bit = flags & 0x01;
-            
             let heartRate = is16Bit ? value.getUint16(1, true) : value.getUint8(1);
             
             document.getElementById('heartRateDisplay').innerText = heartRate;
+
+            // --- HEART RATE LOGIC RULES ---
+            if (!isSessionRunning) return; // Don't evaluate rules if stopped
+
+            if (currentTrainingState === 'active') {
+                
+                // Rule: Active -> Rest (>= 80 for 3 readings)
+                if (heartRate >= ACTIVE_THRESHOLD) consecutiveHighActive++;
+                else consecutiveHighActive = 0;
+
+                // Rule: Active -> Reset (< 55 for 3 readings)
+                if (heartRate < (RESTING_HR - 10)) consecutiveLowActive++;
+                else consecutiveLowActive = 0;
+
+                // Apply transitions
+                if (consecutiveHighActive >= 3) setTrainingState('rest');
+                else if (consecutiveLowActive >= 3) setTrainingState('reset');
+
+            } 
+            else if (currentTrainingState === 'rest') {
+                
+                // Rule: Rest -> Active (<= 80 for 3 readings)
+                if (heartRate <= REST_THRESHOLD) consecutiveLowRest++;
+                else consecutiveLowRest = 0;
+
+                // Track Maximum HR and when it occurred in the rest state
+                if (heartRate > restMaxHR) {
+                    restMaxHR = heartRate;
+                    timeOfRestMaxHR = stateSeconds;
+                }
+
+                // Rule: Rest -> Reset (Peak HR occurred after 60 seconds)
+                if (timeOfRestMaxHR > MAX_RESPONSE_LAG) {
+                    setTrainingState('reset');
+                } else if (consecutiveLowRest >= 3) {
+                    setTrainingState('active'); // Apply transition to active
+                }
+
+            } 
+            else if (currentTrainingState === 'reset') {
+                
+                // Rule: Reset -> Active (HR between 60 and 75 for 15 readings)
+                if (heartRate >= (RESTING_HR - 5) && heartRate <= (RESTING_HR + 10)) {
+                    consecutiveRangeReset++;
+                } else {
+                    consecutiveRangeReset = 0;
+                }
+
+                if (consecutiveRangeReset >= 15) {
+                    setTrainingState('active');
+                }
+            }
         }
     </script>
 </body>
