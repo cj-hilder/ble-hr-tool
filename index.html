@@ -48,6 +48,7 @@
         const logElement = document.getElementById('log');
         let bluetoothDevice;
         let heartbeatTimeout;
+        let wakeLock = null;
 
         function log(message, isError = false) {
             logElement.innerText = message;
@@ -55,21 +56,41 @@
             else logElement.classList.remove('error');
         }
 
-        // This function resets the UI when connection is lost
+        // Function to request the screen stays on
+        async function requestWakeLock() {
+            if ('wakeLock' in navigator) {
+                try {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                } catch (err) {
+                    console.error('Wake Lock error:', err);
+                }
+            }
+        }
+
+        // Function to let the screen sleep again
+        function releaseWakeLock() {
+            if (wakeLock !== null) {
+                wakeLock.release().then(() => {
+                    wakeLock = null;
+                });
+            }
+        }
+
         function handleDisconnect() {
             clearTimeout(heartbeatTimeout);
+            releaseWakeLock(); // Drop the screen wake lock
             document.body.classList.remove('connected');
             document.getElementById('heartRateDisplay').innerText = '--';
             log('❌ Connection lost or timed out. Ready to reconnect.', true);
         }
 
-        // This restarts our 3-second doom timer
         function resetTimeout() {
             clearTimeout(heartbeatTimeout);
             heartbeatTimeout = setTimeout(() => {
-                // If 3 seconds pass, force disconnect
                 if (bluetoothDevice && bluetoothDevice.gatt.connected) {
                     bluetoothDevice.gatt.disconnect();
+                } else {
+                    handleDisconnect(); // Fallback if already disconnected
                 }
             }, 3000);
         }
@@ -81,7 +102,6 @@
                     filters: [{ services: ['heart_rate'] }]
                 });
 
-                // Listen for native disconnects (like walking out of range or our 3-second timeout)
                 bluetoothDevice.addEventListener('gattserverdisconnected', handleDisconnect);
 
                 log('2. Connecting to Bluetooth server...');
@@ -95,11 +115,10 @@
                 await characteristic.startNotifications();
                 characteristic.addEventListener('characteristicvaluechanged', handleHeartRate);
                 
-                log('✅ Success! Listening for heartbeats...');
-                document.body.classList.add('connected');
+                log('✅ Success! Waiting for first heartbeat...');
                 
-                // Start the timer immediately upon successful connection
-                resetTimeout();
+                document.body.classList.add('connected');
+                requestWakeLock(); // Ask Android to keep the screen on
 
             } catch (error) {
                 log('❌ Error: ' + error.message, true);
@@ -107,7 +126,7 @@
         });
 
         function handleHeartRate(event) {
-            // We got a heartbeat! Reset the 3-second timer.
+            // Timer ONLY starts and resets here, once data physically arrives
             resetTimeout();
 
             const value = event.target.value;
