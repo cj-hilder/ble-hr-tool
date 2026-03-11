@@ -60,19 +60,23 @@
         const ACTIVE_THRESHOLD = 80;
         const REST_THRESHOLD = 80;
         const RESTING_HR = 65;
-        const MAX_RECOVERY_PERIOD = 240; // 4 minutes in seconds
-        const MAX_RESPONSE_LAG = 60;     // 60 seconds
+        const MAX_RECOVERY_PERIOD = 240; 
+        const MAX_RESPONSE_LAG = 60;     
 
         // --- Bluetooth & UI Variables ---
         const logElement = document.getElementById('log');
         let bluetoothDevice;
         let heartbeatTimeout;
         let wakeLock = null;
+        
+        // --- Audio Context for the Beep ---
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        const audioCtx = new AudioContext();
 
         // --- Training Session Variables ---
         let isSessionRunning = false;
         let sessionSeconds = 0;
-        let stateSeconds = 0; // Tracks how long we've been in the CURRENT state
+        let stateSeconds = 0; 
         let timerInterval = null;
         let currentTrainingState = 'stopped';
 
@@ -115,12 +119,41 @@
             const paddedSecs = secs.toString().padStart(2, '0');
             sessionTimerDisplay.innerText = hrs > 0 ? `${hrs}:${paddedMins}:${paddedSecs}` : `${paddedMins}:${paddedSecs}`;
         }
+        
+        // Generates the beep and vibration
+        function playAlert() {
+            // 1. Vibrate: 200ms on, 100ms off, 200ms on
+            if (navigator.vibrate) {
+                navigator.vibrate([200, 100, 200]);
+            }
+            
+            // 2. Play Audio Beep
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(600, audioCtx.currentTime); // Pitch of the beep
+            
+            gainNode.gain.setValueAtTime(0.5, audioCtx.currentTime); // Volume
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5); // Fade out over 0.5s
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            
+            oscillator.start();
+            oscillator.stop(audioCtx.currentTime + 0.5);
+        }
 
         function setTrainingState(newState) {
+            // Only play the alert if we are actually changing states while running
+            if (currentTrainingState !== 'stopped' && currentTrainingState !== newState) {
+                playAlert();
+            }
+            
             currentTrainingState = newState;
             stateIndicator.className = `state-dot ${newState}`;
             
-            // Reset state time and all rule counters
             stateSeconds = 0; 
             consecutiveHighActive = 0;
             consecutiveLowActive = 0;
@@ -139,6 +172,9 @@
         }
 
         toggleSessionBtn.addEventListener('click', () => {
+            // Unlock audio context on user interaction
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
             if (isSessionRunning) {
                 stopSession();
             } else {
@@ -149,14 +185,15 @@
                 toggleSessionBtn.innerText = 'Stop Session';
                 toggleSessionBtn.classList.add('running');
                 
+                // Start session, play the alert to confirm it started!
+                playAlert();
                 setTrainingState('active'); 
                 
                 timerInterval = setInterval(() => {
                     sessionSeconds++;
-                    stateSeconds++; // Tick the current state duration
+                    stateSeconds++;
                     updateTimerDisplay();
                     
-                    // TIME-BASED RULE: Rest -> Reset (Max Recovery Period Exceeded)
                     if (currentTrainingState === 'rest' && stateSeconds > MAX_RECOVERY_PERIOD) {
                         setTrainingState('reset');
                     }
@@ -217,47 +254,34 @@
             
             document.getElementById('heartRateDisplay').innerText = heartRate;
 
-            // --- HEART RATE LOGIC RULES ---
-            if (!isSessionRunning) return; // Don't evaluate rules if stopped
+            if (!isSessionRunning) return; 
 
             if (currentTrainingState === 'active') {
-                
-                // Rule: Active -> Rest (>= 80 for 3 readings)
                 if (heartRate >= ACTIVE_THRESHOLD) consecutiveHighActive++;
                 else consecutiveHighActive = 0;
 
-                // Rule: Active -> Reset (< 55 for 3 readings)
                 if (heartRate < (RESTING_HR - 10)) consecutiveLowActive++;
                 else consecutiveLowActive = 0;
 
-                // Apply transitions
                 if (consecutiveHighActive >= 3) setTrainingState('rest');
                 else if (consecutiveLowActive >= 3) setTrainingState('reset');
-
             } 
             else if (currentTrainingState === 'rest') {
-                
-                // Rule: Rest -> Active (<= 80 for 3 readings)
                 if (heartRate <= REST_THRESHOLD) consecutiveLowRest++;
                 else consecutiveLowRest = 0;
 
-                // Track Maximum HR and when it occurred in the rest state
                 if (heartRate > restMaxHR) {
                     restMaxHR = heartRate;
                     timeOfRestMaxHR = stateSeconds;
                 }
 
-                // Rule: Rest -> Reset (Peak HR occurred after 60 seconds)
                 if (timeOfRestMaxHR > MAX_RESPONSE_LAG) {
                     setTrainingState('reset');
                 } else if (consecutiveLowRest >= 3) {
-                    setTrainingState('active'); // Apply transition to active
+                    setTrainingState('active'); 
                 }
-
             } 
             else if (currentTrainingState === 'reset') {
-                
-                // Rule: Reset -> Active (HR between 60 and 75 for 15 readings)
                 if (heartRate >= (RESTING_HR - 5) && heartRate <= (RESTING_HR + 10)) {
                     consecutiveRangeReset++;
                 } else {
