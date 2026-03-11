@@ -4,42 +4,33 @@
     <title>Polar Heart Rate Monitor</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
-        /* Default styles for the connection screen */
         body { 
             font-family: sans-serif; 
             text-align: center; 
             margin-top: 50px; 
-            transition: background-color 0.3s; /* Smooth fade to black */
+            transition: background-color 0.3s; 
         }
-        button { padding: 15px 30px; font-size: 18px; border-radius: 8px; background: #007bff; color: white; border: none; }
+        button { padding: 15px 30px; font-size: 18px; border-radius: 8px; background: #007bff; color: white; border: none; cursor: pointer; }
         #log { margin-top: 30px; color: #555; font-size: 14px; padding: 0 20px; word-wrap: break-word; }
         .error { color: red; font-weight: bold; }
         
-        #heartRateDisplay {
-            margin-top: 30px;
-            font-size: 3rem;
-        }
+        #heartRateDisplay { margin-top: 30px; font-size: 3rem; }
 
-        /* Styles applied ONLY when connected */
         body.connected {
             background-color: black;
             margin: 0;
             display: flex;
             align-items: center;
             justify-content: center;
-            height: 100vh; /* Fills the whole height of the screen */
-            overflow: hidden; /* Prevents scrolling */
+            height: 100vh;
+            overflow: hidden;
         }
         
-        /* Hide all UI elements with this class when connected */
-        body.connected .ui-element {
-            display: none; 
-        }
+        body.connected .ui-element { display: none; }
 
-        /* Make the heart rate massive and white */
         body.connected #heartRateDisplay {
             color: white;
-            font-size: 35vw; /* Fills the width of the screen */
+            font-size: 35vw;
             margin: 0;
             line-height: 1;
             font-weight: bold;
@@ -55,6 +46,8 @@
 
     <script>
         const logElement = document.getElementById('log');
+        let bluetoothDevice;
+        let heartbeatTimeout;
 
         function log(message, isError = false) {
             logElement.innerText = message;
@@ -62,17 +55,39 @@
             else logElement.classList.remove('error');
         }
 
+        // This function resets the UI when connection is lost
+        function handleDisconnect() {
+            clearTimeout(heartbeatTimeout);
+            document.body.classList.remove('connected');
+            document.getElementById('heartRateDisplay').innerText = '--';
+            log('❌ Connection lost or timed out. Ready to reconnect.', true);
+        }
+
+        // This restarts our 3-second doom timer
+        function resetTimeout() {
+            clearTimeout(heartbeatTimeout);
+            heartbeatTimeout = setTimeout(() => {
+                // If 3 seconds pass, force disconnect
+                if (bluetoothDevice && bluetoothDevice.gatt.connected) {
+                    bluetoothDevice.gatt.disconnect();
+                }
+            }, 3000);
+        }
+
         document.getElementById('connectBtn').addEventListener('click', async () => {
             try {
-                log('1. Waiting for you to select the watch in the menu...');
-                const device = await navigator.bluetooth.requestDevice({
+                log('1. Waiting for you to select the watch...');
+                bluetoothDevice = await navigator.bluetooth.requestDevice({
                     filters: [{ services: ['heart_rate'] }]
                 });
 
-                log('2. Device selected! Connecting to Bluetooth server...');
-                const server = await device.gatt.connect();
+                // Listen for native disconnects (like walking out of range or our 3-second timeout)
+                bluetoothDevice.addEventListener('gattserverdisconnected', handleDisconnect);
 
-                log('3. Connected! Requesting Heart Rate data...');
+                log('2. Connecting to Bluetooth server...');
+                const server = await bluetoothDevice.gatt.connect();
+
+                log('3. Requesting Heart Rate data...');
                 const service = await server.getPrimaryService('heart_rate');
                 const characteristic = await service.getCharacteristic('heart_rate_measurement');
 
@@ -81,9 +96,10 @@
                 characteristic.addEventListener('characteristicvaluechanged', handleHeartRate);
                 
                 log('✅ Success! Listening for heartbeats...');
-                
-                // Trigger the UI change!
                 document.body.classList.add('connected');
+                
+                // Start the timer immediately upon successful connection
+                resetTimeout();
 
             } catch (error) {
                 log('❌ Error: ' + error.message, true);
@@ -91,6 +107,9 @@
         });
 
         function handleHeartRate(event) {
+            // We got a heartbeat! Reset the 3-second timer.
+            resetTimeout();
+
             const value = event.target.value;
             const flags = value.getUint8(0);
             const is16Bit = flags & 0x01;
@@ -102,7 +121,6 @@
                 heartRate = value.getUint8(1);
             }
             
-            // Output ONLY the number
             document.getElementById('heartRateDisplay').innerText = heartRate;
         }
     </script>
