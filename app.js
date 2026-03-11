@@ -1,3 +1,9 @@
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').then(() => {
+        console.log('Service Worker Registered');
+    });
+}
+
 const ACTIVE_THRESHOLD = 80;
 const REST_THRESHOLD = 80;
 const RESTING_HR = 65;
