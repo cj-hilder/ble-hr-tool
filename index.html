@@ -18,20 +18,35 @@
         body.connected #setupUI { display: none; }
         body.connected #trainingUI {
             display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
-            height: 100vh; padding-top: 5vh; box-sizing: border-box;
+            height: 100vh; padding-top: 2vh; box-sizing: border-box;
         }
 
         #heartRateDisplay { font-size: 25vw; margin: 0; line-height: 1; }
 
         .state-dot {
-            width: 150px; height: 150px; border-radius: 50%; margin: 6vh 0; transition: background-color 0.3s;
+            width: 120px; height: 120px; border-radius: 50%; margin: 3vh 0; transition: background-color 0.3s;
         }
         .state-dot.stopped { background-color: #333333; }
         .state-dot.active { background-color: #28a745; }
         .state-dot.rest { background-color: #fd7e14; }
         .state-dot.reset { background-color: #dc3545; }
 
-        #sessionTimer { font-size: 15vw; font-family: monospace; margin-bottom: 6vh; }
+        #dynamicInfoArea {
+            height: 8vh; display: flex; align-items: center; justify-content: center;
+            font-size: 5vw; color: #ddd;
+        }
+        #restInfo, #cancelResetBtn { display: none; }
+        #cancelResetBtn {
+            padding: 10px 20px; font-size: 18px; border-radius: 6px; 
+            background: transparent; color: #dc3545; border: 2px solid #dc3545;
+        }
+
+        #timersContainer {
+            display: flex; justify-content: space-around; width: 90%;
+            margin-bottom: 4vh; font-family: monospace; font-size: 12vw;
+        }
+        .timer-block { display: flex; flex-direction: column; align-items: center; }
+        .timer-label { font-size: 3vw; color: #888; font-family: sans-serif; margin-top: -5px; letter-spacing: 1px; }
 
         #toggleSessionBtn {
             padding: 20px 0; width: 80%; max-width: 350px; font-size: 24px; border-radius: 12px;
@@ -51,248 +66,26 @@
     <div id="trainingUI">
         <h1 id="heartRateDisplay">--</h1>
         <div id="stateIndicator" class="state-dot stopped"></div>
-        <div id="sessionTimer">00:00</div>
+        
+        <div id="dynamicInfoArea">
+            <div id="restInfo">Max: <span id="maxHrVal">--</span> @ <span id="maxHrTime">00:00</span></div>
+            <button id="cancelResetBtn">Cancel Reset</button>
+        </div>
+
+        <div id="timersContainer">
+            <div class="timer-block">
+                <div id="stateTimerDisplay">00:00</div>
+                <div class="timer-label">STATE</div>
+            </div>
+            <div class="timer-block">
+                <div id="sessionTimerDisplay">00:00</div>
+                <div class="timer-label">SESSION</div>
+            </div>
+        </div>
+
         <button id="toggleSessionBtn">Start Session</button>
     </div>
 
-    <script>
-        // --- Hardcoded Thresholds & Rules ---
-        const ACTIVE_THRESHOLD = 80;
-        const REST_THRESHOLD = 80;
-        const RESTING_HR = 65;
-        const MAX_RECOVERY_PERIOD = 240; 
-        const MAX_RESPONSE_LAG = 60;     
-
-        // --- Bluetooth & UI Variables ---
-        const logElement = document.getElementById('log');
-        let bluetoothDevice;
-        let heartbeatTimeout;
-        let wakeLock = null;
-        
-        // --- Audio Context for the Beep ---
-        const AudioContext = window.AudioContext || window.webkitAudioContext;
-        const audioCtx = new AudioContext();
-
-        // --- Training Session Variables ---
-        let isSessionRunning = false;
-        let sessionSeconds = 0;
-        let stateSeconds = 0; 
-        let timerInterval = null;
-        let currentTrainingState = 'stopped';
-
-        // --- Rule Tracking Counters ---
-        let consecutiveHighActive = 0;
-        let consecutiveLowActive = 0;
-        let consecutiveLowRest = 0;
-        let consecutiveRangeReset = 0;
-        
-        let restMaxHR = 0;
-        let timeOfRestMaxHR = 0;
-
-        const stateIndicator = document.getElementById('stateIndicator');
-        const sessionTimerDisplay = document.getElementById('sessionTimer');
-        const toggleSessionBtn = document.getElementById('toggleSessionBtn');
-
-        // --- Helper Functions ---
-        function log(message, isError = false) {
-            logElement.innerText = message;
-            if (isError) logElement.classList.add('error');
-            else logElement.classList.remove('error');
-        }
-
-        async function requestWakeLock() {
-            if ('wakeLock' in navigator) {
-                try { wakeLock = await navigator.wakeLock.request('screen'); } 
-                catch (err) { console.error('Wake Lock error:', err); }
-            }
-        }
-
-        function releaseWakeLock() {
-            if (wakeLock !== null) { wakeLock.release().then(() => { wakeLock = null; }); }
-        }
-
-        function updateTimerDisplay() {
-            const hrs = Math.floor(sessionSeconds / 3600);
-            const mins = Math.floor((sessionSeconds % 3600) / 60);
-            const secs = sessionSeconds % 60;
-            const paddedMins = mins.toString().padStart(2, '0');
-            const paddedSecs = secs.toString().padStart(2, '0');
-            sessionTimerDisplay.innerText = hrs > 0 ? `${hrs}:${paddedMins}:${paddedSecs}` : `${paddedMins}:${paddedSecs}`;
-        }
-        
-        // Generates the beep and vibration
-        function playAlert() {
-            // 1. Vibrate: 200ms on, 100ms off, 200ms on
-            if (navigator.vibrate) {
-                navigator.vibrate([200, 100, 200]);
-            }
-            
-            // 2. Play Audio Beep
-            if (audioCtx.state === 'suspended') audioCtx.resume();
-            const oscillator = audioCtx.createOscillator();
-            const gainNode = audioCtx.createGain();
-            
-            oscillator.type = 'sine';
-            oscillator.frequency.setValueAtTime(600, audioCtx.currentTime); // Pitch of the beep
-            
-            gainNode.gain.setValueAtTime(0.5, audioCtx.currentTime); // Volume
-            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5); // Fade out over 0.5s
-            
-            oscillator.connect(gainNode);
-            gainNode.connect(audioCtx.destination);
-            
-            oscillator.start();
-            oscillator.stop(audioCtx.currentTime + 0.5);
-        }
-
-        function setTrainingState(newState) {
-            // Only play the alert if we are actually changing states while running
-            if (currentTrainingState !== 'stopped' && currentTrainingState !== newState) {
-                playAlert();
-            }
-            
-            currentTrainingState = newState;
-            stateIndicator.className = `state-dot ${newState}`;
-            
-            stateSeconds = 0; 
-            consecutiveHighActive = 0;
-            consecutiveLowActive = 0;
-            consecutiveLowRest = 0;
-            consecutiveRangeReset = 0;
-            restMaxHR = 0;
-            timeOfRestMaxHR = 0;
-        }
-
-        function stopSession() {
-            clearInterval(timerInterval);
-            isSessionRunning = false;
-            toggleSessionBtn.innerText = 'Start Session';
-            toggleSessionBtn.classList.remove('running');
-            setTrainingState('stopped');
-        }
-
-        toggleSessionBtn.addEventListener('click', () => {
-            // Unlock audio context on user interaction
-            if (audioCtx.state === 'suspended') audioCtx.resume();
-
-            if (isSessionRunning) {
-                stopSession();
-            } else {
-                sessionSeconds = 0;
-                updateTimerDisplay();
-                isSessionRunning = true;
-                
-                toggleSessionBtn.innerText = 'Stop Session';
-                toggleSessionBtn.classList.add('running');
-                
-                // Start session, play the alert to confirm it started!
-                playAlert();
-                setTrainingState('active'); 
-                
-                timerInterval = setInterval(() => {
-                    sessionSeconds++;
-                    stateSeconds++;
-                    updateTimerDisplay();
-                    
-                    if (currentTrainingState === 'rest' && stateSeconds > MAX_RECOVERY_PERIOD) {
-                        setTrainingState('reset');
-                    }
-                    
-                }, 1000);
-            }
-        });
-
-        // --- Bluetooth Logic ---
-        function handleDisconnect() {
-            clearTimeout(heartbeatTimeout);
-            releaseWakeLock();
-            stopSession();
-            document.body.classList.remove('connected');
-            document.getElementById('heartRateDisplay').innerText = '--';
-            log('❌ Connection lost. Ready to reconnect.', true);
-        }
-
-        function resetTimeout() {
-            clearTimeout(heartbeatTimeout);
-            heartbeatTimeout = setTimeout(() => {
-                if (bluetoothDevice && bluetoothDevice.gatt.connected) {
-                    bluetoothDevice.gatt.disconnect();
-                } else { handleDisconnect(); }
-            }, 3000);
-        }
-
-        document.getElementById('connectBtn').addEventListener('click', async () => {
-            try {
-                log('1. Waiting for you to select the watch...');
-                bluetoothDevice = await navigator.bluetooth.requestDevice({ filters: [{ services: ['heart_rate'] }] });
-                bluetoothDevice.addEventListener('gattserverdisconnected', handleDisconnect);
-
-                log('2. Connecting to Bluetooth server...');
-                const server = await bluetoothDevice.gatt.connect();
-
-                log('3. Requesting Heart Rate data...');
-                const service = await server.getPrimaryService('heart_rate');
-                const characteristic = await service.getCharacteristic('heart_rate_measurement');
-
-                log('4. Starting live notifications...');
-                await characteristic.startNotifications();
-                characteristic.addEventListener('characteristicvaluechanged', handleHeartRate);
-                
-                log('✅ Success! Waiting for first heartbeat...');
-                document.body.classList.add('connected');
-                requestWakeLock();
-            } catch (error) { log('❌ Error: ' + error.message, true); }
-        });
-
-        function handleHeartRate(event) {
-            resetTimeout();
-
-            const value = event.target.value;
-            const flags = value.getUint8(0);
-            const is16Bit = flags & 0x01;
-            let heartRate = is16Bit ? value.getUint16(1, true) : value.getUint8(1);
-            
-            document.getElementById('heartRateDisplay').innerText = heartRate;
-
-            if (!isSessionRunning) return; 
-
-            if (currentTrainingState === 'active') {
-                if (heartRate >= ACTIVE_THRESHOLD) consecutiveHighActive++;
-                else consecutiveHighActive = 0;
-
-                if (heartRate < (RESTING_HR - 10)) consecutiveLowActive++;
-                else consecutiveLowActive = 0;
-
-                if (consecutiveHighActive >= 3) setTrainingState('rest');
-                else if (consecutiveLowActive >= 3) setTrainingState('reset');
-            } 
-            else if (currentTrainingState === 'rest') {
-                if (heartRate <= REST_THRESHOLD) consecutiveLowRest++;
-                else consecutiveLowRest = 0;
-
-                if (heartRate > restMaxHR) {
-                    restMaxHR = heartRate;
-                    timeOfRestMaxHR = stateSeconds;
-                }
-
-                if (timeOfRestMaxHR > MAX_RESPONSE_LAG) {
-                    setTrainingState('reset');
-                } else if (consecutiveLowRest >= 3) {
-                    setTrainingState('active'); 
-                }
-            } 
-            else if (currentTrainingState === 'reset') {
-                if (heartRate >= (RESTING_HR - 5) && heartRate <= (RESTING_HR + 10)) {
-                    consecutiveRangeReset++;
-                } else {
-                    consecutiveRangeReset = 0;
-                }
-
-                if (consecutiveRangeReset >= 15) {
-                    setTrainingState('active');
-                }
-            }
-        }
-    </script>
+    <script src="app.js"></script>
 </body>
 </html>
