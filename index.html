@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Polar Heart Rate Monitor</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body>
+    <h2>BLE Heart Rate Monitor</h2>
+    <button id="connectBtn">Connect to Watch</button>
+    <h1 id="heartRateDisplay">-- BPM</h1>
+
+    <script>
+        document.getElementById('connectBtn').addEventListener('click', async () => {
+            try {
+                // 1. Prompt the user to select a Bluetooth device with a Heart Rate service
+                console.log('Requesting Bluetooth Device...');
+                const device = await navigator.bluetooth.requestDevice({
+                    filters: [{ services: ['heart_rate'] }]
+                });
+
+                // 2. Connect to the device
+                console.log('Connecting to GATT Server...');
+                const server = await device.gatt.connect();
+
+                // 3. Get the Heart Rate service and characteristic
+                console.log('Getting Heart Rate Service...');
+                const service = await server.getPrimaryService('heart_rate');
+                const characteristic = await service.getCharacteristic('heart_rate_measurement');
+
+                // 4. Start listening for notifications (heart beats)
+                await characteristic.startNotifications();
+                characteristic.addEventListener('characteristicvaluechanged', handleHeartRate);
+                console.log('Notifications started!');
+
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        });
+
+        function handleHeartRate(event) {
+            const value = event.target.value;
+            // The first byte (index 0) contains the format flags
+            const flags = value.getUint8(0);
+            
+            // Check the least significant bit to see if HR is 8-bit or 16-bit
+            const is16Bit = flags & 0x01;
+            
+            let heartRate;
+            if (is16Bit) {
+                heartRate = value.getUint16(1, true); // true = little-endian
+            } else {
+                heartRate = value.getUint8(1);
+            }
+            
+            document.getElementById('heartRateDisplay').innerText = heartRate + ' BPM ❤️';
+        }
+    </script>
+</body>
+</html>
