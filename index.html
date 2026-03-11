@@ -4,17 +4,54 @@
     <title>Polar Heart Rate Monitor</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
-        body { font-family: sans-serif; text-align: center; margin-top: 50px; }
+        /* Default styles for the connection screen */
+        body { 
+            font-family: sans-serif; 
+            text-align: center; 
+            margin-top: 50px; 
+            transition: background-color 0.3s; /* Smooth fade to black */
+        }
         button { padding: 15px 30px; font-size: 18px; border-radius: 8px; background: #007bff; color: white; border: none; }
         #log { margin-top: 30px; color: #555; font-size: 14px; padding: 0 20px; word-wrap: break-word; }
         .error { color: red; font-weight: bold; }
+        
+        #heartRateDisplay {
+            margin-top: 30px;
+            font-size: 3rem;
+        }
+
+        /* Styles applied ONLY when connected */
+        body.connected {
+            background-color: black;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh; /* Fills the whole height of the screen */
+            overflow: hidden; /* Prevents scrolling */
+        }
+        
+        /* Hide all UI elements with this class when connected */
+        body.connected .ui-element {
+            display: none; 
+        }
+
+        /* Make the heart rate massive and white */
+        body.connected #heartRateDisplay {
+            color: white;
+            font-size: 35vw; /* Fills the width of the screen */
+            margin: 0;
+            line-height: 1;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
-    <h2>BLE Heart Rate Monitor</h2>
-    <button id="connectBtn">Connect to Watch</button>
-    <h1 id="heartRateDisplay">-- BPM</h1>
-    <p id="log">Ready to connect...</p>
+    <h2 class="ui-element">BLE Heart Rate Monitor</h2>
+    <button id="connectBtn" class="ui-element">Connect to Watch</button>
+    <p id="log" class="ui-element">Ready to connect...</p>
+    
+    <h1 id="heartRateDisplay">--</h1>
 
     <script>
         const logElement = document.getElementById('log');
@@ -44,6 +81,9 @@
                 characteristic.addEventListener('characteristicvaluechanged', handleHeartRate);
                 
                 log('✅ Success! Listening for heartbeats...');
+                
+                // Trigger the UI change!
+                document.body.classList.add('connected');
 
             } catch (error) {
                 log('❌ Error: ' + error.message, true);
@@ -62,7 +102,8 @@
                 heartRate = value.getUint8(1);
             }
             
-            document.getElementById('heartRateDisplay').innerText = heartRate + ' BPM ❤️';
+            // Output ONLY the number
+            document.getElementById('heartRateDisplay').innerText = heartRate;
         }
     </script>
 </body>
