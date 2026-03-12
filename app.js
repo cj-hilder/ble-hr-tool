@@ -200,8 +200,8 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
         const characteristic = await service.getCharacteristic('heart_rate_measurement');
 
         // Put the warning on the screen BEFORE the browser attempts the action that causes the freeze
-        log('4. Starting live notifications...<br><br>⚠️ TIP: If it freezes here, Android or Chrome is stuck. Please close Chrome (swipe it away), close Polar Flow, toggle Bluetooth off/on, and try again.');
-
+        log('4. Starting live notifications...<br><br>⚠️ TIP: If the app freezes here, the connection is stuck. Try:<br>1. Force-closing Chrome & Polar Flow.<br>2. Toggling your phone\'s Bluetooth off/on.<br>3. <b>Unpairing the phone from inside the watch\'s own settings menu.</b>');
+        
         await characteristic.startNotifications();
         
         await characteristic.startNotifications();
