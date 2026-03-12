@@ -198,19 +198,10 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
         const service = await server.getPrimaryService('heart_rate');
         const characteristic = await service.getCharacteristic('heart_rate_measurement');
 
-        log('4. Starting live notifications (5s timeout)...');
-        
-        // This forces an error if the watch ignores us for 5 seconds
-        const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => reject(new Error("The watch refused to start the data stream.")), 5000);
-        });
+        // Put the warning on the screen BEFORE the browser attempts the action that causes the freeze
+        log('4. Starting live notifications...\n\n⚠️ TIP: If the app freezes on this step, Android is blocking the data. Please completely close the Polar Flow app (or other paired apps), toggle your phone\'s Bluetooth off and on, and try again.');
 
-        // Race the connection attempt against our 5-second timer
-        await Promise.race([
-            characteristic.startNotifications(),
-            timeoutPromise
-        ]);
-
+        await characteristic.startNotifications();
         characteristic.addEventListener('characteristicvaluechanged', handleHeartRate);
         
         log('✅ Success! Waiting for first heartbeat...');
@@ -219,11 +210,11 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
         
     } catch (error) { 
         let errorMsg = '❌ Error: ' + error.message;
-        errorMsg += '\n\n💡 Tip: Please close any other app (like Polar Flow) that might be paired with the HR device, as it will block this connection.';
+        errorMsg += '\n\n💡 Tip: Please close any other app (like Polar Flow) that might be paired with the HR device.';
         log(errorMsg, true); 
     }
 });
-                            
+            
 
 function handleHeartRate(event) {
     resetTimeout();
