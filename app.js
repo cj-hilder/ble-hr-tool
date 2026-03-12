@@ -14,6 +14,7 @@ let isSessionRunning = false;
 let currentState = 'stopped';
 let sessionInterval;
 let wakeLock = null;
+let heartbeatTimeout;1
 
 // Display Timers
 let sessionSeconds = 0;
@@ -55,6 +56,19 @@ async function requestWakeLock() {
         console.log('Wake Lock Error:', err);
     }
 }
+// --- The "Bluetooth Timer" ---
+function resetTimeout() {
+    clearTimeout(heartbeatTimeout);
+    // If we hear nothing for 3 seconds, sever the connection
+    heartbeatTimeout = setTimeout(() => {
+        if (bluetoothDevice && bluetoothDevice.gatt.connected) {
+            bluetoothDevice.gatt.disconnect();
+        } else { 
+            handleDisconnect(); 
+        }
+    }, 3000); 
+}
+
 // --- Audio/Vibrate Notification ---
 let audioCtx;
 
@@ -172,6 +186,7 @@ function updateTimers() {
 function handleHeartRate(event) {
     const currentHeartRate = event.target.value.getUint8(1);
     document.getElementById('heartRateDisplay').innerText = currentHeartRate;
+    resetTimeout();
 
     if (isSessionRunning) {
         
@@ -225,6 +240,7 @@ function handleHeartRate(event) {
 }
 
 function handleDisconnect() {
+    clearTimeout(heartbeatTimeout); // Stop the timer so it doesn't loop
     log('❌ Disconnected from device. Refresh the page to reconnect.', true);
     document.body.classList.remove('connected');
     
