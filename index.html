@@ -5,15 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     
     <meta name="theme-color" content="#000000">
-    
     <link rel="manifest" href="manifest.json">
-    
-    <link rel="icon" href="icon.png">
+    <link rel="icon" href="icon.png" type="image/png">
     <link rel="apple-touch-icon" href="icon.png">
     
     <link rel="stylesheet" href="style.css">
 </head>
-
 <body>
 
     <div id="setupUI">
@@ -24,21 +21,30 @@
     
     <div id="trainingUI">
         <h1 id="heartRateDisplay">--</h1>
+        
         <div id="stateIndicator" class="state-dot stopped"></div>
+        <div id="stateDescription"></div>
         
         <div id="dynamicInfoArea">
-            <div id="restInfo">Max: <span id="maxHrVal">--</span> @ <span id="maxHrTime">00:00</span></div>
-            <button id="cancelResetBtn">Cancel Reset</button>
-        </div>
+            </div>
 
         <div id="timersContainer">
-            <div class="timer-block">
-                <div id="stateTimerDisplay">00:00</div>
-                <div class="timer-label">STATE</div>
+            <div class="timers-row">
+                <div class="timer-block">
+                    <div id="stateTimerDisplay">00:00</div>
+                    <div class="timer-label">STATE</div>
+                </div>
+                <div class="timer-block">
+                    <div id="sessionTimerDisplay">00:00</div>
+                    <div class="timer-label">SESSION</div>
+                </div>
             </div>
-            <div class="timer-block">
-                <div id="sessionTimerDisplay">00:00</div>
-                <div class="timer-label">SESSION</div>
+            
+            <div class="timers-row">
+                <div class="timer-block">
+                    <div id="totalActiveTimerDisplay">00:00</div>
+                    <div class="timer-label">ACTIVE TOTAL</div>
+                </div>
             </div>
         </div>
 
@@ -47,4 +53,5 @@
 
     <script src="app.js"></script>
 </body>
-</html>
+    </html>
+    
