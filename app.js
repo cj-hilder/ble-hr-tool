@@ -205,8 +205,15 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
         log('✅ Success! Waiting for first heartbeat...');
         document.body.classList.add('connected');
         requestWakeLock();
-    } catch (error) { log('❌ Error: ' + error.message, true); }
+    } catch (error) { 
+        // Catch the error and append the helpful advice
+        let errorMsg = '❌ Error: ' + error.message;
+        errorMsg += '\n\n💡 Tip: Please close any other app (like Polar Flow) that might be paired with the HR device, as it will block this connection.';
+        
+        log(errorMsg, true); 
+    }
 });
+            
 
 function handleHeartRate(event) {
     resetTimeout();
