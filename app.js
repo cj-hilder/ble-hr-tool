@@ -79,13 +79,18 @@ function switchState(newState) {
     dot.className = `state-dot ${newState}`;
 
     const descEl = document.getElementById('stateDescription');
+    const manualResetBtn = document.getElementById('manualResetBtn');
+
     if (newState === 'active') {
         descEl.innerText = "Continue activity";
         descEl.style.color = "#28a745";
+        manualResetBtn.innerHTML = "&#8634;"; // Reset Arrow
     } else if (newState === 'rest') {
         descEl.innerText = "Rest or pull back";
         descEl.style.color = "#fd7e14";
+        manualResetBtn.innerHTML = "&#8634;"; // Reset Arrow
     } else if (newState === 'reset') {
+        manualResetBtn.innerHTML = "&#9654;"; // Play Button
         if (resetCount >= 3) {
             descEl.innerText = "Finish this session ASAP";
             descEl.style.color = "#dc3545";
@@ -181,6 +186,7 @@ function handleDisconnect() {
         isSessionRunning = false;
         document.getElementById('toggleSessionBtn').innerText = 'Start Session';
         document.getElementById('toggleSessionBtn').classList.remove('running');
+        document.getElementById('manualResetBtn').style.display = 'none'; // Hide manual button on disconnect
         switchState('stopped');
     }
     
@@ -190,6 +196,18 @@ function handleDisconnect() {
 }
 
 // --- Event Listeners ---
+document.getElementById('manualResetBtn').addEventListener('click', () => {
+    if (!isSessionRunning) return;
+
+    if (currentState === 'reset') {
+        // If in reset, function as "Cancel Reset" and go straight to active
+        switchState('active');
+    } else if (currentState === 'active' || currentState === 'rest') {
+        // If in active or rest, function as "Enter Reset" and go straight to reset
+        switchState('reset');
+    }
+});
+
 document.getElementById('toggleSessionBtn').addEventListener('click', () => {
     if (isSessionRunning) {
         if (!confirm('Are you sure you want to end this session?')) return; 
@@ -197,6 +215,8 @@ document.getElementById('toggleSessionBtn').addEventListener('click', () => {
         isSessionRunning = false;
         document.getElementById('toggleSessionBtn').innerText = 'Start Session';
         document.getElementById('toggleSessionBtn').classList.remove('running');
+        document.getElementById('manualResetBtn').style.display = 'none'; // Hide manual button
+        
         clearInterval(sessionInterval);
         switchState('stopped');
     } else {
@@ -212,6 +232,7 @@ document.getElementById('toggleSessionBtn').addEventListener('click', () => {
         
         document.getElementById('toggleSessionBtn').innerText = 'End Session';
         document.getElementById('toggleSessionBtn').classList.add('running');
+        document.getElementById('manualResetBtn').style.display = 'flex'; // Show manual button
         
         switchState('active');
         sessionInterval = setInterval(updateTimers, 1000);
@@ -246,4 +267,4 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
         log(errorMsg, true); 
     }
 });
-                                     
+        
