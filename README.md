@@ -45,4 +45,24 @@ You have pushed too far, failed to recover, or triggered a manual override. You 
 
 Because this app relies on the **Web Bluetooth API**, it requires a compatible browser and operating system.
 * **Supported:** Android devices running Google Chrome, Chrome on Desktop (Windows/Mac).
-* **Not Supported
+* **Not Supported:** iOS devices (Apple Safari does not currently support Web Bluetooth natively).
+
+### Setup Instructions
+1. Open the app on your Android device by visiting: **[cj-hilder.github.io/ble-hr-tool](https://cj-hilder.github.io/ble-hr-tool/)**
+2. Tap the browser menu (three dots) and select **"Add to Home screen"** or **"Install App"**. 
+3. Launch the app from your home screen.
+4. Put your heart rate monitor into pairing/broadcasting mode (e.g., on a Polar watch, select a workout and tap the gear icon to turn on "Share HR with other devices").
+5. Tap **Connect to Watch** and select your device from the browser popup.
+
+### 🛠️ Common Bluetooth Troubleshooting
+Bluetooth LE can be finicky, especially on Android devices. If the app connects but freezes on a black screen without showing your heart rate, **your phone and watch are likely in a "Half-Paired" state.**
+
+To fix the silent freeze:
+1. Completely force-close the Pacer app and the Google Chrome browser.
+2. Close any companion apps (like Polar Flow) running in the background.
+3. Toggle your phone's Bluetooth off and back on.
+4. **Crucial Step:** Go into your **Watch's** internal settings menu and delete/unpair your phone. 
+5. Try connecting through the web app again. 
+
+## ⚠️ Medical Disclaimer
+*This application is provided for informational and educational purposes only. It is not a medical device, nor is it intended to diagnose, treat, cure, or prevent any disease. Always consult with a qualified healthcare provider before beginning any new exercise regimen, especially if you have dysautonomia or other cardiovascular/neurological conditions.*
