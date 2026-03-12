@@ -67,13 +67,19 @@ function switchState(newState) {
     stateSeconds = 0;
     document.getElementById('stateTimerDisplay').innerText = '00:00';
 
-    // Wipe all transition buffers and trackers clean when entering a new state
+    // Wipe transition buffers clean when entering a new state
     activeToRestCount = 0;
     activeToResetCount = 0;
     restToActiveCount = 0;
     resetToActiveCount = 0;
-    maxHrInRest = 0;
-    timeOfMaxHrInRest = 0;
+
+    // ONLY wipe the Max HR trackers if we are starting a brand new Rest period
+    if (newState === 'rest') {
+        maxHrInRest = 0;
+        timeOfMaxHrInRest = 0;
+        document.getElementById('maxHrDisplay').innerText = '--';
+        document.getElementById('lagDisplay').innerText = '--';
+    }
 
     const dot = document.getElementById('stateIndicator');
     dot.className = `state-dot ${newState}`;
@@ -149,10 +155,13 @@ function handleHeartRate(event) {
         } 
         
         else if (currentState === 'rest') {
-            // Track Max HR and the exact second it occurred
+            // Track Max HR, the exact second it occurred, and update the UI live
             if (currentHeartRate > maxHrInRest) {
                 maxHrInRest = currentHeartRate;
                 timeOfMaxHrInRest = stateSeconds;
+                
+                document.getElementById('maxHrDisplay').innerText = maxHrInRest;
+                document.getElementById('lagDisplay').innerText = formatTime(timeOfMaxHrInRest);
             }
 
             if (currentHeartRate <= ACTIVE_THRESHOLD) { 
@@ -229,6 +238,10 @@ document.getElementById('toggleSessionBtn').addEventListener('click', () => {
         document.getElementById('sessionTimerDisplay').innerText = '00:00';
         document.getElementById('stateTimerDisplay').innerText = '00:00';
         document.getElementById('totalActiveTimerDisplay').innerText = '00:00';
+        
+        // Blank out the rest stats until the first rest period
+        document.getElementById('maxHrDisplay').innerText = '--';
+        document.getElementById('lagDisplay').innerText = '--';
         
         document.getElementById('toggleSessionBtn').innerText = 'End Session';
         document.getElementById('toggleSessionBtn').classList.add('running');
