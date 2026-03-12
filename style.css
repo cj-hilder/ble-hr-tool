@@ -71,8 +71,37 @@ body.connected #trainingUI {
     letter-spacing: 1px; 
 }
 
+/* Action Buttons Grid */
+#actionButtonsContainer {
+    display: flex;
+    justify-content: center;
+    align-items: stretch; /* Makes both buttons the same height */
+    gap: 15px; /* Space between the buttons */
+    width: 90%;
+    max-width: 400px;
+    margin-bottom: 2vh;
+}
+
+#manualResetBtn {
+    width: 64px; /* Keeps it perfectly square */
+    flex-shrink: 0;
+    font-size: 32px; /* Large icon size */
+    border-radius: 12px;
+    background: #dc3545; /* Always red */
+    color: white;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding-bottom: 4px; /* Visually centers the unicode character */
+}
+
 #toggleSessionBtn {
-    padding: 20px 0; width: 80%; max-width: 350px; font-size: 24px; border-radius: 12px;
-    background: #28a745; color: white;
+    padding: 20px 0; 
+    flex-grow: 1; /* Takes up the rest of the available width */
+    font-size: 24px; 
+    border-radius: 12px;
+    background: #28a745; 
+    color: white;
 }
 #toggleSessionBtn.running { background: #dc3545; }
+    
