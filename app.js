@@ -125,8 +125,7 @@ function switchState(newState) {
     
     triggerNotification();
     const descEl = document.getElementById('stateDescription');
-    const manualResetBtn = document.getElemen0000triggerNotification();
-    if (newState === 'active') {
+    const manualResetBtn = document.getElementById('manualResetBtn');
         descEl.innerText = "Continue activity";
         descEl.style.color = "#28a745";
         manualResetBtn.innerHTML = "&#8634;"; // Reset Arrow
