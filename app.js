@@ -156,7 +156,7 @@ function handleHeartRate(event) {
         
         else if (currentState === 'rest') {
             // Track Max HR, the exact second it occurred, and update the UI live
-            if (currentHeartRate > maxHrInRest) {
+            if (currentHeartRate >= maxHrInRest) {
                 maxHrInRest = currentHeartRate;
                 timeOfMaxHrInRest = stateSeconds;
                 
@@ -164,7 +164,7 @@ function handleHeartRate(event) {
                 document.getElementById('lagDisplay').innerText = formatTime(timeOfMaxHrInRest);
             }
 
-            if (currentHeartRate <= ACTIVE_THRESHOLD) { 
+            if (currentHeartRate < ACTIVE_THRESHOLD) { 
                 restToActiveCount++;
             } else {
                 restToActiveCount = 0;
