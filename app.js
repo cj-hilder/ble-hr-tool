@@ -145,6 +145,7 @@ function switchState(newState) {
         maxHrInRest = 0;
         timeOfMaxHrInRest = 0;
         isRecoveryState = true;
+        recoverySeconds = 0;
         document.getElementById('maxHrDisplay').innerText = '--';
         document.getElementById('lagDisplay').innerText = '--';
     }
