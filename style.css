@@ -3,7 +3,7 @@ button { cursor: pointer; border: none; font-weight: bold; }
 
 #setupUI { margin-top: 50px; }
 #connectBtn { padding: 15px 30px; font-size: 18px; border-radius: 8px; background: #007bff; color: white; }
-#log { margin-top: 30px; color: #555; font-size: 14px; padding: 0 20px; word-wrap: break-word; }
+#log { margin-top: 30px; color: #555; font-size: 14px; padding: 0 20px; word-wrap: break-word; line-height: 1.4; }
 .error { color: red; font-weight: bold; }
 
 #trainingUI { display: none; }
@@ -25,26 +25,54 @@ body.connected #trainingUI {
 .state-dot.rest { background-color: #fd7e14; }
 .state-dot.reset { background-color: #dc3545; }
 
-#dynamicInfoArea {
-    height: 8vh; display: flex; align-items: center; justify-content: center;
-    font-size: 5vw; color: #ddd;
+#stateDescription {
+    font-size: 18px; 
+    color: #aaaaaa;
+    height: 4vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: -1vh; 
 }
-#restInfo, #cancelResetBtn { display: none; }
-#cancelResetBtn {
-    padding: 10px 20px; font-size: 18px; border-radius: 6px; 
-    background: transparent; color: #dc3545; border: 2px solid #dc3545;
+
+#dynamicInfoArea {
+    height: 4vh; display: flex; align-items: center; justify-content: center;
+    font-size: 5vw; color: #ddd; margin-bottom: 2vh;
 }
 
 #timersContainer {
-    display: flex; justify-content: space-around; width: 90%;
-    margin-bottom: 4vh; font-family: monospace; font-size: 12vw;
+    display: flex; 
+    flex-direction: column; 
+    align-items: center;
+    width: 100%;
+    margin-bottom: 4vh; 
 }
-.timer-block { display: flex; flex-direction: column; align-items: center; }
-.timer-label { font-size: 3vw; color: #888; font-family: sans-serif; margin-top: -5px; letter-spacing: 1px; }
+
+.timers-row {
+    display: flex; 
+    justify-content: space-around; 
+    width: 90%;
+    margin-bottom: 2vh; 
+}
+
+.timer-block { 
+    display: flex; 
+    flex-direction: column; 
+    align-items: center; 
+    font-family: monospace; 
+    font-size: 12vw; 
+}
+
+.timer-label { 
+    font-size: 3vw; 
+    color: #888; 
+    font-family: sans-serif; 
+    margin-top: -5px; 
+    letter-spacing: 1px; 
+}
 
 #toggleSessionBtn {
     padding: 20px 0; width: 80%; max-width: 350px; font-size: 24px; border-radius: 12px;
     background: #28a745; color: white;
 }
 #toggleSessionBtn.running { background: #dc3545; }
-  
