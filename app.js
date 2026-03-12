@@ -22,6 +22,7 @@ let heartbeatTimeout;
 // Display Timers
 let sessionSeconds = 0;
 let stateSeconds = 0;
+let recoverySeconds = 0;
 let totalActiveSeconds = 0;
 let resetCount = 0;
 
@@ -34,6 +35,9 @@ let resetToActiveCount = 0;
 // Rest State Tracking
 let maxHrInRest = 0;
 let timeOfMaxHrInRest = 0;
+// Recovery state is rest state, extending into reset state
+// when reset state is entered from rest.
+let isRecoveryState = false;
 
 const logElement = document.getElementById('log');
 
@@ -116,9 +120,15 @@ function triggerNotification() {
 // --- Logic ---
 function switchState(newState) {
     if (currentState === newState && newState !== 'stopped') return;
+    isRecoveryState = false;
     
     // Increment the reset counter if we are moving into the reset state
-    if (newState === 'reset') resetCount++;
+    if (newState === 'reset') {
+        resetCount++;
+        if (currentState === 'rest') {
+            isRecoveryState = true; 
+        }
+    }
     
     currentState = newState;
     stateSeconds = 0;
@@ -134,6 +144,7 @@ function switchState(newState) {
     if (newState === 'rest') {
         maxHrInRest = 0;
         timeOfMaxHrInRest = 0;
+        isRecoveryState = true;
         document.getElementById('maxHrDisplay').innerText = '--';
         document.getElementById('lagDisplay').innerText = '--';
     }
@@ -169,6 +180,9 @@ function switchState(newState) {
 function updateTimers() {
     sessionSeconds++;
     stateSeconds++;
+    if (isRecoveryState) {
+        recoverySeconds++;
+    }
     
     if (currentState === 'active') {
         totalActiveSeconds++;
@@ -199,7 +213,16 @@ function handleHeartRate(event) {
     resetTimeout();
 
     if (isSessionRunning) {
-        
+        if (isRecoveryState) {
+            // Track Max HR, the exact second it occurred, and update the UI live
+            if (currentHeartRate >= maxHrInRest) {
+                maxHrInRest = currentHeartRate;
+                timeOfMaxHrInRest = recoverySeconds;
+                
+                document.getElementById('maxHrDisplay').innerText = maxHrInRest;
+                document.getElementById('lagDisplay').innerText = formatTime(timeOfMaxHrInRest);
+            }
+        }
         if (currentState === 'active') {
             if (currentHeartRate >= ACTIVE_THRESHOLD) {
                 activeToRestCount++;
@@ -218,15 +241,6 @@ function handleHeartRate(event) {
         } 
         
         else if (currentState === 'rest') {
-            // Track Max HR, the exact second it occurred, and update the UI live
-            if (currentHeartRate >= maxHrInRest) {
-                maxHrInRest = currentHeartRate;
-                timeOfMaxHrInRest = stateSeconds;
-                
-                document.getElementById('maxHrDisplay').innerText = maxHrInRest;
-                document.getElementById('lagDisplay').innerText = formatTime(timeOfMaxHrInRest);
-            }
-
             if (currentHeartRate < ACTIVE_THRESHOLD) { 
                 restToActiveCount++;
             } else {
