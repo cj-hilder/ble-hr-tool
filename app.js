@@ -11,10 +11,13 @@ const MAX_RESPONSE_LAG = 60;     // 60 seconds
 
 let bluetoothDevice;
 let isSessionRunning = false;
+let isReconnecting = false;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 10;
 let currentState = 'stopped';
 let sessionInterval;
 let wakeLock = null;
-let heartbeatTimeout;1
+let heartbeatTimeout;
 
 // Display Timers
 let sessionSeconds = 0;
@@ -61,6 +64,7 @@ function resetTimeout() {
     clearTimeout(heartbeatTimeout);
     // If we hear nothing for 3 seconds, sever the connection
     heartbeatTimeout = setTimeout(() => {
+        if (isReconnecting) return; // Already handling a reconnect
         if (bluetoothDevice && bluetoothDevice.gatt.connected) {
             bluetoothDevice.gatt.disconnect();
         } else { 
@@ -140,6 +144,7 @@ function switchState(newState) {
     triggerNotification();
     const descEl = document.getElementById('stateDescription');
     const manualResetBtn = document.getElementById('manualResetBtn');
+    if (newState === 'active') {
         descEl.innerText = "Continue activity";
         descEl.style.color = "#28a745";
         manualResetBtn.innerHTML = "&#8634;"; // Reset Arrow
@@ -184,7 +189,12 @@ function updateTimers() {
 }
 
 function handleHeartRate(event) {
-    const currentHeartRate = event.target.value.getUint8(1);
+    if (isReconnecting) return; // Ignore stale events during reconnect
+    const flags = event.target.value.getUint8(0);
+    const is16bit = flags & 0x01;
+    const currentHeartRate = is16bit
+        ? event.target.value.getUint16(1, true)
+        : event.target.value.getUint8(1);
     document.getElementById('heartRateDisplay').innerText = currentHeartRate;
     resetTimeout();
 
@@ -240,22 +250,89 @@ function handleHeartRate(event) {
 }
 
 function handleDisconnect() {
-    clearTimeout(heartbeatTimeout); // Stop the timer so it doesn't loop
-    log('❌ Disconnected from device. Refresh the page to reconnect.', true);
-    document.body.classList.remove('connected');
-    
-    if (isSessionRunning) {
-        clearInterval(sessionInterval);
+    clearTimeout(heartbeatTimeout);
+
+    if (isSessionRunning && !isReconnecting) {
+        // Mid-session drop — preserve session state and attempt to reconnect
+        startReconnect();
+    } else if (!isSessionRunning) {
+        // No session running — full teardown
+        log('❌ Disconnected from device. Refresh the page to reconnect.', true);
+        document.body.classList.remove('connected');
+        if (wakeLock !== null) {
+            wakeLock.release().then(() => wakeLock = null);
+        }
+    }
+}
+
+function startReconnect() {
+    isReconnecting = true;
+    reconnectAttempts = 0;
+
+    // Visual feedback: pulse the state dot
+    document.getElementById('stateIndicator').classList.add('reconnecting');
+    document.getElementById('heartRateDisplay').innerText = '--';
+    document.getElementById('stateDescription').innerText = 'Signal lost — reconnecting…';
+    document.getElementById('stateDescription').style.color = '#aaaaaa';
+
+    attemptReconnect();
+}
+
+async function attemptReconnect() {
+    if (!isReconnecting) return;
+
+    reconnectAttempts++;
+
+    if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
+        // Give up — full teardown
+        isReconnecting = false;
         isSessionRunning = false;
+        document.getElementById('stateIndicator').classList.remove('reconnecting');
         document.getElementById('toggleSessionBtn').innerText = 'Start Session';
         document.getElementById('toggleSessionBtn').classList.remove('running');
-        document.getElementById('manualResetBtn').style.display = 'none'; // Hide manual button on disconnect
+        document.getElementById('manualResetBtn').style.display = 'none';
+        document.body.classList.remove('connected');
+        log('❌ Could not reconnect after 10 attempts. Session ended.', true);
         switchState('stopped');
+        if (wakeLock !== null) wakeLock.release().then(() => wakeLock = null);
+        return;
     }
-    
-    if (wakeLock !== null) {
-        wakeLock.release().then(() => wakeLock = null);
+
+    try {
+        const server = await bluetoothDevice.gatt.connect();
+        const service = await server.getPrimaryService('heart_rate');
+        const characteristic = await service.getCharacteristic('heart_rate_measurement');
+        await characteristic.startNotifications();
+        characteristic.addEventListener('characteristicvaluechanged', handleHeartRate);
+        onReconnectSuccess();
+    } catch (err) {
+        // Wait 3 seconds then try again
+        setTimeout(attemptReconnect, 3000);
     }
+}
+
+function onReconnectSuccess() {
+    isReconnecting = false;
+    reconnectAttempts = 0;
+
+    // Resume state dot and description
+    document.getElementById('stateIndicator').classList.remove('reconnecting');
+
+    // Restore the description text for whatever state we were in
+    const descEl = document.getElementById('stateDescription');
+    const manualResetBtn = document.getElementById('manualResetBtn');
+    if (currentState === 'active') {
+        descEl.innerText = 'Continue activity';
+        descEl.style.color = '#28a745';
+    } else if (currentState === 'rest') {
+        descEl.innerText = 'Rest or pull back';
+        descEl.style.color = '#fd7e14';
+    } else if (currentState === 'reset') {
+        descEl.innerText = resetCount >= 3 ? 'Finish this session ASAP' : 'Reset to resting HR';
+        descEl.style.color = '#dc3545';
+    }
+
+    // HR will resume via handleHeartRate notifications
 }
 
 // --- Event Listeners ---
@@ -334,4 +411,5 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
         log(errorMsg, true); 
     }
 });
+
         
