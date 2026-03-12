@@ -25,6 +25,14 @@ body.connected #trainingUI {
 .state-dot.rest { background-color: #fd7e14; }
 .state-dot.reset { background-color: #dc3545; }
 
+@keyframes reconnect-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.35; transform: scale(0.88); }
+}
+.state-dot.reconnecting {
+    animation: reconnect-pulse 1.2s ease-in-out infinite;
+}
+
 #stateDescription {
     font-size: 18px; 
     color: #aaaaaa;
@@ -109,4 +117,4 @@ body.connected #trainingUI {
     color: white;
 }
 #toggleSessionBtn.running { background: #dc3545; }
-    
+
