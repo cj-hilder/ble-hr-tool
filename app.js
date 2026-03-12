@@ -3,10 +3,11 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(err => console.log('Service Worker Error', err));
 }
 
-// --- Thresholds & Variables ---
+// --- Hardcoded Thresholds & Timers ---
 const RESTING_HR = 65; 
 const ACTIVE_THRESHOLD = 80;
-const RESET_THRESHOLD = 100;
+const MAX_RECOVERY_PERIOD = 240; // 4 minutes (in seconds)
+const MAX_RESPONSE_LAG = 60;     // 60 seconds
 
 let bluetoothDevice;
 let isSessionRunning = false;
@@ -14,13 +15,21 @@ let currentState = 'stopped';
 let sessionInterval;
 let wakeLock = null;
 
-// Timers and Buffers
+// Display Timers
 let sessionSeconds = 0;
 let stateSeconds = 0;
 let totalActiveSeconds = 0;
 let resetCount = 0;
-let consecutiveHigh = 0;
-let consecutiveLow = 0;
+
+// State Transition Buffers
+let activeToRestCount = 0;
+let activeToResetCount = 0;
+let restToActiveCount = 0;
+let resetToActiveCount = 0;
+
+// Rest State Tracking
+let maxHrInRest = 0;
+let timeOfMaxHrInRest = 0;
 
 const logElement = document.getElementById('log');
 
@@ -51,9 +60,20 @@ async function requestWakeLock() {
 function switchState(newState) {
     if (currentState === newState && newState !== 'stopped') return;
     
+    // Increment the reset counter if we are moving into the reset state
+    if (newState === 'reset') resetCount++;
+    
     currentState = newState;
     stateSeconds = 0;
     document.getElementById('stateTimerDisplay').innerText = '00:00';
+
+    // Wipe all transition buffers and trackers clean when entering a new state
+    activeToRestCount = 0;
+    activeToResetCount = 0;
+    restToActiveCount = 0;
+    resetToActiveCount = 0;
+    maxHrInRest = 0;
+    timeOfMaxHrInRest = 0;
 
     const dot = document.getElementById('stateIndicator');
     dot.className = `state-dot ${newState}`;
@@ -86,6 +106,15 @@ function updateTimers() {
         totalActiveSeconds++;
         document.getElementById('totalActiveTimerDisplay').innerText = formatTime(totalActiveSeconds);
     }
+
+    // Time-based checks for the Rest -> Reset transition
+    if (currentState === 'rest') {
+        if (stateSeconds > MAX_RECOVERY_PERIOD) {
+            switchState('reset');
+        } else if (timeOfMaxHrInRest > MAX_RESPONSE_LAG) {
+            switchState('reset');
+        }
+    }
     
     document.getElementById('sessionTimerDisplay').innerText = formatTime(sessionSeconds);
     document.getElementById('stateTimerDisplay').innerText = formatTime(stateSeconds);
@@ -96,36 +125,49 @@ function handleHeartRate(event) {
     document.getElementById('heartRateDisplay').innerText = currentHeartRate;
 
     if (isSessionRunning) {
-        if (currentState === 'reset') {
-            // Clearance: clear reset state when HR <= RESTING_HR + 5
-            if (currentHeartRate <= (RESTING_HR + 5)) {
-                switchState('rest');
-            }
-        } else if (currentHeartRate >= RESET_THRESHOLD) {
-            // Immediate jump to Reset
-            resetCount++;
-            consecutiveHigh = 0;
-            consecutiveLow = 0;
-            switchState('reset');
-        } else {
-            // Pacing Buffer Logic
+        
+        if (currentState === 'active') {
             if (currentHeartRate >= ACTIVE_THRESHOLD) {
-                consecutiveHigh++;
-                consecutiveLow = 0;
-                
-                // Need 7 consecutive high readings to switch to Active
-                if (currentState === 'rest' && consecutiveHigh >= 7) {
-                    switchState('active');
-                }
+                activeToRestCount++;
+                activeToResetCount = 0;
+            } else if (currentHeartRate < (RESTING_HR - 10)) {
+                activeToResetCount++;
+                activeToRestCount = 0;
             } else {
-                consecutiveLow++;
-                consecutiveHigh = 0;
-                
-                // Need 3 consecutive low readings to switch back to Rest
-                if (currentState === 'active' && consecutiveLow >= 3) {
-                    switchState('rest');
-                }
+                activeToRestCount = 0;
+                activeToResetCount = 0;
             }
+
+            // Execute transitions
+            if (activeToRestCount >= 3) switchState('rest');
+            else if (activeToResetCount >= 3) switchState('reset');
+        } 
+        
+        else if (currentState === 'rest') {
+            // Track Max HR and the exact second it occurred
+            if (currentHeartRate > maxHrInRest) {
+                maxHrInRest = currentHeartRate;
+                timeOfMaxHrInRest = stateSeconds;
+            }
+
+            if (currentHeartRate <= ACTIVE_THRESHOLD) { 
+                restToActiveCount++;
+            } else {
+                restToActiveCount = 0;
+            }
+
+            if (restToActiveCount >= 7) switchState('active');
+        } 
+        
+        else if (currentState === 'reset') {
+            // HR must be exactly between (Resting HR - 5) and (Resting HR + 5)
+            if (currentHeartRate >= (RESTING_HR - 5) && currentHeartRate <= (RESTING_HR + 5)) {
+                resetToActiveCount++;
+            } else {
+                resetToActiveCount = 0;
+            }
+
+            if (resetToActiveCount >= 15) switchState('active');
         }
     }
 }
@@ -150,25 +192,19 @@ function handleDisconnect() {
 // --- Event Listeners ---
 document.getElementById('toggleSessionBtn').addEventListener('click', () => {
     if (isSessionRunning) {
-        // Confirmation Guardrail
-        if (!confirm('Are you sure you want to end this session?')) {
-            return; 
-        }
+        if (!confirm('Are you sure you want to end this session?')) return; 
         
         isSessionRunning = false;
         document.getElementById('toggleSessionBtn').innerText = 'Start Session';
         document.getElementById('toggleSessionBtn').classList.remove('running');
         clearInterval(sessionInterval);
         switchState('stopped');
-        document.getElementById('stateDescription').innerText = "";
     } else {
         isSessionRunning = true;
         sessionSeconds = 0;
         stateSeconds = 0;
         totalActiveSeconds = 0;
         resetCount = 0;
-        consecutiveHigh = 0;
-        consecutiveLow = 0;
         
         document.getElementById('sessionTimerDisplay').innerText = '00:00';
         document.getElementById('stateTimerDisplay').innerText = '00:00';
@@ -177,7 +213,7 @@ document.getElementById('toggleSessionBtn').addEventListener('click', () => {
         document.getElementById('toggleSessionBtn').innerText = 'End Session';
         document.getElementById('toggleSessionBtn').classList.add('running');
         
-        switchState('rest');
+        switchState('active');
         sessionInterval = setInterval(updateTimers, 1000);
     }
 });
@@ -210,4 +246,4 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
         log(errorMsg, true); 
     }
 });
-        
+                                     
