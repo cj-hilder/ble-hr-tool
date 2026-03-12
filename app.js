@@ -198,22 +198,32 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
         const service = await server.getPrimaryService('heart_rate');
         const characteristic = await service.getCharacteristic('heart_rate_measurement');
 
-        log('4. Starting live notifications...');
-        await characteristic.startNotifications();
+        log('4. Starting live notifications (5s timeout)...');
+        
+        // This forces an error if the watch ignores us for 5 seconds
+        const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error("The watch refused to start the data stream.")), 5000);
+        });
+
+        // Race the connection attempt against our 5-second timer
+        await Promise.race([
+            characteristic.startNotifications(),
+            timeoutPromise
+        ]);
+
         characteristic.addEventListener('characteristicvaluechanged', handleHeartRate);
         
         log('✅ Success! Waiting for first heartbeat...');
         document.body.classList.add('connected');
         requestWakeLock();
+        
     } catch (error) { 
-        // Catch the error and append the helpful advice
         let errorMsg = '❌ Error: ' + error.message;
         errorMsg += '\n\n💡 Tip: Please close any other app (like Polar Flow) that might be paired with the HR device, as it will block this connection.';
-        
         log(errorMsg, true); 
     }
 });
-            
+                            
 
 function handleHeartRate(event) {
     resetTimeout();
