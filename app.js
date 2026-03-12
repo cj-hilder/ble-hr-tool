@@ -55,7 +55,46 @@ async function requestWakeLock() {
         console.log('Wake Lock Error:', err);
     }
 }
+// --- Audio/Vibrate Notification ---
+let audioCtx;
 
+function triggerNotification() {
+    // 1. Trigger the physical vibration (Android)
+    if ("vibrate" in navigator) {
+        navigator.vibrate([300, 100, 300]); // Two distinct pulses
+    }
+
+    // 2. Trigger the audio beep
+    try {
+        if (!audioCtx) {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            audioCtx = new AudioContext();
+        }
+        
+        // Browser autoplay policies require resuming the context
+        if (audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
+
+        const oscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+
+        oscillator.type = 'sine'; // Smooth beep sound
+        oscillator.frequency.setValueAtTime(500, audioCtx.currentTime); 
+        
+        gainNode.gain.setValueAtTime(0.5, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+
+        oscillator.start();
+        oscillator.stop(audioCtx.currentTime + 0.5);
+    } catch (e) {
+        console.log("Audio notification failed:", e);
+    }
+}
+        
 // --- Logic ---
 function switchState(newState) {
     if (currentState === newState && newState !== 'stopped') return;
@@ -83,10 +122,10 @@ function switchState(newState) {
 
     const dot = document.getElementById('stateIndicator');
     dot.className = `state-dot ${newState}`;
-
+    
+    triggerNotification();
     const descEl = document.getElementById('stateDescription');
-    const manualResetBtn = document.getElementById('manualResetBtn');
-
+    const manualResetBtn = document.getElemen0000triggerNotification();
     if (newState === 'active') {
         descEl.innerText = "Continue activity";
         descEl.style.color = "#28a745";
