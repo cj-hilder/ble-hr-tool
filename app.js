@@ -43,7 +43,8 @@ const maxHrVal = document.getElementById('maxHrVal');
 const maxHrTime = document.getElementById('maxHrTime');
 
 function log(message, isError = false) {
-    logElement.innerText = message;
+    // Changed innerText to innerHTML so it reads <br> tags
+    logElement.innerHTML = message;
     if (isError) logElement.classList.add('error');
     else logElement.classList.remove('error');
 }
@@ -199,7 +200,7 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
         const characteristic = await service.getCharacteristic('heart_rate_measurement');
 
         // Put the warning on the screen BEFORE the browser attempts the action that causes the freeze
-        log('4. Starting live notifications...\n\n⚠️ TIP: If the app freezes on this step, Android is blocking the data. Please completely close the Polar Flow app (or other paired apps), toggle your phone\'s Bluetooth off and on, and try again.');
+        log('4. Starting live notifications...<br><br>TIP: If the app freezes on this step, Android is blocking the data. Please completely close the Polar Flow app (or other paired apps), toggle your phone\'s Bluetooth off and on, and try again.');
 
         await characteristic.startNotifications();
         characteristic.addEventListener('characteristicvaluechanged', handleHeartRate);
