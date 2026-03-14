@@ -3,11 +3,16 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(err => console.log('Service Worker Error', err));
 }
 
-// --- Hardcoded Thresholds & Timers ---
+// --- Default Thresholds & Timers ---
 const RESTING_HR = 65; 
-const ACTIVE_THRESHOLD = 80;
+const RESTING_HR_BANDWIDTH = 10; 
+
+const ACTIVE_THRESHOLD_UPPER = 80;
+const ACTIVE_THRESHOLD_LOWER = 77;
+
 const MAX_RECOVERY_PERIOD = 240; // 4 minutes (in seconds)
 const MAX_RESPONSE_LAG = 60;     // 60 seconds
+const NUM_RESETS_B4_WARN = 3;
 
 let bluetoothDevice;
 let isSessionRunning = false;
@@ -166,8 +171,8 @@ function switchState(newState) {
         manualResetBtn.innerHTML = "&#8634;"; // Reset Arrow
     } else if (newState === 'reset') {
         manualResetBtn.innerHTML = "&#9654;"; // Play Button
-        if (resetCount >= 3) {
-            descEl.innerText = "Finish this session ASAP";
+        if (resetCount >= NUM_RESETS_B4_WARN) {
+            descEl.innerText = "⚠️ Finish this session ASAP";
             descEl.style.color = "#dc3545";
         } else {
             descEl.innerText = "Reset to resting HR";
@@ -225,7 +230,7 @@ function handleHeartRate(event) {
             }
         }
         if (currentState === 'active') {
-            if (currentHeartRate >= ACTIVE_THRESHOLD) {
+            if (currentHeartRate >= ACTIVE_THRESHOLD_UPPER) {
                 activeToRestCount++;
                 activeToResetCount = 0;
             } else if (currentHeartRate < (RESTING_HR - 10)) {
@@ -242,7 +247,7 @@ function handleHeartRate(event) {
         } 
         
         else if (currentState === 'rest') {
-            if (currentHeartRate < ACTIVE_THRESHOLD) { 
+            if (currentHeartRate < ACTIVE_THRESHOLD_LOWER) { 
                 restToActiveCount++;
             } else {
                 restToActiveCount = 0;
@@ -253,7 +258,7 @@ function handleHeartRate(event) {
         
         else if (currentState === 'reset') {
             // HR must be exactly between (Resting HR - 5) and (Resting HR + 5)
-            if (currentHeartRate >= (RESTING_HR - 5) && currentHeartRate <= (RESTING_HR + 5)) {
+            if (currentHeartRate >= (RESTING_HR - (RESTING_HR_BANDWIDTH / 2)) && currentHeartRate <= (RESTING_HR + (RESTING_HR_BANDWIDTH / 2))) {
                 resetToActiveCount++;
             } else {
                 resetToActiveCount = 0;
@@ -380,6 +385,7 @@ document.getElementById('toggleSessionBtn').addEventListener('click', () => {
         stateSeconds = 0;
         totalActiveSeconds = 0;
         resetCount = 0;
+        recoverySeconds = 0;
         
         document.getElementById('sessionTimerDisplay').innerText = '00:00';
         document.getElementById('stateTimerDisplay').innerText = '00:00';
