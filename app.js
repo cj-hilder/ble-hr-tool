@@ -23,7 +23,7 @@ const NUM_RESETS_B4_WARN = 3;
 // --- end of settings
 
 // --- Speedometer geometry ---
-// SVG is 200x200, circle centre at (100,100), circle radius = 60px.
+// SVG is 200x140, circle centre at (100,60), circle radius = 60px.
 // The coloured state-dot div is 120×120, offset 40px inside the SVG.
 //
 // Angle convention: SVG angles, measured clockwise from the positive X-axis.
@@ -32,7 +32,7 @@ const NUM_RESETS_B4_WARN = 3;
 //   HR = MAX_HR   → SSE  → 427.5° ≡ 67.5°
 // The sweep is 315° clockwise from SSW through West→North→East to SSE.
 const SPEEDO_CX = 100;
-const SPEEDO_CY = 100;
+const SPEEDO_CY = 60;
 const SPEEDO_CIRCLE_R = 60;
 const SPEEDO_NEEDLE_INNER_R = 61;   // just outside the edge
 const SPEEDO_NEEDLE_OUTER_R = 68;   // 7px needle length
