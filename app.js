@@ -4,11 +4,15 @@ if ('serviceWorker' in navigator) {
 }
 
 // --- Default Thresholds & Timers ---
+const MAX_HR = 170;
 const RESTING_HR = 65; 
 const RESTING_HR_BANDWIDTH = 10; 
 
+const TARGET_MIN_HR = 70;
 const ACTIVE_THRESHOLD_UPPER = 80;
 const ACTIVE_THRESHOLD_LOWER = 77;
+
+const BRADYCARDIA_THRESHOLD = 55;
 
 const MAX_RECOVERY_PERIOD = 240; // 4 minutes (in seconds)
 const MAX_RESPONSE_LAG = 60;     // 60 seconds
@@ -233,7 +237,7 @@ function handleHeartRate(event) {
             if (currentHeartRate >= ACTIVE_THRESHOLD_UPPER) {
                 activeToRestCount++;
                 activeToResetCount = 0;
-            } else if (currentHeartRate < (RESTING_HR - 10)) {
+            } else if (currentHeartRate < BRADYCARDIA_THRESHOLD) {
                 activeToResetCount++;
                 activeToRestCount = 0;
             } else {
