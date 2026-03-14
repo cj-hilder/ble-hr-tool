@@ -41,6 +41,7 @@ body.connected #trainingUI {
     align-items: center;
     justify-content: center;
     margin-top: -1vh; 
+    padding-bottom: 15px;
 }
 
 /* New Stats Block (80% of Timer size) */
