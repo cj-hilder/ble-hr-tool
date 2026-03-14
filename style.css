@@ -17,8 +17,25 @@ body.connected #trainingUI {
 
 #heartRateDisplay { font-size: 25vw; margin: 0; line-height: 1; }
 
+#stateIndicatorContainer {
+    position: relative;
+    width: 200px;
+    height: 200px;
+    margin: 3vh 0;
+    flex-shrink: 0;
+}
+
+#speedometerSVG {
+    position: absolute;
+    top: 0; left: 0;
+    width: 200px; height: 200px;
+    pointer-events: none;
+}
+
 .state-dot {
-    width: 120px; height: 120px; border-radius: 50%; margin: 3vh 0; transition: background-color 0.3s;
+    position: absolute;
+    top: 40px; left: 40px;
+    width: 120px; height: 120px; border-radius: 50%; transition: background-color 0.3s;
 }
 .state-dot.stopped { background-color: #333333; }
 .state-dot.active { background-color: #28a745; }
