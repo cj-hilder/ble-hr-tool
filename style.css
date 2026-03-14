@@ -44,6 +44,7 @@ body.connected #trainingUI {
 .state-dot.active { background-color: #28a745; }
 .state-dot.rest { background-color: #fd7e14; }
 .state-dot.reset { background-color: #dc3545; }
+.state-dot.pause { background-color: #888888; }
 
 @keyframes reconnect-pulse {
     0%, 100% { opacity: 1; transform: scale(1); }
@@ -138,4 +139,44 @@ body.connected #trainingUI {
     color: white;
 }
 #toggleSessionBtn.running { background: #dc3545; }
+#toggleSessionBtn.running.paused { background: #28a745; }
+
+/* Pause / End / Cancel modal */
+#sessionModal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.75);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+}
+#sessionModal.visible { display: flex; }
+#sessionModalBox {
+    background: #1a1a1a;
+    border: 1px solid #444;
+    border-radius: 16px;
+    padding: 28px 24px 20px;
+    width: 82vw;
+    max-width: 340px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+#sessionModalBox p {
+    margin: 0 0 4px;
+    font-size: 18px;
+    color: #ddd;
+    text-align: center;
+}
+.modal-btn {
+    width: 100%;
+    padding: 16px 0;
+    font-size: 20px;
+    border-radius: 10px;
+    color: white;
+}
+#modalPauseBtn  { background: #888888; }
+#modalEndBtn    { background: #dc3545; }
+#modalCancelBtn { background: #444444; }
 

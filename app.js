@@ -76,7 +76,7 @@ function updateSpeedometer(hr) {
 
     // --- Target zone arc ---
     let zoneMin, zoneMax;
-    if (currentState === 'reset' || currentState === 'stopped') {
+    if (currentState === 'reset' || currentState === 'stopped' || currentState === 'pause') {
         // Resting-HR band
         zoneMin = RESTING_HR - RESTING_HR_BANDWIDTH / 2;
         zoneMax = RESTING_HR + RESTING_HR_BANDWIDTH / 2;
@@ -206,7 +206,11 @@ function triggerNotification() {
 // --- Logic ---
 function switchState(newState) {
     if (currentState === newState && newState !== 'stopped') return;
-    isRecoveryState = false;
+
+    // Preserve recovery state across pause (pause does not break a recovery window)
+    if (newState !== 'pause') {
+        isRecoveryState = false;
+    }
     
     // Increment the reset counter if we are moving into the reset state
     if (newState === 'reset') {
@@ -240,19 +244,33 @@ function switchState(newState) {
     dot.className = `state-dot ${newState}`;
     updateSpeedometer(latestHR);
     
-    triggerNotification();
+    // Don't trigger notification for user-initiated pause/resume
+    if (newState !== 'pause') {
+        triggerNotification();
+    }
+
     const descEl = document.getElementById('stateDescription');
     const manualResetBtn = document.getElementById('manualResetBtn');
+    const toggleBtn = document.getElementById('toggleSessionBtn');
     if (newState === 'active') {
         descEl.innerText = "Continue activity";
         descEl.style.color = "#28a745";
         manualResetBtn.innerHTML = "&#8634;"; // Reset Arrow
+        manualResetBtn.style.display = 'flex';
+        toggleBtn.innerText = 'Pause session';
+        toggleBtn.classList.remove('paused');
     } else if (newState === 'rest') {
         descEl.innerText = "Rest or pull back";
         descEl.style.color = "#fd7e14";
         manualResetBtn.innerHTML = "&#8634;"; // Reset Arrow
+        manualResetBtn.style.display = 'flex';
+        toggleBtn.innerText = 'Pause session';
+        toggleBtn.classList.remove('paused');
     } else if (newState === 'reset') {
         manualResetBtn.innerHTML = "&#9654;"; // Play Button
+        manualResetBtn.style.display = 'flex';
+        toggleBtn.innerText = 'Pause session';
+        toggleBtn.classList.remove('paused');
         if (resetCount >= NUM_RESETS_B4_WARN) {
             descEl.innerText = "⚠️ Finish this session ASAP";
             descEl.style.color = "#dc3545";
@@ -260,6 +278,12 @@ function switchState(newState) {
             descEl.innerText = "Reset to resting HR";
             descEl.style.color = "#dc3545";
         }
+    } else if (newState === 'pause') {
+        descEl.innerText = "Pause activity";
+        descEl.style.color = "#888888";
+        manualResetBtn.style.display = 'none';
+        toggleBtn.innerText = 'Resume session';
+        toggleBtn.classList.add('paused');
     } else {
         descEl.innerText = "";
     }
@@ -433,6 +457,9 @@ function onReconnectSuccess() {
     } else if (currentState === 'reset') {
         descEl.innerText = resetCount >= 3 ? 'Finish this session ASAP' : 'Reset to resting HR';
         descEl.style.color = '#dc3545';
+    } else if (currentState === 'pause') {
+        descEl.innerText = 'Pause activity';
+        descEl.style.color = '#888888';
     }
 
     // HR will resume via handleHeartRate notifications
@@ -452,17 +479,8 @@ document.getElementById('manualResetBtn').addEventListener('click', () => {
 });
 
 document.getElementById('toggleSessionBtn').addEventListener('click', () => {
-    if (isSessionRunning) {
-        if (!confirm('Are you sure you want to end this session?')) return; 
-        
-        isSessionRunning = false;
-        document.getElementById('toggleSessionBtn').innerText = 'Start Session';
-        document.getElementById('toggleSessionBtn').classList.remove('running');
-        document.getElementById('manualResetBtn').style.display = 'none'; // Hide manual button
-        
-        clearInterval(sessionInterval);
-        switchState('stopped');
-    } else {
+    if (!isSessionRunning) {
+        // --- Start Session ---
         isSessionRunning = true;
         sessionSeconds = 0;
         stateSeconds = 0;
@@ -478,13 +496,44 @@ document.getElementById('toggleSessionBtn').addEventListener('click', () => {
         document.getElementById('maxHrDisplay').innerText = '--';
         document.getElementById('lagDisplay').innerText = '--';
         
-        document.getElementById('toggleSessionBtn').innerText = 'End Session';
         document.getElementById('toggleSessionBtn').classList.add('running');
-        document.getElementById('manualResetBtn').style.display = 'flex'; // Show manual button
         
         switchState('active');
         sessionInterval = setInterval(updateTimers, 1000);
+        return;
     }
+
+    if (currentState === 'pause') {
+        // --- Resume from Pause ---
+        switchState('active');
+        return;
+    }
+
+    // --- Show Pause / End / Cancel dialog ---
+    document.getElementById('sessionModal').classList.add('visible');
+});
+
+// --- Modal: Pause ---
+document.getElementById('modalPauseBtn').addEventListener('click', () => {
+    document.getElementById('sessionModal').classList.remove('visible');
+    switchState('pause');
+});
+
+// --- Modal: End session ---
+document.getElementById('modalEndBtn').addEventListener('click', () => {
+    document.getElementById('sessionModal').classList.remove('visible');
+    isSessionRunning = false;
+    const toggleBtn = document.getElementById('toggleSessionBtn');
+    toggleBtn.innerText = 'Start Session';
+    toggleBtn.classList.remove('running', 'paused');
+    document.getElementById('manualResetBtn').style.display = 'none';
+    clearInterval(sessionInterval);
+    switchState('stopped');
+});
+
+// --- Modal: Cancel ---
+document.getElementById('modalCancelBtn').addEventListener('click', () => {
+    document.getElementById('sessionModal').classList.remove('visible');
 });
 
 document.getElementById('connectBtn').addEventListener('click', async () => {
