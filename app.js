@@ -3,12 +3,15 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(err => console.log('Service Worker Error', err));
 }
 
+// --- Settings 
 // --- Default Thresholds & Timers ---
 const MAX_HR = 170;
 const RESTING_HR = 65; 
 const RESTING_HR_BANDWIDTH = 10; 
 
 const TARGET_MIN_HR = 70;
+const TARGET_MAX_HR = 90;
+
 const ACTIVE_THRESHOLD_UPPER = 80;
 const ACTIVE_THRESHOLD_LOWER = 77;
 
@@ -17,6 +20,7 @@ const BRADYCARDIA_THRESHOLD = 55;
 const MAX_RECOVERY_PERIOD = 240; // 4 minutes (in seconds)
 const MAX_RESPONSE_LAG = 60;     // 60 seconds
 const NUM_RESETS_B4_WARN = 3;
+// --- end of settings
 
 let bluetoothDevice;
 let isSessionRunning = false;
