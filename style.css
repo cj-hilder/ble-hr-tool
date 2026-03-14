@@ -6,6 +6,20 @@ button { cursor: pointer; border: none; font-weight: bold; }
 #log { margin-top: 30px; color: #555; font-size: 14px; padding: 0 20px; word-wrap: break-word; line-height: 1.4; }
 .error { color: red; font-weight: bold; }
 
+#aboutLink {
+    display: inline-block;
+    margin-top: 40px;
+    font-size: 13px;
+    color: #999;
+    text-decoration: none;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    border-bottom: 1px solid #ddd;
+    padding-bottom: 2px;
+    transition: color 0.2s, border-color 0.2s;
+}
+#aboutLink:hover { color: #007bff; border-color: #007bff; }
+
 #trainingUI { display: none; }
 
 body.connected { background-color: black; color: white; }
@@ -179,4 +193,3 @@ body.connected #trainingUI {
 #modalPauseBtn  { background: #888888; }
 #modalEndBtn    { background: #dc3545; }
 #modalCancelBtn { background: #444444; }
-
