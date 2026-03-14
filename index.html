@@ -22,7 +22,13 @@
     <div id="trainingUI">
         <h1 id="heartRateDisplay">--</h1>
         
-        <div id="stateIndicator" class="state-dot stopped"></div>
+        <div id="stateIndicatorContainer">
+            <div id="stateIndicator" class="state-dot stopped"></div>
+            <svg id="speedometerSVG" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+                <line id="speedoNeedle" stroke="white" stroke-width="2" stroke-linecap="round"/>
+                <path id="speedoArc" fill="none" stroke="white" stroke-linecap="round"/>
+            </svg>
+        </div>
         <div id="stateDescription"></div>
         
         <div id="restStatsContainer" class="timers-row" style="margin-bottom: 1vh;">
@@ -65,4 +71,5 @@
     <script src="app.js?v=2"></script>
 </body>
     </html>
+
     
