@@ -22,6 +22,79 @@ const MAX_RESPONSE_LAG = 60;     // 60 seconds
 const NUM_RESETS_B4_WARN = 3;
 // --- end of settings
 
+// --- Speedometer geometry ---
+// SVG is 200x200, circle centre at (100,100), circle radius = 60px.
+// The coloured state-dot div is 120×120, offset 40px inside the SVG.
+//
+// Angle convention: SVG angles, measured clockwise from the positive X-axis.
+//   HR = 0        → SSW  → 112.5°
+//   HR = MAX_HR/2 → North → 270°  (i.e. straight up)
+//   HR = MAX_HR   → SSE  → 427.5° ≡ 67.5°
+// The sweep is 315° clockwise from SSW through West→North→East to SSE.
+const SPEEDO_CX = 100;
+const SPEEDO_CY = 100;
+const SPEEDO_CIRCLE_R = 60;
+const SPEEDO_NEEDLE_INNER_R = 61;   // just outside the edge
+const SPEEDO_NEEDLE_OUTER_R = 68;   // 7px needle length
+const SPEEDO_ARC_R = 69;            // ~8px gap beyond circle edge
+const SPEEDO_START_DEG = 112.5;     // SSW (HR = 0)
+const SPEEDO_SWEEP_DEG = 315;       // total angular range
+
+let latestHR = 0;   // last received HR value, used for arc redraw on state change
+
+function _hrToSvgDeg(hr) {
+    const clamped = Math.max(0, Math.min(hr, MAX_HR));
+    return SPEEDO_START_DEG + (clamped / MAX_HR) * SPEEDO_SWEEP_DEG;
+}
+
+function _polarXY(r, deg) {
+    const rad = deg * Math.PI / 180;
+    return { x: SPEEDO_CX + r * Math.cos(rad), y: SPEEDO_CY + r * Math.sin(rad) };
+}
+
+function _arcPath(startDeg, endDeg) {
+    // Clockwise arc from startDeg to endDeg, both in SVG degrees
+    const s = _polarXY(SPEEDO_ARC_R, startDeg);
+    const e = _polarXY(SPEEDO_ARC_R, endDeg);
+    const sweep = ((endDeg - startDeg) + 360) % 360; // always positive, clockwise
+    const large = sweep > 180 ? 1 : 0;
+    return `M ${s.x.toFixed(2)} ${s.y.toFixed(2)} A ${SPEEDO_ARC_R} ${SPEEDO_ARC_R} 0 ${large} 1 ${e.x.toFixed(2)} ${e.y.toFixed(2)}`;
+}
+
+function updateSpeedometer(hr) {
+    latestHR = hr;
+
+    // --- Needle ---
+    const angleDeg = _hrToSvgDeg(hr);
+    const p1 = _polarXY(SPEEDO_NEEDLE_INNER_R, angleDeg);
+    const p2 = _polarXY(SPEEDO_NEEDLE_OUTER_R, angleDeg);
+    const needle = document.getElementById('speedoNeedle');
+    needle.setAttribute('x1', p1.x.toFixed(2));
+    needle.setAttribute('y1', p1.y.toFixed(2));
+    needle.setAttribute('x2', p2.x.toFixed(2));
+    needle.setAttribute('y2', p2.y.toFixed(2));
+
+    // --- Target zone arc ---
+    let zoneMin, zoneMax;
+    if (currentState === 'reset' || currentState === 'stopped') {
+        // Resting-HR band
+        zoneMin = RESTING_HR - RESTING_HR_BANDWIDTH / 2;
+        zoneMax = RESTING_HR + RESTING_HR_BANDWIDTH / 2;
+    } else {
+        zoneMin = TARGET_MIN_HR;
+        zoneMax = TARGET_MAX_HR;
+    }
+
+    const arcStart = _hrToSvgDeg(zoneMin);
+    const arcEnd   = _hrToSvgDeg(zoneMax);
+
+    const inZone = (hr >= zoneMin && hr <= zoneMax);
+    const arc = document.getElementById('speedoArc');
+    arc.setAttribute('d', _arcPath(arcStart, arcEnd));
+    arc.setAttribute('stroke-width', inZone ? '1' : '4');
+}
+
+
 let bluetoothDevice;
 let isSessionRunning = false;
 let isReconnecting = false;
@@ -165,6 +238,7 @@ function switchState(newState) {
 
     const dot = document.getElementById('stateIndicator');
     dot.className = `state-dot ${newState}`;
+    updateSpeedometer(latestHR);
     
     triggerNotification();
     const descEl = document.getElementById('stateDescription');
@@ -225,6 +299,7 @@ function handleHeartRate(event) {
         : event.target.value.getUint8(1);
     document.getElementById('heartRateDisplay').innerText = currentHeartRate;
     resetTimeout();
+    updateSpeedometer(currentHeartRate);
 
     if (isSessionRunning) {
         if (isRecoveryState) {
@@ -442,3 +517,6 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
 });
 
         
+
+// Initialise speedometer at page load (draws needle at HR=0 and resting arc)
+document.addEventListener('DOMContentLoaded', () => updateSpeedometer(0));
