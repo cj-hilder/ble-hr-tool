@@ -21,7 +21,10 @@ body.connected #trainingUI {
     position: relative;
     width: 200px;
     height: 200px;
-    margin: 3vh 3vh -20px -40px;
+    margin-top: calc(3vh - 20px);
+    margin-right: 0;
+    margin-bottom: calc(3vh - 40px);
+    margin-left: 0;
     flex-shrink: 0;
 }
 
