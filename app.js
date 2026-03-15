@@ -49,6 +49,8 @@ function drawHrGraph() {
     const H = canvas.height;  // 120
 
     ctx.clearRect(0, 0, W, H);
+    ctx.globalAlpha = 0.85; 
+    
     if (hrHistory.length < 2) return;
 
     const now = Date.now();
@@ -64,8 +66,12 @@ function drawHrGraph() {
     function toY(hr) {
         return H - (hr / MAX_HR) * H;
     }
-
-    ctx.strokeStyle = 'white';
+    const { initial_hr, initial_state, initial_ts } = hrHistory[0];
+    if (initial_state === 'active') {
+        ctx.strokeStyle = 'black';
+    } else {
+        ctx.strokeStyle = 'white';
+    }
     ctx.lineWidth = 3;
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
@@ -87,6 +93,11 @@ function drawHrGraph() {
             // Close the old segment 1.5 px before this point (already done by
             // the look-ahead below), then open a new segment 1.5 px after it.
             ctx.stroke();
+            if (state === 'active') {
+                ctx.strokeStyle = 'black';
+            } else {
+                ctx.strokeStyle = 'white';
+            }
             ctx.beginPath();
             ctx.moveTo(x + GAP_HALF, y);
             pathStarted = true;
@@ -269,7 +280,7 @@ function triggerNotification() {
 }
         
 // --- Logic ---
-function switchState(newState) {
+function switchState(newState, isManual) {
     if (currentState === newState && newState !== 'stopped') return;
 
     // Preserve recovery state across pause (pause does not break a recovery window)
@@ -279,7 +290,7 @@ function switchState(newState) {
     
     // Increment the reset counter if we are moving into the reset state
     if (newState === 'reset') {
-        resetCount++;
+        if (!isManual) resetCount++;
         if (currentState === 'rest') {
             isRecoveryState = true; 
         }
@@ -369,9 +380,9 @@ function updateTimers() {
     // Time-based checks for the Rest -> Reset transition
     if (currentState === 'rest') {
         if (stateSeconds > MAX_RECOVERY_PERIOD) {
-            switchState('reset');
+            switchState('reset', false);
         } else if (timeOfMaxHrInRest > MAX_RESPONSE_LAG) {
-            switchState('reset');
+            switchState('reset', false);
         }
     }
     
@@ -416,8 +427,8 @@ function handleHeartRate(event) {
             }
 
             // Execute transitions
-            if (activeToRestCount >= 3) switchState('rest');
-            else if (activeToResetCount >= 3) switchState('reset');
+            if (activeToRestCount >= 3) switchState('rest', false);
+            else if (activeToResetCount >= 3) switchState('reset', false);
         } 
         
         else if (currentState === 'rest') {
@@ -427,7 +438,7 @@ function handleHeartRate(event) {
                 restToActiveCount = 0;
             }
 
-            if (restToActiveCount >= 7) switchState('active');
+            if (restToActiveCount >= 7) switchState('active', false);
         } 
         
         else if (currentState === 'reset') {
@@ -438,7 +449,7 @@ function handleHeartRate(event) {
                 resetToActiveCount = 0;
             }
 
-            if (resetToActiveCount >= 15) switchState('active');
+            if (resetToActiveCount >= 15) switchState('active', false);
         }
     }
 }
@@ -487,7 +498,7 @@ async function attemptReconnect() {
         document.getElementById('manualResetBtn').style.display = 'none';
         document.body.classList.remove('connected');
         log('❌ Could not reconnect after 10 attempts. Session ended.', true);
-        switchState('stopped');
+        switchState('stopped', true);
         if (wakeLock !== null) wakeLock.release().then(() => wakeLock = null);
         return;
     }
@@ -538,10 +549,10 @@ document.getElementById('manualResetBtn').addEventListener('click', () => {
 
     if (currentState === 'reset') {
         // If in reset, function as "Cancel Reset" and go straight to active
-        switchState('active');
+        switchState('active', true);
     } else if (currentState === 'active' || currentState === 'rest') {
         // If in active or rest, function as "Enter Reset" and go straight to reset
-        switchState('reset');
+        switchState('reset', true);
     }
 });
 
@@ -565,14 +576,14 @@ document.getElementById('toggleSessionBtn').addEventListener('click', () => {
         
         document.getElementById('toggleSessionBtn').classList.add('running');
         
-        switchState('active');
+        switchState('active', true);
         sessionInterval = setInterval(updateTimers, 1000);
         return;
     }
 
     if (currentState === 'pause') {
         // --- Resume from Pause ---
-        switchState('active');
+        switchState('active', true);
         return;
     }
 
@@ -583,7 +594,7 @@ document.getElementById('toggleSessionBtn').addEventListener('click', () => {
 // --- Modal: Pause ---
 document.getElementById('modalPauseBtn').addEventListener('click', () => {
     document.getElementById('sessionModal').classList.remove('visible');
-    switchState('pause');
+    switchState('pause', true);
 });
 
 // --- Modal: End session ---
@@ -595,7 +606,7 @@ document.getElementById('modalEndBtn').addEventListener('click', () => {
     toggleBtn.classList.remove('running', 'paused');
     document.getElementById('manualResetBtn').style.display = 'none';
     clearInterval(sessionInterval);
-    switchState('stopped');
+    switchState('stopped', true);
 });
 
 // --- Modal: Cancel ---
