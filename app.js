@@ -122,6 +122,7 @@ function drawHrGraph() {
 }
 
 
+function _hrToSvgDeg(hr) {
     const clamped = Math.max(0, Math.min(hr, MAX_HR));
     return SPEEDO_START_DEG + (clamped / MAX_HR) * SPEEDO_SWEEP_DEG;
 }

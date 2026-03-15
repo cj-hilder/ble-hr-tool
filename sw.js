@@ -6,6 +6,8 @@ const ASSETS = [
     './style.css',
     './manifest.json',
     './icon.png',
+    './about.html',
+    './README.md',
 ];
 
 // Install: pre-cache all static assets
