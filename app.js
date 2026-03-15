@@ -49,7 +49,7 @@ function drawHrGraph() {
     const H = canvas.height;  // 120
 
     ctx.clearRect(0, 0, W, H);
-    ctx.globalAlpha = 0.85; 
+    ctx.globalAlpha = 0.7; 
     
     if (hrHistory.length < 2) return;
 
@@ -66,8 +66,7 @@ function drawHrGraph() {
     function toY(hr) {
         return H - (hr / MAX_HR) * H;
     }
-    const { initial_hr, initial_state, initial_ts } = hrHistory[0];
-    if (initial_state === 'active') {
+    if (hrHistory[0].state === 'active') {
         ctx.strokeStyle = 'black';
     } else {
         ctx.strokeStyle = 'white';
