@@ -156,9 +156,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         .sg-row {
             display: flex;
-            align-items: flex-start;
-            justify-content: space-between;
+            flex-direction: column;
             padding: 9px 16px;
+        }
+        .sg-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
         }
         .sg-label {
             font-size: 14px;
@@ -166,8 +170,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         .sg-desc {
             font-size: 11px;
-            color: #555;
-            margin-top: 3px;
+            color: #888;
+            margin-top: 5px;
             line-height: 1.4;
         }
         .sg-left {
@@ -251,19 +255,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const row = document.createElement('div');
             row.className = 'sg-row';
 
-            const left = document.createElement('div');
-            left.className = 'sg-left';
+            const top = document.createElement('div');
+            top.className = 'sg-top';
 
             const lbl = document.createElement('div');
             lbl.className = 'sg-label';
             lbl.textContent = item.label;
-
-            const desc = document.createElement('div');
-            desc.className = 'sg-desc';
-            desc.textContent = item.desc;
-
-            left.appendChild(lbl);
-            left.appendChild(desc);
 
             const right = document.createElement('div');
             right.className = 'sg-right';
@@ -280,8 +277,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
             right.appendChild(input);
             right.appendChild(unit);
-            row.appendChild(left);
-            row.appendChild(right);
+            top.appendChild(lbl);
+            top.appendChild(right);
+
+            const desc = document.createElement('div');
+            desc.className = 'sg-desc';
+            desc.textContent = item.desc;
+
+            row.appendChild(top);
+            row.appendChild(desc);
             body.appendChild(row);
 
             input.addEventListener('change', () => {
