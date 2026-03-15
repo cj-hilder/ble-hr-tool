@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hr-pacer-v19';
+const CACHE_NAME = 'hr-pacer-v21';
 const ASSETS = [
     './',
     './index.html',
@@ -9,6 +9,7 @@ const ASSETS = [
     './icon.png',
     './about.html',
     './README.md',
+    './LICENSE',
 ];
 
 // Install: pre-cache all static assets
