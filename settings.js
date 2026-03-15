@@ -21,7 +21,7 @@ const DEFAULTS = {
 const FIELDS = [
     { group: 'Heart Rate Range' },
     { key: 'MAX_HR', label: 'Max HR', unit: 'bpm',
-      desc: 'Your personal maximum heart rate. Used to scale the speedometer and the HR history graph.' },
+      desc: 'Your personal maximum heart rate. Used to scale the speedometer and the HR history graph. Calculate it with <a href="https://www.targetheartratecalculator.org/">this tool</a>.' },
     { key: 'BRADYCARDIA_THRESHOLD', label: 'Bradycardia threshold', unit: 'bpm',
       desc: 'If HR drops below this it triggers a heart rate reset (stop activity and wait for a return to resting heart rate). Detects an unusually low heart rate that may indicate overexertion or heart rate recovery undershoot.' },
     { group: 'Resting HR' },
