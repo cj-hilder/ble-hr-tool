@@ -69,7 +69,9 @@ function drawHrGraph() {
     if (hrHistory.length < 2) return;
 
     const now = Date.now();
-    const windowStart = now - HR_HISTORY_MS;
+    // Pin left edge to the first recorded point until the buffer fills 90 seconds,
+    // then switch to a rolling window so the graph scrolls left.
+    const windowStart = Math.min(hrHistory[0].ts, now - HR_HISTORY_MS);
 
     // Map a timestamp to x pixel (0 = oldest, W = now)
     function toX(ts) {
