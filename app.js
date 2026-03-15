@@ -66,12 +66,12 @@ function drawHrGraph() {
     }
 
     ctx.strokeStyle = 'white';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 3;
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
 
     // Half the gap (px) applied on each side of a state-transition point
-    const GAP_HALF = 1.5;
+    const GAP_HALF = 2.0;
 
     ctx.beginPath();
     let pathStarted = false;
@@ -388,6 +388,7 @@ function handleHeartRate(event) {
         : event.target.value.getUint8(1);
     document.getElementById('heartRateDisplay').innerText = currentHeartRate;
     resetTimeout();
+    if (currentHeartRate == 0) return;
     updateSpeedometer(currentHeartRate);
     recordHrHistory(currentHeartRate);
 
