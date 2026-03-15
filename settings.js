@@ -26,27 +26,27 @@ const FIELDS = [
       desc: 'If HR drops below this it triggers a heart rate reset (stop activity and wait for a return to resting heart rate). Detects an unusually low heart rate that may indicate overexertion or heart rate recovery undershoot.' },
     { group: 'Resting HR' },
     { key: 'RESTING_HR', label: 'Resting HR', unit: 'bpm',
-      desc: 'Your typical resting heart rate. Used as the target to return to during a heart rate.' },
+      desc: 'Your typical resting heart rate. Used as the target to return to during a heart rate reset.' },
     { key: 'RESTING_HR_BANDWIDTH', label: 'Bandwidth', unit: 'bpm',
-      desc: 'Width of the acceptable resting HR window. HR must stay within this band for 15 consecutive seconds before a HR reset is considered complete.' },
-    { group: 'Target Zone' },
-    { key: 'TARGET_MIN_HR', label: 'Target min', unit: 'bpm',
-      desc: 'Lower edge of the active target zone, shown as an arc on the speedometer.' },
-    { key: 'TARGET_MAX_HR', label: 'Target max', unit: 'bpm',
-      desc: 'Upper edge of the active target zone, shown as an arc on the speedometer.' },
+      desc: 'Width of the acceptable resting HR window. HR must stay within this band for 15 consecutive seconds before a HR reset is considered complete and you are returned to "Continue activity".' },
     { group: 'Active Thresholds' },
     { key: 'ACTIVE_THRESHOLD_UPPER', label: 'Upper threshold', unit: 'bpm',
       desc: 'If HR exceeds this during activity it will trigger "Rest or pull back". If you are unsure how to determine this, the safe choice is resting HR + 15.' },
     { key: 'ACTIVE_THRESHOLD_LOWER', label: 'Lower threshold', unit: 'bpm',
       desc: 'HR must fall below this to transition back to "Continue activity". Usually set just below the upper threshold.' },
-    { group: 'Recovery Timers' },
+    { group: 'Recovery Limits' },
     { key: 'MAX_RECOVERY_PERIOD', label: 'Max recovery period', unit: 's',
-      desc: 'Maximum time allowed in the "Rest or pull back" state before a forced HR reset is triggered. Prevents indefinite rest periods that mask incomplete HR recovery.' },
+      desc: 'Maximum time allowed in the "Rest or pull back" state before a forced HR reset is triggered. Detects very long rest periods that indicate impaired HR recovery.' },
     { key: 'MAX_RESPONSE_LAG', label: 'Max response lag', unit: 's',
       desc: 'If HR has not started falling within this many seconds of "Rest or pull back", a HR reset is forced. This detects a slow HR response to stopping activity.' },
-    { group: 'Session' },
     { key: 'NUM_RESETS_B4_WARN', label: 'Resets before warning', unit: '',
       desc: 'Number of HR resets allowed before the app shows a prominent warning to end the session. Reaching this count suggests the autonomic system is struggling to recover.' },
+    { group: 'Target Zone' },
+    { key: 'TARGET_MIN_HR', label: 'Target min', unit: 'bpm',
+      desc: 'Lower edge of the target zone. The target zone is shown as an arc on the speedometer. It is purely a guide and does not affect active/rest state.' },
+    { key: 'TARGET_MAX_HR', label: 'Target max', unit: 'bpm',
+      desc: 'Upper edge of the target zone.' },
+    
 ];
 
 const STORAGE_KEY = 'hrPacerSettings';
@@ -170,9 +170,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         .sg-desc {
             font-size: 11px;
-            color: #888;
+            color: #aaa;
             margin-top: 5px;
             line-height: 1.4;
+        }
+        .sg-desc a:link {
+            color: #fff; 
+        }
+        .sg-desc a: visited {
+            color: #ddd; 
         }
         .sg-left {
             flex: 1;
