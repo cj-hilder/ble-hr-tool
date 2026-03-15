@@ -282,8 +282,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const desc = document.createElement('div');
             desc.className = 'sg-desc';
-            desc.textContent = item.desc;
-
+            desc.innerHTML = item.desc;
             row.appendChild(top);
             row.appendChild(desc);
             body.appendChild(row);
