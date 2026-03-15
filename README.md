@@ -1,4 +1,4 @@
-# Autonomic HR Pacer
+# Autonomic HR Pacer v1.0
 
 **[Launch the Live App Here](https://cj-hilder.github.io/ble-hr-tool/)**
 
@@ -34,7 +34,7 @@ You have pushed too far and failed to recover, or you manually hit the 'reset' b
 ### ⚫ Pause
 If the app is showing "Continue activity", but you want to rest, you can pause the session. This means you can rest without the time being counted as activity. When you are ready tap 'Resume session' and get back into it.
 
-### Settings
+## Settings
 You must adjust the settings to suit your personal situation. This might involve trial and error until you find the settings that let you maximise exercise while minimising symptoms and staying within your known heart rate limits.
 
 ---
@@ -62,3 +62,19 @@ To fix the silent freeze:
 
 ## ⚠️ Medical Disclaimer
 *This application is provided for informational and educational purposes only. It is not a medical device, nor is it intended to diagnose, treat, cure, or prevent any disease. Always consult with a qualified healthcare provider before beginning any new exercise regimen, especially if you have dysautonomia or other cardiovascular/neurological conditions.*
+
+---
+
+## Author
+**Chris Hilder** — [github.com/cj-hilder](https://github.com/cj-hilder)
+
+Built out of personal necessity as someone managing a post-concussion condition with dysautonomia. Feedback, suggestions, and contributions are welcome.
+
+## Licence
+This project is licenced under the **Creative Commons Attribution 4.0 International (CC BY 4.0)** licence.
+
+You are free to share and adapt this work for any purpose, including commercially, as long as you give appropriate credit to **Chris Hilder** and indicate if changes were made.
+
+[![CC BY 4.0](https://licensebuttons.net/l/by/4.0/88x31.png)](https://creativecommons.org/licenses/by/4.0/)
+
+Full licence text: [creativecommons.org/licenses/by/4.0](https://creativecommons.org/licenses/by/4.0/)
