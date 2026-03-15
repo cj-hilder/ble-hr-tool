@@ -5,9 +5,9 @@
 A specialized, web-based heart rate pacing app designed for individuals with dysautonomia (such as POTS, Long COVID, ME/CFS, or post concussion). 
 
 ## The Problem
-Most commercial exercise apps and smartwatches are built for healthy individuals with well-regulated autonomic nervous systems. They assume your heart rate will rise predictably when you exert yourself and drop predictably when you stop. 
+Most commercial exercise apps and smart watches are built for healthy individuals with well-regulated autonomic nervous systems. They assume your heart rate will rise predictably when you exert yourself and drop predictably when you stop. 
 
-For patients with dysautonomia, heart rate regulation is often erratic. Heart rate can rise or fall rapidly, return to resting heart rate can be delayed, and pushing past specific thresholds can worsen symptoms. This app was built to help users exercise or perform daily tasks while staying within their safe physiological limits and both visualising and measuring how well their heart is regulated.
+For patients with dysautonomia, heart rate regulation is often erratic. Heart rate can rise or fall rapidly, return to resting heart rate can be delayed, and pushing past specific thresholds can worsen symptoms. This app was built to help users exercise or perform daily tasks while staying within their safe physiological limits, and both visualising and measuring how well their heart is regulated.
 
 ## ✨ Features
 * **Direct Bluetooth Low Energy (BLE) Connection:** Connects directly to standard BLE heart rate monitors (like Polar straps or watches) via the browser.
@@ -33,6 +33,9 @@ You have pushed too far and failed to recover, or you manually hit the 'reset' b
 
 ### ⚫ Pause
 If the app is showing "Continue activity", but you want to rest, you can pause the session. This means you can rest without the time being counted as activity. When you are ready tap 'Resume session' and get back into it.
+
+### Settings
+You must adjust the settings to suit your personal situation. This might involve trial and error until you find the settings that let you maximise exercise while minimising symptoms and staying within your known heart rate limits.
 
 ---
 
