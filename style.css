@@ -42,6 +42,17 @@ body.connected #trainingUI {
     flex-shrink: 0;
 }
 
+/* HR history graph — 90×120 canvas centred on the 120×120 state dot.
+   Dot centre in the 200×200 container = (100, 100).
+   Canvas left = 100 − 45 = 55px, top = 100 − 60 = 40px. */
+#hrGraphCanvas {
+    position: absolute;
+    left: 55px;
+    top: 40px;
+    pointer-events: none;
+    z-index: 1;
+}
+
 #speedometerSVG {
     position: absolute;
     top: 0; left: 0;

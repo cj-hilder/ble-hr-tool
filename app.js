@@ -42,7 +42,86 @@ const SPEEDO_SWEEP_DEG = 315;       // total angular range
 
 let latestHR = 0;   // last received HR value, used for arc redraw on state change
 
-function _hrToSvgDeg(hr) {
+// --- HR History Graph ---
+// Stores the last 90 seconds of {hr, state, ts} readings for the graph overlay.
+const hrHistory = [];
+const HR_HISTORY_MS = 90000;
+
+function recordHrHistory(hr) {
+    const now = Date.now();
+    hrHistory.push({ hr, state: currentState, ts: now });
+    // Discard readings older than the 90-second window
+    const cutoff = now - HR_HISTORY_MS;
+    while (hrHistory.length > 0 && hrHistory[0].ts < cutoff) {
+        hrHistory.shift();
+    }
+    drawHrGraph();
+}
+
+function drawHrGraph() {
+    const canvas = document.getElementById('hrGraphCanvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width;   // 90
+    const H = canvas.height;  // 120
+
+    ctx.clearRect(0, 0, W, H);
+    if (hrHistory.length < 2) return;
+
+    const now = Date.now();
+    const windowStart = now - HR_HISTORY_MS;
+
+    // Map a timestamp to x pixel (0 = oldest, W = now)
+    function toX(ts) {
+        return ((ts - windowStart) / HR_HISTORY_MS) * W;
+    }
+    // Map HR to y pixel (MAX_HR → top=0, 0 → bottom=H)
+    function toY(hr) {
+        return H - (hr / MAX_HR) * H;
+    }
+
+    ctx.strokeStyle = 'white';
+    ctx.lineWidth = 2;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+
+    // Half the gap (px) applied on each side of a state-transition point
+    const GAP_HALF = 1.5;
+
+    ctx.beginPath();
+    let pathStarted = false;
+    let prevState = null;
+
+    for (let i = 0; i < hrHistory.length; i++) {
+        const { hr, state, ts } = hrHistory[i];
+        const x = toX(ts);
+        const y = toY(hr);
+        const isStateChange = prevState !== null && state !== prevState;
+
+        if (isStateChange) {
+            // Close the old segment 1.5 px before this point (already done by
+            // the look-ahead below), then open a new segment 1.5 px after it.
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(x + GAP_HALF, y);
+            pathStarted = true;
+        } else if (!pathStarted) {
+            ctx.moveTo(x, y);
+            pathStarted = true;
+        } else {
+            // Look ahead: if the *next* point triggers a state change, stop
+            // drawing 1.5 px short so the full 3 px gap is centred on the break.
+            const nextBreaks = i < hrHistory.length - 1 &&
+                               hrHistory[i + 1].state !== state;
+            ctx.lineTo(nextBreaks ? x - GAP_HALF : x, y);
+        }
+
+        prevState = state;
+    }
+    ctx.stroke();
+}
+
+
     const clamped = Math.max(0, Math.min(hr, MAX_HR));
     return SPEEDO_START_DEG + (clamped / MAX_HR) * SPEEDO_SWEEP_DEG;
 }
@@ -324,6 +403,7 @@ function handleHeartRate(event) {
     document.getElementById('heartRateDisplay').innerText = currentHeartRate;
     resetTimeout();
     updateSpeedometer(currentHeartRate);
+    recordHrHistory(currentHeartRate);
 
     if (isSessionRunning) {
         if (isRecoveryState) {
