@@ -181,6 +181,7 @@ let wakeLock = null;
 let heartbeatTimeout;
 
 // Display Timers
+let sessionStartTime = 0;
 let sessionSeconds = 0;
 let stateSeconds = 0;
 let recoverySeconds = 0;
@@ -375,15 +376,15 @@ function switchState(newState, isManual) {
     }
 }
 
-function updateTimers() {
-    sessionSeconds++;
-    stateSeconds++;
+function updateTimers(increment) {
+    sessionSeconds += increment;
+    stateSeconds += increment;
     if (isRecoveryState) {
-        recoverySeconds++;
+        recoverySeconds += increment;
     }
     
     if (currentState === 'active') {
-        totalActiveSeconds++;
+        totalActiveSeconds += increment;
         setTimerDisplay(document.getElementById('totalActiveTimerDisplay'), totalActiveSeconds);
     }
 
@@ -400,6 +401,11 @@ function updateTimers() {
     setTimerDisplay(document.getElementById('stateTimerDisplay'), stateSeconds);
 }
 
+function handleTick() {
+    const trueSessionSeconds = Math.floor((Date.now() - sessionStartTime) / 1000);
+    updateTimers(trueSessionSeconds - sessionSeconds);
+}
+	
 function handleHeartRate(event) {
     if (isReconnecting) return; // Ignore stale events during reconnect
     const flags = event.target.value.getUint8(0);
@@ -571,6 +577,7 @@ document.getElementById('toggleSessionBtn').addEventListener('click', () => {
         // --- Start Session ---
         isSessionRunning = true;
         sessionSeconds = 0;
+        sessionStartTime = Math.floor(Date.now());
         stateSeconds = 0;
         totalActiveSeconds = 0;
         resetCount = 0;
@@ -587,7 +594,7 @@ document.getElementById('toggleSessionBtn').addEventListener('click', () => {
         document.getElementById('toggleSessionBtn').classList.add('running');
         
         switchState('active', true);
-        sessionInterval = setInterval(updateTimers, 1000);
+        sessionInterval = setInterval(handleTick, 1000);
         return;
     }
 
