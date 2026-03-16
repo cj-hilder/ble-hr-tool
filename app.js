@@ -173,12 +173,15 @@ function updateSpeedometer(hr) {
 let bluetoothDevice;
 let isSessionRunning = false;
 let isReconnecting = false;
+let isManualDisconnect = false;
 let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 10;
 let currentState = 'stopped';
 let sessionInterval;
 let wakeLock = null;
 let heartbeatTimeout;
+
+const SESSION_KEY = 'hrPacerSession';
 
 // Display Timers
 let sessionStartTime = 0;
@@ -225,6 +228,110 @@ function formatTime(totalSeconds) {
 function setTimerDisplay(el, seconds) {
     el.innerText = formatTime(seconds);
     el.classList.toggle('long-time', seconds >= 3600);
+}
+
+// --- Session Persistence ---
+function saveSession() {
+    if (!isSessionRunning) return;
+    try {
+        localStorage.setItem(SESSION_KEY, JSON.stringify({
+            sessionStartTime,
+            sessionSeconds,
+            stateSeconds,
+            recoverySeconds,
+            totalActiveSeconds,
+            resetCount,
+            isRecoveryState,
+            maxHrInRest,
+            timeOfMaxHrInRest,
+            currentState,
+        }));
+    } catch (e) {}
+}
+
+function clearSession() {
+    localStorage.removeItem(SESSION_KEY);
+}
+
+function restoreSession() {
+    try {
+        const raw = localStorage.getItem(SESSION_KEY);
+        if (!raw) return false;
+        const s = JSON.parse(raw);
+        sessionStartTime  = s.sessionStartTime;
+        sessionSeconds    = s.sessionSeconds;
+        stateSeconds      = s.stateSeconds;
+        recoverySeconds   = s.recoverySeconds;
+        totalActiveSeconds = s.totalActiveSeconds;
+        resetCount        = s.resetCount;
+        isRecoveryState   = s.isRecoveryState;
+        maxHrInRest       = s.maxHrInRest;
+        timeOfMaxHrInRest = s.timeOfMaxHrInRest;
+        currentState      = s.currentState;
+        isSessionRunning  = true;
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+function restoreSessionUI() {
+    // Timers
+    setTimerDisplay(document.getElementById('stateTimerDisplay'),       stateSeconds);
+    setTimerDisplay(document.getElementById('sessionTimerDisplay'),     sessionSeconds);
+    setTimerDisplay(document.getElementById('totalActiveTimerDisplay'), totalActiveSeconds);
+
+    // Rest stats
+    if (maxHrInRest > 0) {
+        document.getElementById('maxHrDisplay').innerText = maxHrInRest;
+        setTimerDisplay(document.getElementById('lagDisplay'), timeOfMaxHrInRest);
+    } else {
+        document.getElementById('maxHrDisplay').innerText = '--';
+        document.getElementById('lagDisplay').innerText = '--';
+    }
+
+    // State dot and speedometer
+    document.getElementById('stateIndicator').className = `state-dot ${currentState}`;
+    updateSpeedometer(0);
+
+    // Buttons and description
+    const descEl        = document.getElementById('stateDescription');
+    const manualResetBtn = document.getElementById('manualResetBtn');
+    const toggleBtn     = document.getElementById('toggleSessionBtn');
+    toggleBtn.classList.add('running');
+
+    if (currentState === 'active') {
+        descEl.innerText = 'Continue activity';
+        descEl.style.color = '#28a745';
+        manualResetBtn.innerHTML = '&#8634;';
+        manualResetBtn.style.display = 'flex';
+        toggleBtn.innerText = 'Pause session';
+        toggleBtn.classList.remove('paused');
+    } else if (currentState === 'rest') {
+        descEl.innerText = 'Rest or pull back';
+        descEl.style.color = '#fd7e14';
+        manualResetBtn.innerHTML = '&#8634;';
+        manualResetBtn.style.display = 'flex';
+        toggleBtn.innerText = 'Pause session';
+        toggleBtn.classList.remove('paused');
+    } else if (currentState === 'reset') {
+        manualResetBtn.innerHTML = '&#9654;';
+        manualResetBtn.style.display = 'flex';
+        toggleBtn.innerText = 'Pause session';
+        toggleBtn.classList.remove('paused');
+        descEl.innerText = resetCount >= NUM_RESETS_B4_WARN
+            ? '⚠️ Finish this session ASAP' : 'Reset to resting HR';
+        descEl.style.color = '#dc3545';
+    } else if (currentState === 'pause') {
+        descEl.innerText = 'Pause activity';
+        descEl.style.color = '#888888';
+        manualResetBtn.style.display = 'none';
+        toggleBtn.innerText = 'Resume session';
+        toggleBtn.classList.add('paused');
+    }
+
+    // Home button hidden — session is running
+    document.getElementById('homeBtn').style.display = 'none';
 }
 
 async function requestWakeLock() {
@@ -310,6 +417,7 @@ function switchState(newState, isManual) {
     currentState = newState;
     stateSeconds = 0;
     setTimerDisplay(document.getElementById('stateTimerDisplay'), 0);
+    if (isSessionRunning) saveSession();
 
     // Wipe transition buffers clean when entering a new state
     activeToRestCount = 0;
@@ -404,6 +512,7 @@ function updateTimers(increment) {
 function handleTick() {
     const trueSessionSeconds = Math.floor((Date.now() - sessionStartTime) / 1000);
     updateTimers(trueSessionSeconds - sessionSeconds);
+    saveSession();
 }
 	
 function handleHeartRate(event) {
@@ -471,6 +580,10 @@ function handleHeartRate(event) {
 }
 
 function handleDisconnect() {
+    if (isManualDisconnect) {
+        isManualDisconnect = false;
+        return;
+    }
     clearTimeout(heartbeatTimeout);
 
     if (isSessionRunning && !isReconnecting) {
@@ -582,7 +695,8 @@ document.getElementById('toggleSessionBtn').addEventListener('click', () => {
         totalActiveSeconds = 0;
         resetCount = 0;
         recoverySeconds = 0;
-        
+
+        document.getElementById('homeBtn').style.display = 'none';
         setTimerDisplay(document.getElementById('sessionTimerDisplay'), 0);
         setTimerDisplay(document.getElementById('stateTimerDisplay'), 0);
         setTimerDisplay(document.getElementById('totalActiveTimerDisplay'), 0);
@@ -623,12 +737,26 @@ document.getElementById('modalEndBtn').addEventListener('click', () => {
     toggleBtn.classList.remove('running', 'paused');
     document.getElementById('manualResetBtn').style.display = 'none';
     clearInterval(sessionInterval);
+    clearSession();
+    document.getElementById('homeBtn').style.display = 'flex';
     switchState('stopped', true);
 });
 
 // --- Modal: Cancel ---
 document.getElementById('modalCancelBtn').addEventListener('click', () => {
     document.getElementById('sessionModal').classList.remove('visible');
+});
+
+// --- Home Button ---
+document.getElementById('homeBtn').addEventListener('click', () => {
+    isManualDisconnect = true;
+    document.body.classList.remove('connected');
+    document.getElementById('homeBtn').style.display = 'none';
+    if (bluetoothDevice && bluetoothDevice.gatt.connected) {
+        bluetoothDevice.gatt.disconnect();
+    } else {
+        isManualDisconnect = false;
+    }
 });
 
 document.getElementById('connectBtn').addEventListener('click', async () => {
@@ -652,6 +780,14 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
         log('✅ Success! Waiting for first heartbeat...');
         document.body.classList.add('connected');
         requestWakeLock();
+
+        const restored = restoreSession();
+        if (restored) {
+            restoreSessionUI();
+            sessionInterval = setInterval(handleTick, 1000);
+        } else {
+            document.getElementById('homeBtn').style.display = 'flex';
+        }
         
     } catch (error) { 
         let errorMsg = '❌ Error: ' + error.message;

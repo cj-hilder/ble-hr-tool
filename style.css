@@ -20,6 +20,20 @@ button { cursor: pointer; border: none; font-weight: bold; }
 }
 #aboutLink:hover { color: #007bff; border-color: #007bff; }
 
+#homeBtn {
+    position: fixed;
+    top: 10px; left: 12px;
+    z-index: 200;
+    background: transparent;
+    color: #888;
+    font-size: 26px;
+    padding: 2px 8px;
+    border-radius: 6px;
+    line-height: 1;
+    transition: color 0.2s;
+}
+#homeBtn:hover { color: white; }
+
 #trainingUI { display: none; }
 
 body.connected { background-color: black; color: white; }
