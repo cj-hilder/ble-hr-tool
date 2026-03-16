@@ -210,9 +210,20 @@ function log(message, isError = false) {
 }
 
 function formatTime(totalSeconds) {
+    if (totalSeconds >= 3600) {
+        const h = String(Math.floor(totalSeconds / 3600)).padStart(2, '0');
+        const m = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, '0');
+        const s = String(totalSeconds % 60).padStart(2, '0');
+        return `${h}:${m}:${s}`;
+    }
     const m = String(Math.floor(totalSeconds / 60)).padStart(2, '0');
     const s = String(totalSeconds % 60).padStart(2, '0');
     return `${m}:${s}`;
+}
+
+function setTimerDisplay(el, seconds) {
+    el.innerText = formatTime(seconds);
+    el.classList.toggle('long-time', seconds >= 3600);
 }
 
 async function requestWakeLock() {
@@ -297,7 +308,7 @@ function switchState(newState, isManual) {
     
     currentState = newState;
     stateSeconds = 0;
-    document.getElementById('stateTimerDisplay').innerText = '00:00';
+    setTimerDisplay(document.getElementById('stateTimerDisplay'), 0);
 
     // Wipe transition buffers clean when entering a new state
     activeToRestCount = 0;
@@ -373,7 +384,7 @@ function updateTimers() {
     
     if (currentState === 'active') {
         totalActiveSeconds++;
-        document.getElementById('totalActiveTimerDisplay').innerText = formatTime(totalActiveSeconds);
+        setTimerDisplay(document.getElementById('totalActiveTimerDisplay'), totalActiveSeconds);
     }
 
     // Time-based checks for the Rest -> Reset transition
@@ -385,8 +396,8 @@ function updateTimers() {
         }
     }
     
-    document.getElementById('sessionTimerDisplay').innerText = formatTime(sessionSeconds);
-    document.getElementById('stateTimerDisplay').innerText = formatTime(stateSeconds);
+    setTimerDisplay(document.getElementById('sessionTimerDisplay'), sessionSeconds);
+    setTimerDisplay(document.getElementById('stateTimerDisplay'), stateSeconds);
 }
 
 function handleHeartRate(event) {
@@ -410,7 +421,7 @@ function handleHeartRate(event) {
                 timeOfMaxHrInRest = recoverySeconds;
                 
                 document.getElementById('maxHrDisplay').innerText = maxHrInRest;
-                document.getElementById('lagDisplay').innerText = formatTime(timeOfMaxHrInRest);
+                setTimerDisplay(document.getElementById('lagDisplay'), timeOfMaxHrInRest);
             }
         }
         if (currentState === 'active') {
@@ -565,9 +576,9 @@ document.getElementById('toggleSessionBtn').addEventListener('click', () => {
         resetCount = 0;
         recoverySeconds = 0;
         
-        document.getElementById('sessionTimerDisplay').innerText = '00:00';
-        document.getElementById('stateTimerDisplay').innerText = '00:00';
-        document.getElementById('totalActiveTimerDisplay').innerText = '00:00';
+        setTimerDisplay(document.getElementById('sessionTimerDisplay'), 0);
+        setTimerDisplay(document.getElementById('stateTimerDisplay'), 0);
+        setTimerDisplay(document.getElementById('totalActiveTimerDisplay'), 0);
         
         // Blank out the rest stats until the first rest period
         document.getElementById('maxHrDisplay').innerText = '--';

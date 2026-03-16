@@ -100,6 +100,8 @@ body.connected #trainingUI {
     color: #ddd; 
 }
 
+.stat-block .long-time { font-size: 6vw; }
+
 #timersContainer {
     display: flex; 
     flex-direction: column; 
@@ -122,6 +124,8 @@ body.connected #trainingUI {
     font-family: monospace; 
     font-size: 12vw; 
 }
+
+.timer-block .long-time { font-size: 7.5vw; }
 
 .timer-label { 
     font-size: 3vw; 
