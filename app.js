@@ -815,20 +815,21 @@ async function tryAutoReconnect() {
     sessionInterval = setInterval(handleTick, 1000);
     requestWakeLock();
 
+    function fallbackToHome() {
+        clearInterval(sessionInterval);
+        document.body.classList.remove('connected');
+    }
+
     // getDevices() returns previously-paired devices without a user gesture
     if (!navigator.bluetooth || !navigator.bluetooth.getDevices) {
-        // Browser doesn't support getDevices — user must tap Connect manually.
-        // The existing post-connect restore path will handle it.
-        document.getElementById('stateDescription').innerText = 'Tap Connect to Watch to resume';
-        document.getElementById('stateDescription').style.color = '#aaaaaa';
+        fallbackToHome();
         return;
     }
 
     try {
         const devices = await navigator.bluetooth.getDevices();
         if (devices.length === 0) {
-            document.getElementById('stateDescription').innerText = 'Tap Connect to Watch to resume';
-            document.getElementById('stateDescription').style.color = '#aaaaaa';
+            fallbackToHome();
             return;
         }
         // Use the first available device (this is a single-device app)
@@ -836,7 +837,6 @@ async function tryAutoReconnect() {
         bluetoothDevice.addEventListener('gattserverdisconnected', handleDisconnect);
         startReconnect();
     } catch (e) {
-        document.getElementById('stateDescription').innerText = 'Tap Connect to Watch to resume';
-        document.getElementById('stateDescription').style.color = '#aaaaaa';
+        fallbackToHome();
     }
 }
