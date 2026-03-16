@@ -32,6 +32,7 @@ If the app is showing "Continue activity", but you want to rest, you can pause t
 
 ## Settings
 You must adjust the settings to suit your personal situation. This might involve trial and error until you find the settings that let you maximise exercise while minimising symptoms and staying within your known heart rate limits.
+
 ---
 ## ✨ Features
 * **Direct Bluetooth Low Energy (BLE) Connection:** Connects directly to standard BLE heart rate monitors (like Polar straps or watches) via the browser.
