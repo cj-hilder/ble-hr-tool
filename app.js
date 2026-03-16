@@ -799,4 +799,44 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
         
 
 // Initialise speedometer at page load (draws needle at HR=0 and resting arc)
-document.addEventListener('DOMContentLoaded', () => updateSpeedometer(0));
+// Also attempt to auto-reconnect if a session was in progress before the refresh.
+document.addEventListener('DOMContentLoaded', () => {
+    updateSpeedometer(0);
+    tryAutoReconnect();
+});
+
+async function tryAutoReconnect() {
+    const restored = restoreSession();
+    if (!restored) return;
+
+    // A session was in progress — restore UI immediately so timers keep running
+    document.body.classList.add('connected');
+    restoreSessionUI();
+    sessionInterval = setInterval(handleTick, 1000);
+    requestWakeLock();
+
+    // getDevices() returns previously-paired devices without a user gesture
+    if (!navigator.bluetooth || !navigator.bluetooth.getDevices) {
+        // Browser doesn't support getDevices — user must tap Connect manually.
+        // The existing post-connect restore path will handle it.
+        document.getElementById('stateDescription').innerText = 'Tap Connect to Watch to resume';
+        document.getElementById('stateDescription').style.color = '#aaaaaa';
+        return;
+    }
+
+    try {
+        const devices = await navigator.bluetooth.getDevices();
+        if (devices.length === 0) {
+            document.getElementById('stateDescription').innerText = 'Tap Connect to Watch to resume';
+            document.getElementById('stateDescription').style.color = '#aaaaaa';
+            return;
+        }
+        // Use the first available device (this is a single-device app)
+        bluetoothDevice = devices[0];
+        bluetoothDevice.addEventListener('gattserverdisconnected', handleDisconnect);
+        startReconnect();
+    } catch (e) {
+        document.getElementById('stateDescription').innerText = 'Tap Connect to Watch to resume';
+        document.getElementById('stateDescription').style.color = '#aaaaaa';
+    }
+}
