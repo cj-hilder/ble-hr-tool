@@ -2,20 +2,16 @@
 
 **[Launch the Live App Here](https://cj-hilder.github.io/ble-hr-tool/)**
 
-A specialized, web-based heart rate pacing app designed for individuals with dysautonomia (such as POTS, Long COVID, ME/CFS, or post concussion). 
+A specialized, web-based heart rate pacing app designed for individuals with dysautonomia (such as POTS, Long COVID, ME/CFS, or Post Concussion Syndrome). 
 
 ## The Problem
 Most commercial exercise apps and smart watches are built for healthy individuals with well-regulated autonomic nervous systems. They assume your heart rate will rise predictably when you exert yourself and drop predictably when you stop. 
 
-For patients with dysautonomia, heart rate regulation is often erratic. Heart rate can rise or fall rapidly, return to resting heart rate can be delayed, and pushing past specific thresholds can worsen symptoms. This app was built to help users exercise or perform daily tasks while staying within their safe physiological limits, and both visualising and measuring how well their heart is regulated.
+Patients with dysautonomia have two needs that are not catered for by most apps: they require strict heart rate pacing and they need to accommodate a dysregulated heart. These needs apply to both exercise and performing daily tasks.
 
-## ✨ Features
-* **Direct Bluetooth Low Energy (BLE) Connection:** Connects directly to standard BLE heart rate monitors (like Polar straps or watches) via the browser.
-* **Smart Recovery Tracking:** Monitors not just *how high* your heart rate goes during a rest period, but the **Lag** (how many seconds it takes for your heart rate to peak after you stop moving). 
-* **Minimalist design:** Large, accessible UI with clear visualisation of heart rate changes. 
-* **Progressive Web App (PWA):** Installable directly to an Android home screen for fullscreen, app-like behavior.
+This app helps with strict pacing by providing an alert, both sound and vibration, when heart rate thresholds are crossed. This makes it possible to follow strict pacing without having to continually watch the screen. 
 
----
+In addition, this app allows you to visualise heart rate regulation and provides some measurements (response lag, HR overshoot, total activity time) that help in managing and assessing progress. 
 
 ## How the Pacing Logic Works
 
@@ -28,17 +24,21 @@ You are safely within your physiological exercise zone, between your bradycardia
 You have hit your active threshold and need to rest completely or reduce effort enough to bring your heart rate down. The app actively tracks how long it takes for your heart rate to start coming down. If your heart rate comes down quickly enough you will be returned to "Continue activity", otherwise to "Reset".
 
 ### 🔴 Reset to resting HR
-You have pushed too far and failed to recover, or you manually hit the 'reset' button. Stop completely. The app now waits for your heart rate to return to your resting heart rate. When it does you will be returned to "Continue activity".
+You have pushed too far and failed to recover, or you manually tapped the 'reset' button. The app now waits for your heart rate to return to your resting heart rate. When it does you will be returned to "Continue activity".
 * **Session Termination:** If you are forced into the Reset state several times in a single session, the app advises you to end the session.
 
 ### ⚫ Pause
-If the app is showing "Continue activity", but you want to rest, you can pause the session. This means you can rest without the time being counted as activity. When you are ready tap 'Resume session' and get back into it.
+If the app is showing "Continue activity", but you want to rest, you can pause the session. This means you can rest without the time being counted as activity. When you are ready, tap 'Resume session' and get back into it.
 
 ## Settings
 You must adjust the settings to suit your personal situation. This might involve trial and error until you find the settings that let you maximise exercise while minimising symptoms and staying within your known heart rate limits.
+---
+## ✨ Features
+* **Direct Bluetooth Low Energy (BLE) Connection:** Connects directly to standard BLE heart rate monitors (like Polar straps or watches) via the browser.
+* **Progressive Web App (PWA):** Installable directly to an Android home screen for fullscreen, app-like behavior.
+* **Minimalist design:** Large, accessible UI with clear visualisation of heart rate changes. 
 
 ---
-
 ## Requirements & Usage
 
 Because this app relies on the **Web Bluetooth API**, it requires a compatible browser and operating system.
@@ -53,11 +53,11 @@ Because this app relies on the **Web Bluetooth API**, it requires a compatible b
 5. Tap **Connect to Watch** and select your device from the browser popup.
 
 ### Common Bluetooth Troubleshooting
-Bluetooth LE can be finicky, especially on Android devices. If the app connects but freezes on a black screen without showing your heart rate, **your phone and watch are likely in a "Half-Paired" state.**
+Bluetooth LE can be finicky, especially on Android devices. If the app connects but freezes on a black screen without showing your heart rate, **your phone and watch or HR monitor are likely in a "Half-Paired" state.**
 
 To fix the silent freeze:
-1. Close the Pacer app e.g. Polar Flow App.
-2. **Crucial Step:** Go into your **Watch's** internal settings menu and delete/unpair your phone. 
+1. Close the watch or HR monitor's specific app on your phone e.g. Polar Flow App.
+2. **Crucial Step:** Go into your **watch or HR monitor's** internal settings menu and delete/unpair your phone. 
 3. Try connecting again. 
 
 ## ⚠️ Medical Disclaimer
