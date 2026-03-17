@@ -51,7 +51,7 @@ Because this app relies on the **Web Bluetooth API**, it requires a compatible b
 2. Tap the browser menu (three dots) and select **"Add to Home screen"** or **"Install App"**. 
 3. Launch the app from your home screen.
 4. Put your heart rate monitor into pairing/broadcasting mode (e.g., on a Polar watch, select a workout and tap the gear icon to turn on "Share HR with other devices").
-5. Tap **Connect to Watch** and select your device from the browser popup.
+5. Tap **Connect to HR monitor** and select your device from the browser popup.
 
 ### Common Bluetooth Troubleshooting
 Bluetooth LE can be finicky, especially on Android devices. If the app connects but freezes on a black screen without showing your heart rate, **your phone and watch or HR monitor are likely in a "Half-Paired" state.**

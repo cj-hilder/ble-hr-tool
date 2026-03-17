@@ -761,7 +761,7 @@ document.getElementById('homeBtn').addEventListener('click', () => {
 
 document.getElementById('connectBtn').addEventListener('click', async () => {
     try {
-        log('1. Waiting for you to select the watch...');
+        log('1. Waiting for you to select a device...');
         bluetoothDevice = await navigator.bluetooth.requestDevice({ filters: [{ services: ['heart_rate'] }] });
         bluetoothDevice.addEventListener('gattserverdisconnected', handleDisconnect);
 
@@ -772,7 +772,7 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
         const service = await server.getPrimaryService('heart_rate');
         const characteristic = await service.getCharacteristic('heart_rate_measurement');
 
-        log('4. Starting live notifications...<br><br>⚠️ TIP: If the app freezes here, the connection is stuck. Try:<br>1. Force-closing Chrome & Polar Flow.<br>2. Toggling your phone\'s Bluetooth off/on.<br>3. <b>Unpairing the phone from inside the watch\'s own settings menu.</b>');
+        log('4. Starting live notifications...<br><br>⚠️ TIP: If the app freezes here, the connection is stuck. Try:<br>1. closing the watch or HR monitor\'s app on your phone (e.g.Polar Flow).<br>2. Unpairing the phone from inside the watch or HR monitor\'s own settings menu.</b>');
 
         await characteristic.startNotifications();
         characteristic.addEventListener('characteristicvaluechanged', handleHeartRate);
