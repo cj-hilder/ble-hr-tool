@@ -11,7 +11,7 @@ Patients with dysautonomia have two needs that are not catered for by most apps:
 
 This app helps with strict pacing by providing an alert, both sound and vibration, when heart rate thresholds are crossed. This makes it possible to follow strict pacing without having to continually watch the screen. 
 
-In addition, this app allows you to visualise heart rate regulation and provides some measurements (response lag, HR overshoot, total activity time) that help in managing and assessing progress. 
+In addition, this app allows you to visualise heart rate regulation and provides some measurements (response lag, HR overshoot, activity vs recovery time) that help in managing and assessing progress. A summary of each session can be saved in local storage, and graphs of saved data can be viewed to help visualise progress.
 
 ## How the Pacing Logic Works
 
