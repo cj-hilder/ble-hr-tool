@@ -3,12 +3,10 @@
 <head>
     <title>Autonomic HR Pacer</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    
     <meta name="theme-color" content="#000000">
     <link rel="manifest" href="manifest.json">
     <link rel="icon" href="icon.png" type="image/png">
     <link rel="apple-touch-icon" href="icon.png">
-    
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -17,7 +15,10 @@
         <h2>Autonomic HR Pacer</h2>
         <button id="connectBtn">Connect to HR monitor</button>
         <p id="log">Ready to connect...</p>
-        <a id="aboutLink" href="about.html">About</a>
+        <div id="setupLinks">
+            <a href="about.html">About</a>
+            <a href="history.html">Session History</a>
+        </div>
     </div>
     
     <div id="trainingUI">
@@ -55,7 +56,6 @@
                     <div class="timer-label">SESSION</div>
                 </div>
             </div>
-            
             <div class="timers-row">
                 <div class="timer-block">
                     <div id="totalActiveTimerDisplay">00:00</div>
@@ -80,9 +80,71 @@
         </div>
     </div>
 
+    <!-- Session Summary modal -->
+    <div id="summaryModal">
+        <div id="summaryModalBox">
+            <h2 class="summary-title">Session Summary</h2>
+
+            <div class="summary-section">
+                <div class="summary-section-header active-header">🟢 Active Periods</div>
+                <div class="summary-grid">
+                    <div class="summary-stat"><span id="s-totalActive">--</span><label>Total time</label></div>
+                    <div class="summary-stat"><span id="s-pctActive">--</span><label>% of session</label></div>
+                    <div class="summary-stat"><span id="s-numActive">--</span><label>Count</label></div>
+                    <div class="summary-stat"><span id="s-longestActive">--</span><label>Longest</label></div>
+                    <div class="summary-stat"><span id="s-avgActive">--</span><label>Average</label></div>
+                    <div class="summary-stat"><span id="s-shortestActive">--</span><label>Shortest</label></div>
+                    <div class="summary-stat summary-stat-wide"><span id="s-avgHrActive">--</span><label>Avg HR</label></div>
+                </div>
+            </div>
+
+            <div class="summary-section">
+                <div class="summary-section-header recovery-header">🟠 Recovery Periods</div>
+                <div class="summary-grid">
+                    <div class="summary-stat"><span id="s-totalRecovery">--</span><label>Total time</label></div>
+                    <div class="summary-stat"><span id="s-pctRecovery">--</span><label>% of session</label></div>
+                    <div class="summary-stat"><span id="s-numRecovery">--</span><label>Count</label></div>
+                    <div class="summary-stat"><span id="s-longestRecovery">--</span><label>Longest</label></div>
+                    <div class="summary-stat"><span id="s-avgRecovery">--</span><label>Average</label></div>
+                    <div class="summary-stat"><span id="s-shortestRecovery">--</span><label>Shortest</label></div>
+                    <div class="summary-stat summary-stat-wide"><span id="s-avgHrRecovery">--</span><label>Avg HR</label></div>
+                </div>
+            </div>
+
+            <div class="summary-section">
+                <div class="summary-section-header lag-header">📈 Lag & Peak HR</div>
+                <div class="summary-grid">
+                    <div class="summary-stat"><span id="s-longestLag">--</span><label>Longest lag</label></div>
+                    <div class="summary-stat"><span id="s-avgLag">--</span><label>Avg lag</label></div>
+                    <div class="summary-stat"><span id="s-shortestLag">--</span><label>Shortest lag</label></div>
+                    <div class="summary-stat"><span id="s-highestPeak">--</span><label>Highest peak</label></div>
+                    <div class="summary-stat"><span id="s-avgPeak">--</span><label>Avg peak</label></div>
+                    <div class="summary-stat"><span id="s-lowestPeak">--</span><label>Lowest peak</label></div>
+                </div>
+            </div>
+
+            <div class="summary-section">
+                <div class="summary-section-header session-header">📊 Session</div>
+                <div class="summary-grid">
+                    <div class="summary-stat"><span id="s-sessionLength">--</span><label>Duration</label></div>
+                    <div class="summary-stat"><span id="s-highestHr">--</span><label>Highest HR</label></div>
+                    <div class="summary-stat"><span id="s-avgHr">--</span><label>Avg HR</label></div>
+                    <div class="summary-stat"><span id="s-lowestHr">--</span><label>Lowest HR</label></div>
+                </div>
+            </div>
+
+            <textarea id="summaryNotes" placeholder="Notes (optional)…" rows="3"></textarea>
+
+            <div id="summaryActions">
+                <button id="summaryDiscardBtn">Discard</button>
+                <button id="summarySaveBtn">Save session</button>
+            </div>
+        </div>
+    </div>
+
     <button id="homeBtn" style="display:none;">&#8962;</button>
 
     <script src="settings.js"></script>
-    <script src="app.js?v=2"></script>
+    <script src="app.js?v=3"></script>
 </body>
-    </html>
+</html>

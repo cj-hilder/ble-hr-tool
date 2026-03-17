@@ -6,38 +6,26 @@ if ('serviceWorker' in navigator) {
 // Settings constants are declared and loaded from localStorage by settings.js
 
 // --- Speedometer geometry ---
-// SVG is 200x200, circle centre at (100,100), circle radius = 60px.
-// The coloured state-dot div is 120×120, offset 40px inside the SVG.
-//
-// Angle convention: SVG angles, measured clockwise from the positive X-axis.
-//   HR = 0        → SSW  → 112.5°
-//   HR = MAX_HR/2 → North → 270°  (i.e. straight up)
-//   HR = MAX_HR   → SSE  → 427.5° ≡ 67.5°
-// The sweep is 315° clockwise from SSW through West→North→East to SSE.
 const SPEEDO_CX = 100;
 const SPEEDO_CY = 100;
 const SPEEDO_CIRCLE_R = 60;
-const SPEEDO_NEEDLE_INNER_R = 61;   // just outside the edge
-const SPEEDO_NEEDLE_OUTER_R = 68;   // 7px needle length
-const SPEEDO_ARC_R = 69;            // ~8px gap beyond circle edge
-const SPEEDO_START_DEG = 112.5;     // SSW (HR = 0)
-const SPEEDO_SWEEP_DEG = 315;       // total angular range
+const SPEEDO_NEEDLE_INNER_R = 61;
+const SPEEDO_NEEDLE_OUTER_R = 68;
+const SPEEDO_ARC_R = 69;
+const SPEEDO_START_DEG = 112.5;
+const SPEEDO_SWEEP_DEG = 315;
 
-let latestHR = 0;   // last received HR value, used for arc redraw on state change
+let latestHR = 0;
 
 // --- HR History Graph ---
-// Stores the last 90 seconds of {hr, state, ts} readings for the graph overlay.
 const hrHistory = [];
 const HR_HISTORY_MS = 90000;
 
 function recordHrHistory(hr) {
     const now = Date.now();
     hrHistory.push({ hr, state: currentState, ts: now });
-    // Discard readings older than the 90-second window
     const cutoff = now - HR_HISTORY_MS;
-    while (hrHistory.length > 0 && hrHistory[0].ts < cutoff) {
-        hrHistory.shift();
-    }
+    while (hrHistory.length > 0 && hrHistory[0].ts < cutoff) hrHistory.shift();
     drawHrGraph();
 }
 
@@ -45,243 +33,179 @@ function drawHrGraph() {
     const canvas = document.getElementById('hrGraphCanvas');
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    const W = canvas.width;   // 90
-    const H = canvas.height;  // 120
-
+    const W = canvas.width;
+    const H = canvas.height;
     ctx.clearRect(0, 0, W, H);
-    ctx.globalAlpha = 0.7; 
-    
+    ctx.globalAlpha = 0.7;
     if (hrHistory.length < 2) return;
-
     const now = Date.now();
-    // Pin left edge to the first recorded point until the buffer fills 90 seconds,
-    // then switch to a rolling window so the graph scrolls left.
     const windowStart = Math.max(hrHistory[0].ts, now - HR_HISTORY_MS);
-
-    // Map a timestamp to x pixel (0 = oldest, W = now)
-    function toX(ts) {
-        return ((ts - windowStart) / HR_HISTORY_MS) * W;
-    }
-    // Map HR to y pixel (MAX_HR → top=0, 0 → bottom=H)
-    function toY(hr) {
-        return H - (hr / MAX_HR) * H;
-    }
-    if (hrHistory[0].state === 'active') {
-        ctx.strokeStyle = 'black';
-    } else {
-        ctx.strokeStyle = 'white';
-    }
-    ctx.lineWidth = 3;
-    ctx.lineJoin = 'round';
-    ctx.lineCap = 'round';
-
-    // Half the gap (px) applied on each side of a state-transition point
+    function toX(ts) { return ((ts - windowStart) / HR_HISTORY_MS) * W; }
+    function toY(hr)  { return H - (hr / MAX_HR) * H; }
+    ctx.strokeStyle = hrHistory[0].state === 'active' ? 'black' : 'white';
+    ctx.lineWidth = 3; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
     const GAP_HALF = 2.0;
-
     ctx.beginPath();
-    let pathStarted = false;
-    let prevState = null;
-
+    let pathStarted = false, prevState = null;
     for (let i = 0; i < hrHistory.length; i++) {
         const { hr, state, ts } = hrHistory[i];
-        const x = toX(ts);
-        const y = toY(hr);
+        const x = toX(ts), y = toY(hr);
         const isStateChange = prevState !== null && state !== prevState;
-
         if (isStateChange) {
-            // Close the old segment 1.5 px before this point (already done by
-            // the look-ahead below), then open a new segment 1.5 px after it.
             ctx.stroke();
-            if (state === 'active') {
-                ctx.strokeStyle = 'black';
-            } else {
-                ctx.strokeStyle = 'white';
-            }
-            ctx.beginPath();
-            ctx.moveTo(x + GAP_HALF, y);
-            pathStarted = true;
+            ctx.strokeStyle = state === 'active' ? 'black' : 'white';
+            ctx.beginPath(); ctx.moveTo(x + GAP_HALF, y); pathStarted = true;
         } else if (!pathStarted) {
-            ctx.moveTo(x, y);
-            pathStarted = true;
+            ctx.moveTo(x, y); pathStarted = true;
         } else {
-            // Look ahead: if the *next* point triggers a state change, stop
-            // drawing 1.5 px short so the full 3 px gap is centred on the break.
-            const nextBreaks = i < hrHistory.length - 1 &&
-                               hrHistory[i + 1].state !== state;
+            const nextBreaks = i < hrHistory.length - 1 && hrHistory[i + 1].state !== state;
             ctx.lineTo(nextBreaks ? x - GAP_HALF : x, y);
         }
-
         prevState = state;
     }
     ctx.stroke();
 }
 
-
 function _hrToSvgDeg(hr) {
-    const clamped = Math.max(0, Math.min(hr, MAX_HR));
-    return SPEEDO_START_DEG + (clamped / MAX_HR) * SPEEDO_SWEEP_DEG;
+    return SPEEDO_START_DEG + (Math.max(0, Math.min(hr, MAX_HR)) / MAX_HR) * SPEEDO_SWEEP_DEG;
 }
-
 function _polarXY(r, deg) {
     const rad = deg * Math.PI / 180;
     return { x: SPEEDO_CX + r * Math.cos(rad), y: SPEEDO_CY + r * Math.sin(rad) };
 }
-
 function _arcPath(startDeg, endDeg) {
-    // Clockwise arc from startDeg to endDeg, both in SVG degrees
-    const s = _polarXY(SPEEDO_ARC_R, startDeg);
-    const e = _polarXY(SPEEDO_ARC_R, endDeg);
-    const sweep = ((endDeg - startDeg) + 360) % 360; // always positive, clockwise
-    const large = sweep > 180 ? 1 : 0;
-    return `M ${s.x.toFixed(2)} ${s.y.toFixed(2)} A ${SPEEDO_ARC_R} ${SPEEDO_ARC_R} 0 ${large} 1 ${e.x.toFixed(2)} ${e.y.toFixed(2)}`;
+    const s = _polarXY(SPEEDO_ARC_R, startDeg), e = _polarXY(SPEEDO_ARC_R, endDeg);
+    const sweep = ((endDeg - startDeg) + 360) % 360;
+    return `M ${s.x.toFixed(2)} ${s.y.toFixed(2)} A ${SPEEDO_ARC_R} ${SPEEDO_ARC_R} 0 ${sweep > 180 ? 1 : 0} 1 ${e.x.toFixed(2)} ${e.y.toFixed(2)}`;
 }
-
 function updateSpeedometer(hr) {
     latestHR = hr;
-
-    // --- Needle ---
     const angleDeg = _hrToSvgDeg(hr);
-    const p1 = _polarXY(SPEEDO_NEEDLE_INNER_R, angleDeg);
-    const p2 = _polarXY(SPEEDO_NEEDLE_OUTER_R, angleDeg);
+    const p1 = _polarXY(SPEEDO_NEEDLE_INNER_R, angleDeg), p2 = _polarXY(SPEEDO_NEEDLE_OUTER_R, angleDeg);
     const needle = document.getElementById('speedoNeedle');
-    needle.setAttribute('x1', p1.x.toFixed(2));
-    needle.setAttribute('y1', p1.y.toFixed(2));
-    needle.setAttribute('x2', p2.x.toFixed(2));
-    needle.setAttribute('y2', p2.y.toFixed(2));
-
-    // --- Target zone arc ---
+    needle.setAttribute('x1', p1.x.toFixed(2)); needle.setAttribute('y1', p1.y.toFixed(2));
+    needle.setAttribute('x2', p2.x.toFixed(2)); needle.setAttribute('y2', p2.y.toFixed(2));
     let zoneMin, zoneMax;
     if (currentState === 'reset' || currentState === 'stopped' || currentState === 'pause') {
-        // Resting-HR band
-        zoneMin = RESTING_HR - RESTING_HR_BANDWIDTH / 2;
-        zoneMax = RESTING_HR + RESTING_HR_BANDWIDTH / 2;
-    } else {
-        zoneMin = TARGET_MIN_HR;
-        zoneMax = TARGET_MAX_HR;
-    }
-
-    const arcStart = _hrToSvgDeg(zoneMin);
-    const arcEnd   = _hrToSvgDeg(zoneMax);
-
-    const inZone = (hr >= zoneMin && hr <= zoneMax);
+        zoneMin = RESTING_HR - RESTING_HR_BANDWIDTH / 2; zoneMax = RESTING_HR + RESTING_HR_BANDWIDTH / 2;
+    } else { zoneMin = TARGET_MIN_HR; zoneMax = TARGET_MAX_HR; }
     const arc = document.getElementById('speedoArc');
-    arc.setAttribute('d', _arcPath(arcStart, arcEnd));
-    arc.setAttribute('stroke-width', inZone ? '1' : '4');
+    arc.setAttribute('d', _arcPath(_hrToSvgDeg(zoneMin), _hrToSvgDeg(zoneMax)));
+    arc.setAttribute('stroke-width', (hr >= zoneMin && hr <= zoneMax) ? '1' : '4');
 }
 
-
+// ─── State variables ─────────────────────────────────────────────────────────
 let bluetoothDevice;
-let isSessionRunning = false;
-let isReconnecting = false;
-let isManualDisconnect = false;
+let isSessionRunning = false, isReconnecting = false, isManualDisconnect = false;
 let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 10;
 let currentState = 'stopped';
-let sessionInterval;
-let wakeLock = null;
-let heartbeatTimeout;
+let sessionInterval, wakeLock = null, heartbeatTimeout;
 
 const SESSION_KEY = 'hrPacerSession';
+const HISTORY_KEY = 'hrPacerHistory';
 
-// Display Timers
-let sessionStartTime = 0;
-let sessionSeconds = 0;
-let stateSeconds = 0;
-let recoverySeconds = 0;
-let totalActiveSeconds = 0;
-let resetCount = 0;
+let sessionStartTime = 0, sessionSeconds = 0, stateSeconds = 0;
+let recoverySeconds = 0, totalActiveSeconds = 0, resetCount = 0;
+let activeToRestCount = 0, activeToResetCount = 0, restToActiveCount = 0, resetToActiveCount = 0;
+let maxHrInRest = 0, timeOfMaxHrInRest = 0, isRecoveryState = false;
 
-// State Transition Buffers
-let activeToRestCount = 0;
-let activeToResetCount = 0;
-let restToActiveCount = 0;
-let resetToActiveCount = 0;
+// ─── Period Tracking ──────────────────────────────────────────────────────────
+let activePeriods   = [];  // [{startSec,endSec,duration,avgHr}]
+let recoveryPeriods = [];  // [{startSec,endSec,duration,avgHr,maxHr,lagSec}]
+let currentPeriodType  = null;  // 'active' | 'recovery' | null
+let currentPeriodStart = 0;
+let currentPeriodHrSamples = [];
+let sessionHrSamples = [];
+let pendingSummary = null;
 
-// Rest State Tracking
-let maxHrInRest = 0;
-let timeOfMaxHrInRest = 0;
-// Recovery state is rest state, extending into reset state
-// when reset state is entered from rest.
-let isRecoveryState = false;
-
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 const logElement = document.getElementById('log');
-
-// --- Helper Functions ---
 function log(message, isError = false) {
     logElement.innerHTML = message;
-    if (isError) logElement.classList.add('error');
-    else logElement.classList.remove('error');
+    if (isError) logElement.classList.add('error'); else logElement.classList.remove('error');
 }
-
-function formatTime(totalSeconds) {
-    if (totalSeconds >= 3600) {
-        const h = String(Math.floor(totalSeconds / 3600)).padStart(2, '0');
-        const m = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, '0');
-        const s = String(totalSeconds % 60).padStart(2, '0');
-        return `${h}:${m}:${s}`;
+function formatTime(s) {
+    s = Math.max(0, Math.round(s));
+    if (s >= 3600) {
+        return String(Math.floor(s/3600)).padStart(2,'0') + ':' +
+               String(Math.floor((s%3600)/60)).padStart(2,'0') + ':' +
+               String(s%60).padStart(2,'0');
     }
-    const m = String(Math.floor(totalSeconds / 60)).padStart(2, '0');
-    const s = String(totalSeconds % 60).padStart(2, '0');
-    return `${m}:${s}`;
+    return String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0');
 }
-
 function setTimerDisplay(el, seconds) {
     el.innerText = formatTime(seconds);
     el.classList.toggle('long-time', seconds >= 3600);
 }
+function arrAvg(arr) {
+    return arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : 0;
+}
 
-// --- Session Persistence ---
+// ─── Period helpers ───────────────────────────────────────────────────────────
+function openActivePeriod() {
+    currentPeriodType = 'active'; currentPeriodStart = sessionSeconds; currentPeriodHrSamples = [];
+}
+function closeActivePeriod() {
+    if (currentPeriodType !== 'active') return;
+    activePeriods.push({ startSec: currentPeriodStart, endSec: sessionSeconds,
+        duration: Math.max(0, sessionSeconds - currentPeriodStart), avgHr: arrAvg(currentPeriodHrSamples) });
+    currentPeriodType = null; currentPeriodHrSamples = [];
+}
+function openRecoveryPeriod() {
+    currentPeriodType = 'recovery'; currentPeriodStart = sessionSeconds; currentPeriodHrSamples = [];
+}
+function closeRecoveryPeriod() {
+    if (currentPeriodType !== 'recovery') return;
+    recoveryPeriods.push({ startSec: currentPeriodStart, endSec: sessionSeconds,
+        duration: Math.max(0, sessionSeconds - currentPeriodStart), avgHr: arrAvg(currentPeriodHrSamples),
+        maxHr: maxHrInRest, lagSec: timeOfMaxHrInRest });
+    currentPeriodType = null; currentPeriodHrSamples = [];
+}
+
+// ─── Session persistence ──────────────────────────────────────────────────────
 function saveSession() {
     if (!isSessionRunning) return;
     try {
         localStorage.setItem(SESSION_KEY, JSON.stringify({
-            sessionStartTime,
-            sessionSeconds,
-            stateSeconds,
-            recoverySeconds,
-            totalActiveSeconds,
-            resetCount,
-            isRecoveryState,
-            maxHrInRest,
-            timeOfMaxHrInRest,
-            currentState,
+            sessionStartTime, sessionSeconds, stateSeconds, recoverySeconds,
+            totalActiveSeconds, resetCount, isRecoveryState, maxHrInRest, timeOfMaxHrInRest, currentState,
+            activePeriods, recoveryPeriods,
+            currentPeriodType, currentPeriodStart,
+            sessionHrMin: sessionHrSamples.length ? Math.min(...sessionHrSamples) : 0,
+            sessionHrMax: sessionHrSamples.length ? Math.max(...sessionHrSamples) : 0,
+            sessionHrSum: sessionHrSamples.reduce((a,b)=>a+b, 0),
+            sessionHrCount: sessionHrSamples.length,
         }));
     } catch (e) {}
 }
-
-function clearSession() {
-    localStorage.removeItem(SESSION_KEY);
-}
-
+function clearSession() { localStorage.removeItem(SESSION_KEY); }
 function restoreSession() {
     try {
         const raw = localStorage.getItem(SESSION_KEY);
         if (!raw) return false;
         const s = JSON.parse(raw);
-        sessionStartTime  = s.sessionStartTime;
-        sessionSeconds    = s.sessionSeconds;
-        stateSeconds      = s.stateSeconds;
-        recoverySeconds   = s.recoverySeconds;
-        totalActiveSeconds = s.totalActiveSeconds;
-        resetCount        = s.resetCount;
-        isRecoveryState   = s.isRecoveryState;
-        maxHrInRest       = s.maxHrInRest;
-        timeOfMaxHrInRest = s.timeOfMaxHrInRest;
-        currentState      = s.currentState;
-        isSessionRunning  = true;
-        return true;
-    } catch (e) {
-        return false;
-    }
+        sessionStartTime = s.sessionStartTime; sessionSeconds = s.sessionSeconds;
+        stateSeconds = s.stateSeconds; recoverySeconds = s.recoverySeconds;
+        totalActiveSeconds = s.totalActiveSeconds; resetCount = s.resetCount;
+        isRecoveryState = s.isRecoveryState; maxHrInRest = s.maxHrInRest;
+        timeOfMaxHrInRest = s.timeOfMaxHrInRest; currentState = s.currentState;
+        activePeriods = s.activePeriods || []; recoveryPeriods = s.recoveryPeriods || [];
+        currentPeriodType = s.currentPeriodType || null; currentPeriodStart = s.currentPeriodStart || 0;
+        currentPeriodHrSamples = [];
+        const cnt = s.sessionHrCount || 0;
+        if (cnt > 0) {
+            const avg = Math.round(s.sessionHrSum / cnt);
+            sessionHrSamples = [s.sessionHrMin, s.sessionHrMax];
+            for (let i = 0; i < cnt - 2; i++) sessionHrSamples.push(avg);
+        } else { sessionHrSamples = []; }
+        isSessionRunning = true; return true;
+    } catch (e) { return false; }
 }
-
 function restoreSessionUI() {
-    // Timers
     setTimerDisplay(document.getElementById('stateTimerDisplay'),       stateSeconds);
     setTimerDisplay(document.getElementById('sessionTimerDisplay'),     sessionSeconds);
     setTimerDisplay(document.getElementById('totalActiveTimerDisplay'), totalActiveSeconds);
-
-    // Rest stats
     if (maxHrInRest > 0) {
         document.getElementById('maxHrDisplay').innerText = maxHrInRest;
         setTimerDisplay(document.getElementById('lagDisplay'), timeOfMaxHrInRest);
@@ -289,224 +213,144 @@ function restoreSessionUI() {
         document.getElementById('maxHrDisplay').innerText = '--';
         document.getElementById('lagDisplay').innerText = '--';
     }
-
-    // State dot and speedometer
     document.getElementById('stateIndicator').className = `state-dot ${currentState}`;
     updateSpeedometer(0);
-
-    // Buttons and description
-    const descEl        = document.getElementById('stateDescription');
+    const descEl = document.getElementById('stateDescription');
     const manualResetBtn = document.getElementById('manualResetBtn');
-    const toggleBtn     = document.getElementById('toggleSessionBtn');
+    const toggleBtn = document.getElementById('toggleSessionBtn');
     toggleBtn.classList.add('running');
-
     if (currentState === 'active') {
-        descEl.innerText = 'Continue activity';
-        descEl.style.color = '#28a745';
-        manualResetBtn.innerHTML = '&#8634;';
-        manualResetBtn.style.display = 'flex';
-        toggleBtn.innerText = 'Pause session';
-        toggleBtn.classList.remove('paused');
+        descEl.innerText = 'Continue activity'; descEl.style.color = '#28a745';
+        manualResetBtn.innerHTML = '&#8634;'; manualResetBtn.style.display = 'flex';
+        toggleBtn.innerText = 'Pause session'; toggleBtn.classList.remove('paused');
     } else if (currentState === 'rest') {
-        descEl.innerText = 'Rest or pull back';
-        descEl.style.color = '#fd7e14';
-        manualResetBtn.innerHTML = '&#8634;';
-        manualResetBtn.style.display = 'flex';
-        toggleBtn.innerText = 'Pause session';
-        toggleBtn.classList.remove('paused');
+        descEl.innerText = 'Rest or pull back'; descEl.style.color = '#fd7e14';
+        manualResetBtn.innerHTML = '&#8634;'; manualResetBtn.style.display = 'flex';
+        toggleBtn.innerText = 'Pause session'; toggleBtn.classList.remove('paused');
     } else if (currentState === 'reset') {
-        manualResetBtn.innerHTML = '&#9654;';
-        manualResetBtn.style.display = 'flex';
-        toggleBtn.innerText = 'Pause session';
-        toggleBtn.classList.remove('paused');
-        descEl.innerText = resetCount >= NUM_RESETS_B4_WARN
-            ? '⚠️ Finish this session ASAP' : 'Reset to resting HR';
+        manualResetBtn.innerHTML = '&#9654;'; manualResetBtn.style.display = 'flex';
+        toggleBtn.innerText = 'Pause session'; toggleBtn.classList.remove('paused');
+        descEl.innerText = resetCount >= NUM_RESETS_B4_WARN ? '⚠️ Finish this session ASAP' : 'Reset to resting HR';
         descEl.style.color = '#dc3545';
     } else if (currentState === 'pause') {
-        descEl.innerText = 'Pause activity';
-        descEl.style.color = '#888888';
-        manualResetBtn.style.display = 'none';
-        toggleBtn.innerText = 'Resume session';
-        toggleBtn.classList.add('paused');
+        descEl.innerText = 'Pause activity'; descEl.style.color = '#888888';
+        manualResetBtn.style.display = 'none'; toggleBtn.innerText = 'Resume session'; toggleBtn.classList.add('paused');
     }
-
-    // Home button hidden — session is running
     document.getElementById('homeBtn').style.display = 'none';
 }
 
 async function requestWakeLock() {
-    try {
-        if ('wakeLock' in navigator) {
-            wakeLock = await navigator.wakeLock.request('screen');
-        }
-    } catch (err) {
-        console.log('Wake Lock Error:', err);
-    }
+    try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); }
+    catch (err) { console.log('Wake Lock Error:', err); }
 }
-// --- The "Bluetooth Timer" ---
+
 function resetTimeout() {
     clearTimeout(heartbeatTimeout);
-    // If we hear nothing for 3 seconds, sever the connection
     heartbeatTimeout = setTimeout(() => {
-        if (isReconnecting) return; // Already handling a reconnect
-        if (bluetoothDevice && bluetoothDevice.gatt.connected) {
-            bluetoothDevice.gatt.disconnect();
-        } else { 
-            handleDisconnect(); 
-        }
-    }, 3000); 
+        if (isReconnecting) return;
+        if (bluetoothDevice && bluetoothDevice.gatt.connected) bluetoothDevice.gatt.disconnect();
+        else handleDisconnect();
+    }, 3000);
 }
 
-// --- Audio/Vibrate Notification ---
 let audioCtx;
-
 function triggerNotification() {
-    // 1. Trigger the physical vibration (Android)
-    if ("vibrate" in navigator) {
-        navigator.vibrate([300, 100, 300]); // Two distinct pulses
-    }
-
-    // 2. Trigger the audio beep
+    if ('vibrate' in navigator) navigator.vibrate([300, 100, 300]);
     try {
-        if (!audioCtx) {
-            const AudioContext = window.AudioContext || window.webkitAudioContext;
-            audioCtx = new AudioContext();
-        }
-        
-        // Browser autoplay policies require resuming the context
-        if (audioCtx.state === 'suspended') {
-            audioCtx.resume();
-        }
-
-        const oscillator = audioCtx.createOscillator();
-        const gainNode = audioCtx.createGain();
-
-        oscillator.type = 'sine'; // Smooth beep sound
-        oscillator.frequency.setValueAtTime(500, audioCtx.currentTime); 
-        
-        gainNode.gain.setValueAtTime(0.5, audioCtx.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
-
-        oscillator.connect(gainNode);
-        gainNode.connect(audioCtx.destination);
-
-        oscillator.start();
-        oscillator.stop(audioCtx.currentTime + 0.5);
-    } catch (e) {
-        console.log("Audio notification failed:", e);
-    }
+        if (!audioCtx) { const AC = window.AudioContext || window.webkitAudioContext; audioCtx = new AC(); }
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+        osc.type = 'sine'; osc.frequency.setValueAtTime(500, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+        osc.connect(gain); gain.connect(audioCtx.destination);
+        osc.start(); osc.stop(audioCtx.currentTime + 0.5);
+    } catch (e) { console.log('Audio notification failed:', e); }
 }
-        
-// --- Logic ---
+
+// ─── Core state machine ───────────────────────────────────────────────────────
 function switchState(newState, isManual) {
     if (currentState === newState && newState !== 'stopped') return;
+    const prevState = currentState;
 
-    // Preserve recovery state across pause (pause does not break a recovery window)
-    if (newState !== 'pause') {
-        isRecoveryState = false;
+    // Period tracking
+    if (newState === 'active') {
+        if (currentPeriodType === 'recovery') closeRecoveryPeriod();
+        else if (currentPeriodType === 'active') closeActivePeriod();
+        openActivePeriod();
+    } else if (newState === 'rest') {
+        if (currentPeriodType === 'active') closeActivePeriod();
+        else if (currentPeriodType === 'recovery') closeRecoveryPeriod();
+        openRecoveryPeriod();
+    } else if (newState === 'reset') {
+        if (prevState === 'active') {
+            if (currentPeriodType === 'active') closeActivePeriod();
+            openRecoveryPeriod();
+        }
+        // prevState === 'rest': recovery period continues uninterrupted
+    } else if (newState === 'pause' || newState === 'stopped') {
+        if (currentPeriodType === 'active') closeActivePeriod();
+        else if (currentPeriodType === 'recovery') closeRecoveryPeriod();
     }
-    
-    // Increment the reset counter if we are moving into the reset state
+
+    if (newState !== 'pause') isRecoveryState = false;
     if (newState === 'reset') {
         if (!isManual) resetCount++;
-        if (currentState === 'rest') {
-            isRecoveryState = true; 
-        }
+        if (prevState === 'rest') isRecoveryState = true;
     }
-    
+
     currentState = newState;
     stateSeconds = 0;
     setTimerDisplay(document.getElementById('stateTimerDisplay'), 0);
     if (isSessionRunning) saveSession();
 
-    // Wipe transition buffers clean when entering a new state
-    activeToRestCount = 0;
-    activeToResetCount = 0;
-    restToActiveCount = 0;
-    resetToActiveCount = 0;
+    activeToRestCount = 0; activeToResetCount = 0; restToActiveCount = 0; resetToActiveCount = 0;
 
-    // ONLY wipe the Max HR trackers if we are starting a brand new Rest period
     if (newState === 'rest') {
-        maxHrInRest = 0;
-        timeOfMaxHrInRest = 0;
-        isRecoveryState = true;
-        recoverySeconds = 0;
+        maxHrInRest = 0; timeOfMaxHrInRest = 0; isRecoveryState = true; recoverySeconds = 0;
         document.getElementById('maxHrDisplay').innerText = '--';
         document.getElementById('lagDisplay').innerText = '--';
     }
 
-    const dot = document.getElementById('stateIndicator');
-    dot.className = `state-dot ${newState}`;
+    document.getElementById('stateIndicator').className = `state-dot ${newState}`;
     updateSpeedometer(latestHR);
-    
-    // Don't trigger notification for user-initiated pause/resume
-    if (newState !== 'pause') {
-        triggerNotification();
-    }
+    if (newState !== 'pause') triggerNotification();
 
     const descEl = document.getElementById('stateDescription');
     const manualResetBtn = document.getElementById('manualResetBtn');
     const toggleBtn = document.getElementById('toggleSessionBtn');
     if (newState === 'active') {
-        descEl.innerText = "Continue activity";
-        descEl.style.color = "#28a745";
-        manualResetBtn.innerHTML = "&#8634;"; // Reset Arrow
-        manualResetBtn.style.display = 'flex';
-        toggleBtn.innerText = 'Pause session';
-        toggleBtn.classList.remove('paused');
+        descEl.innerText = 'Continue activity'; descEl.style.color = '#28a745';
+        manualResetBtn.innerHTML = '&#8634;'; manualResetBtn.style.display = 'flex';
+        toggleBtn.innerText = 'Pause session'; toggleBtn.classList.remove('paused');
     } else if (newState === 'rest') {
-        descEl.innerText = "Rest or pull back";
-        descEl.style.color = "#fd7e14";
-        manualResetBtn.innerHTML = "&#8634;"; // Reset Arrow
-        manualResetBtn.style.display = 'flex';
-        toggleBtn.innerText = 'Pause session';
-        toggleBtn.classList.remove('paused');
+        descEl.innerText = 'Rest or pull back'; descEl.style.color = '#fd7e14';
+        manualResetBtn.innerHTML = '&#8634;'; manualResetBtn.style.display = 'flex';
+        toggleBtn.innerText = 'Pause session'; toggleBtn.classList.remove('paused');
     } else if (newState === 'reset') {
-        manualResetBtn.innerHTML = "&#9654;"; // Play Button
-        manualResetBtn.style.display = 'flex';
-        toggleBtn.innerText = 'Pause session';
-        toggleBtn.classList.remove('paused');
-        if (resetCount >= NUM_RESETS_B4_WARN) {
-            descEl.innerText = "⚠️ Finish this session ASAP";
-            descEl.style.color = "#dc3545";
-        } else {
-            descEl.innerText = "Reset to resting HR";
-            descEl.style.color = "#dc3545";
-        }
+        manualResetBtn.innerHTML = '&#9654;'; manualResetBtn.style.display = 'flex';
+        toggleBtn.innerText = 'Pause session'; toggleBtn.classList.remove('paused');
+        descEl.innerText = resetCount >= NUM_RESETS_B4_WARN ? '⚠️ Finish this session ASAP' : 'Reset to resting HR';
+        descEl.style.color = '#dc3545';
     } else if (newState === 'pause') {
-        descEl.innerText = "Pause activity";
-        descEl.style.color = "#888888";
-        manualResetBtn.style.display = 'none';
-        toggleBtn.innerText = 'Resume session';
-        toggleBtn.classList.add('paused');
-    } else {
-        descEl.innerText = "";
-    }
+        descEl.innerText = 'Pause activity'; descEl.style.color = '#888888';
+        manualResetBtn.style.display = 'none'; toggleBtn.innerText = 'Resume session'; toggleBtn.classList.add('paused');
+    } else { descEl.innerText = ''; }
 }
 
 function updateTimers(increment) {
-    sessionSeconds += increment;
-    stateSeconds += increment;
-    if (isRecoveryState) {
-        recoverySeconds += increment;
-    }
-    
+    sessionSeconds += increment; stateSeconds += increment;
+    if (isRecoveryState) recoverySeconds += increment;
     if (currentState === 'active') {
         totalActiveSeconds += increment;
         setTimerDisplay(document.getElementById('totalActiveTimerDisplay'), totalActiveSeconds);
     }
-
-    // Time-based checks for the Rest -> Reset transition
     if (currentState === 'rest') {
-        if (stateSeconds > MAX_RECOVERY_PERIOD) {
-            switchState('reset', false);
-        } else if (timeOfMaxHrInRest > MAX_RESPONSE_LAG) {
-            switchState('reset', false);
-        }
+        if (stateSeconds > MAX_RECOVERY_PERIOD) switchState('reset', false);
+        else if (timeOfMaxHrInRest > MAX_RESPONSE_LAG) switchState('reset', false);
     }
-    
     setTimerDisplay(document.getElementById('sessionTimerDisplay'), sessionSeconds);
-    setTimerDisplay(document.getElementById('stateTimerDisplay'), stateSeconds);
+    setTimerDisplay(document.getElementById('stateTimerDisplay'),   stateSeconds);
 }
 
 function handleTick() {
@@ -514,113 +358,176 @@ function handleTick() {
     updateTimers(trueSessionSeconds - sessionSeconds);
     saveSession();
 }
-	
+
 function handleHeartRate(event) {
-    if (isReconnecting) return; // Ignore stale events during reconnect
+    if (isReconnecting) return;
     const flags = event.target.value.getUint8(0);
     const is16bit = flags & 0x01;
-    const currentHeartRate = is16bit
-        ? event.target.value.getUint16(1, true)
-        : event.target.value.getUint8(1);
+    const currentHeartRate = is16bit ? event.target.value.getUint16(1, true) : event.target.value.getUint8(1);
     document.getElementById('heartRateDisplay').innerText = currentHeartRate;
     resetTimeout();
-    if (currentHeartRate == 0) return;
+    if (currentHeartRate === 0) return;
     updateSpeedometer(currentHeartRate);
     recordHrHistory(currentHeartRate);
 
     if (isSessionRunning) {
+        if (currentPeriodType !== null) currentPeriodHrSamples.push(currentHeartRate);
+        sessionHrSamples.push(currentHeartRate);
+
         if (isRecoveryState) {
-            // Track Max HR, the exact second it occurred, and update the UI live
             if (currentHeartRate >= maxHrInRest) {
-                maxHrInRest = currentHeartRate;
-                timeOfMaxHrInRest = recoverySeconds;
-                
+                maxHrInRest = currentHeartRate; timeOfMaxHrInRest = recoverySeconds;
                 document.getElementById('maxHrDisplay').innerText = maxHrInRest;
                 setTimerDisplay(document.getElementById('lagDisplay'), timeOfMaxHrInRest);
             }
         }
-        if (currentState === 'active') {
-            if (currentHeartRate >= ACTIVE_THRESHOLD_UPPER) {
-                activeToRestCount++;
-                activeToResetCount = 0;
-            } else if (currentHeartRate < BRADYCARDIA_THRESHOLD) {
-                activeToResetCount++;
-                activeToRestCount = 0;
-            } else {
-                activeToRestCount = 0;
-                activeToResetCount = 0;
-            }
 
-            // Execute transitions
+        if (currentState === 'active') {
+            if (currentHeartRate >= ACTIVE_THRESHOLD_UPPER) { activeToRestCount++; activeToResetCount = 0; }
+            else if (currentHeartRate < BRADYCARDIA_THRESHOLD) { activeToResetCount++; activeToRestCount = 0; }
+            else { activeToRestCount = 0; activeToResetCount = 0; }
             if (activeToRestCount >= 3) switchState('rest', false);
             else if (activeToResetCount >= 3) switchState('reset', false);
-        } 
-        
-        else if (currentState === 'rest') {
-            if (currentHeartRate < ACTIVE_THRESHOLD_LOWER) { 
-                restToActiveCount++;
-            } else {
-                restToActiveCount = 0;
-            }
-
+        } else if (currentState === 'rest') {
+            if (currentHeartRate < ACTIVE_THRESHOLD_LOWER) restToActiveCount++; else restToActiveCount = 0;
             if (restToActiveCount >= 7) switchState('active', false);
-        } 
-        
-        else if (currentState === 'reset') {
-            // HR must be exactly between (Resting HR - 5) and (Resting HR + 5)
-            if (currentHeartRate >= (RESTING_HR - (RESTING_HR_BANDWIDTH / 2)) && currentHeartRate <= (RESTING_HR + (RESTING_HR_BANDWIDTH / 2))) {
-                resetToActiveCount++;
-            } else {
-                resetToActiveCount = 0;
-            }
-
+        } else if (currentState === 'reset') {
+            const lo = RESTING_HR - RESTING_HR_BANDWIDTH / 2, hi = RESTING_HR + RESTING_HR_BANDWIDTH / 2;
+            if (currentHeartRate >= lo && currentHeartRate <= hi) resetToActiveCount++; else resetToActiveCount = 0;
             if (resetToActiveCount >= 15) switchState('active', false);
         }
     }
 }
 
-function handleDisconnect() {
-    if (isManualDisconnect) {
-        isManualDisconnect = false;
-        return;
-    }
-    clearTimeout(heartbeatTimeout);
+// ─── Session summary ──────────────────────────────────────────────────────────
+function computeSessionSummary() {
+    const aDur = activePeriods.map(p => p.duration);
+    const aHr  = activePeriods.map(p => p.avgHr).filter(v => v > 0);
+    const rDur = recoveryPeriods.map(p => p.duration);
+    const rHr  = recoveryPeriods.map(p => p.avgHr).filter(v => v > 0);
+    const valid = recoveryPeriods.filter(p => p.maxHr > 0);
+    const lags  = valid.map(p => p.lagSec);
+    const peaks = valid.map(p => p.maxHr);
+    const totalRecoverySec = rDur.reduce((a, b) => a + b, 0);
+    return {
+        date: new Date().toISOString(),
+        // Active
+        totalActiveSec: totalActiveSeconds,
+        pctActive: sessionSeconds > 0 ? Math.round(totalActiveSeconds / sessionSeconds * 100) : 0,
+        numActivePeriods: activePeriods.length,
+        longestActiveSec:  aDur.length ? Math.max(...aDur) : 0,
+        avgActiveSec:      aDur.length ? Math.round(arrAvg(aDur)) : 0,
+        shortestActiveSec: aDur.length ? Math.min(...aDur) : 0,
+        avgHrActive: aHr.length ? arrAvg(aHr) : 0,
+        // Recovery
+        totalRecoverySec,
+        pctRecovery: sessionSeconds > 0 ? Math.round(totalRecoverySec / sessionSeconds * 100) : 0,
+        numRecoveryPeriods: recoveryPeriods.length,
+        longestRecoverySec:  rDur.length ? Math.max(...rDur) : 0,
+        avgRecoverySec:      rDur.length ? Math.round(arrAvg(rDur)) : 0,
+        shortestRecoverySec: rDur.length ? Math.min(...rDur) : 0,
+        avgHrRecovery: rHr.length ? arrAvg(rHr) : 0,
+        // Lag & peak
+        longestLagSec:  lags.length ? Math.max(...lags)  : 0,
+        avgLagSec:      lags.length ? Math.round(arrAvg(lags)) : 0,
+        shortestLagSec: lags.length ? Math.min(...lags)  : 0,
+        highestPeakHr:  peaks.length ? Math.max(...peaks) : 0,
+        avgPeakHr:      peaks.length ? arrAvg(peaks)      : 0,
+        lowestPeakHr:   peaks.length ? Math.min(...peaks) : 0,
+        // Session
+        sessionLengthSec: sessionSeconds,
+        highestHr: sessionHrSamples.length ? Math.max(...sessionHrSamples) : 0,
+        avgHr:     sessionHrSamples.length ? arrAvg(sessionHrSamples)      : 0,
+        lowestHr:  sessionHrSamples.length ? Math.min(...sessionHrSamples) : 0,
+    };
+}
 
-    if (isSessionRunning && !isReconnecting) {
-        // Mid-session drop — preserve session state and attempt to reconnect
-        startReconnect();
-    } else if (!isSessionRunning) {
-        // No session running — full teardown
+function showSummaryModal(summary) {
+    const set = (id, val) => { const el = document.getElementById(id); if (el) el.innerText = val; };
+    const fmtT = s => s > 0 ? formatTime(s) : '--';
+    const fmtN = n => n > 0 ? n : '--';
+    set('s-totalActive',    fmtT(summary.totalActiveSec));
+    set('s-pctActive',      summary.numActivePeriods > 0 ? summary.pctActive + '%' : '--');
+    set('s-numActive',      fmtN(summary.numActivePeriods));
+    set('s-longestActive',  fmtT(summary.longestActiveSec));
+    set('s-avgActive',      fmtT(summary.avgActiveSec));
+    set('s-shortestActive', fmtT(summary.shortestActiveSec));
+    set('s-avgHrActive',    fmtN(summary.avgHrActive));
+    set('s-totalRecovery',    fmtT(summary.totalRecoverySec));
+    set('s-pctRecovery',      summary.numRecoveryPeriods > 0 ? summary.pctRecovery + '%' : '--');
+    set('s-numRecovery',      fmtN(summary.numRecoveryPeriods));
+    set('s-longestRecovery',  fmtT(summary.longestRecoverySec));
+    set('s-avgRecovery',      fmtT(summary.avgRecoverySec));
+    set('s-shortestRecovery', fmtT(summary.shortestRecoverySec));
+    set('s-avgHrRecovery',    fmtN(summary.avgHrRecovery));
+    set('s-longestLag',  fmtT(summary.longestLagSec));
+    set('s-avgLag',      fmtT(summary.avgLagSec));
+    set('s-shortestLag', fmtT(summary.shortestLagSec));
+    set('s-highestPeak', fmtN(summary.highestPeakHr));
+    set('s-avgPeak',     fmtN(summary.avgPeakHr));
+    set('s-lowestPeak',  fmtN(summary.lowestPeakHr));
+    set('s-sessionLength', fmtT(summary.sessionLengthSec));
+    set('s-highestHr',     fmtN(summary.highestHr));
+    set('s-avgHr',         fmtN(summary.avgHr));
+    set('s-lowestHr',      fmtN(summary.lowestHr));
+    document.getElementById('summaryNotes').value = '';
+    document.getElementById('summaryModal').classList.add('visible');
+}
+
+function saveSessionToHistory(summary, notes) {
+    try {
+        const raw = localStorage.getItem(HISTORY_KEY);
+        const history = raw ? JSON.parse(raw) : [];
+        history.push({ ...summary, notes });
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+    } catch (e) { console.error('Failed to save session history', e); }
+}
+
+function finishSession() {
+    if (currentPeriodType === 'active') closeActivePeriod();
+    else if (currentPeriodType === 'recovery') closeRecoveryPeriod();
+    clearInterval(sessionInterval);
+    isSessionRunning = false;
+    pendingSummary = computeSessionSummary();
+    showSummaryModal(pendingSummary);
+}
+
+function teardownSession() {
+    const toggleBtn = document.getElementById('toggleSessionBtn');
+    toggleBtn.innerText = 'Start Session'; toggleBtn.classList.remove('running', 'paused');
+    document.getElementById('manualResetBtn').style.display = 'none';
+    clearSession();
+    document.getElementById('homeBtn').style.display = 'flex';
+    switchState('stopped', true);
+    if (wakeLock !== null) wakeLock.release().then(() => { wakeLock = null; });
+}
+
+// ─── Disconnect / Reconnect ───────────────────────────────────────────────────
+function handleDisconnect() {
+    if (isManualDisconnect) { isManualDisconnect = false; return; }
+    clearTimeout(heartbeatTimeout);
+    if (isSessionRunning && !isReconnecting) startReconnect();
+    else if (!isSessionRunning) {
         log('❌ Disconnected from device. Refresh the page to reconnect.', true);
         document.body.classList.remove('connected');
-        if (wakeLock !== null) {
-            wakeLock.release().then(() => wakeLock = null);
-        }
+        if (wakeLock !== null) wakeLock.release().then(() => { wakeLock = null; });
     }
 }
 
 function startReconnect() {
-    isReconnecting = true;
-    reconnectAttempts = 0;
-
-    // Visual feedback: pulse the state dot
+    isReconnecting = true; reconnectAttempts = 0;
     document.getElementById('stateIndicator').classList.add('reconnecting');
     document.getElementById('heartRateDisplay').innerText = '--';
     document.getElementById('stateDescription').innerText = 'Signal lost — reconnecting…';
     document.getElementById('stateDescription').style.color = '#aaaaaa';
-
     attemptReconnect();
 }
 
 async function attemptReconnect() {
     if (!isReconnecting) return;
-
     reconnectAttempts++;
-
     if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
-        // Give up — full teardown
-        isReconnecting = false;
-        isSessionRunning = false;
+        isReconnecting = false; isSessionRunning = false;
         document.getElementById('stateIndicator').classList.remove('reconnecting');
         document.getElementById('toggleSessionBtn').innerText = 'Start Session';
         document.getElementById('toggleSessionBtn').classList.remove('running');
@@ -628,10 +535,9 @@ async function attemptReconnect() {
         document.body.classList.remove('connected');
         log('❌ Could not reconnect after 10 attempts. Session ended.', true);
         switchState('stopped', true);
-        if (wakeLock !== null) wakeLock.release().then(() => wakeLock = null);
+        if (wakeLock !== null) wakeLock.release().then(() => { wakeLock = null; });
         return;
     }
-
     try {
         const server = await bluetoothDevice.gatt.connect();
         const service = await server.getPrimaryService('heart_rate');
@@ -639,124 +545,80 @@ async function attemptReconnect() {
         await characteristic.startNotifications();
         characteristic.addEventListener('characteristicvaluechanged', handleHeartRate);
         onReconnectSuccess();
-    } catch (err) {
-        // Wait 3 seconds then try again
-        setTimeout(attemptReconnect, 3000);
-    }
+    } catch (err) { setTimeout(attemptReconnect, 3000); }
 }
 
 function onReconnectSuccess() {
-    isReconnecting = false;
-    reconnectAttempts = 0;
-
-    // Resume state dot and description
+    isReconnecting = false; reconnectAttempts = 0;
     document.getElementById('stateIndicator').classList.remove('reconnecting');
-
-    // Restore the description text for whatever state we were in
     const descEl = document.getElementById('stateDescription');
-    const manualResetBtn = document.getElementById('manualResetBtn');
-    if (currentState === 'active') {
-        descEl.innerText = 'Continue activity';
-        descEl.style.color = '#28a745';
-    } else if (currentState === 'rest') {
-        descEl.innerText = 'Rest or pull back';
-        descEl.style.color = '#fd7e14';
-    } else if (currentState === 'reset') {
-        descEl.innerText = resetCount >= 3 ? 'Finish this session ASAP' : 'Reset to resting HR';
-        descEl.style.color = '#dc3545';
-    } else if (currentState === 'pause') {
-        descEl.innerText = 'Pause activity';
-        descEl.style.color = '#888888';
-    }
-
-    // HR will resume via handleHeartRate notifications
+    if (currentState === 'active')      { descEl.innerText = 'Continue activity'; descEl.style.color = '#28a745'; }
+    else if (currentState === 'rest')   { descEl.innerText = 'Rest or pull back'; descEl.style.color = '#fd7e14'; }
+    else if (currentState === 'reset')  { descEl.innerText = resetCount >= 3 ? 'Finish this session ASAP' : 'Reset to resting HR'; descEl.style.color = '#dc3545'; }
+    else if (currentState === 'pause')  { descEl.innerText = 'Pause activity'; descEl.style.color = '#888888'; }
 }
 
-// --- Event Listeners ---
+// ─── Event Listeners ──────────────────────────────────────────────────────────
 document.getElementById('manualResetBtn').addEventListener('click', () => {
     if (!isSessionRunning) return;
-
-    if (currentState === 'reset') {
-        // If in reset, function as "Cancel Reset" and go straight to active
-        switchState('active', true);
-    } else if (currentState === 'active' || currentState === 'rest') {
-        // If in active or rest, function as "Enter Reset" and go straight to reset
-        switchState('reset', true);
-    }
+    if (currentState === 'reset') switchState('active', true);
+    else if (currentState === 'active' || currentState === 'rest') switchState('reset', true);
 });
 
 document.getElementById('toggleSessionBtn').addEventListener('click', () => {
     if (!isSessionRunning) {
-        // --- Start Session ---
-        isSessionRunning = true;
-        sessionSeconds = 0;
-        sessionStartTime = Math.floor(Date.now());
-        stateSeconds = 0;
-        totalActiveSeconds = 0;
-        resetCount = 0;
-        recoverySeconds = 0;
-
+        isSessionRunning = true; sessionSeconds = 0; sessionStartTime = Date.now();
+        stateSeconds = 0; totalActiveSeconds = 0; resetCount = 0; recoverySeconds = 0;
+        activePeriods = []; recoveryPeriods = []; currentPeriodType = null; sessionHrSamples = [];
         document.getElementById('homeBtn').style.display = 'none';
         setTimerDisplay(document.getElementById('sessionTimerDisplay'), 0);
         setTimerDisplay(document.getElementById('stateTimerDisplay'), 0);
         setTimerDisplay(document.getElementById('totalActiveTimerDisplay'), 0);
-        
-        // Blank out the rest stats until the first rest period
         document.getElementById('maxHrDisplay').innerText = '--';
         document.getElementById('lagDisplay').innerText = '--';
-        
         document.getElementById('toggleSessionBtn').classList.add('running');
-        
         switchState('active', true);
         sessionInterval = setInterval(handleTick, 1000);
         return;
     }
-
-    if (currentState === 'pause') {
-        // --- Resume from Pause ---
-        switchState('active', true);
-        return;
-    }
-
-    // --- Show Pause / End / Cancel dialog ---
+    if (currentState === 'pause') { switchState('active', true); return; }
     document.getElementById('sessionModal').classList.add('visible');
 });
 
-// --- Modal: Pause ---
 document.getElementById('modalPauseBtn').addEventListener('click', () => {
     document.getElementById('sessionModal').classList.remove('visible');
     switchState('pause', true);
 });
 
-// --- Modal: End session ---
 document.getElementById('modalEndBtn').addEventListener('click', () => {
     document.getElementById('sessionModal').classList.remove('visible');
-    isSessionRunning = false;
-    const toggleBtn = document.getElementById('toggleSessionBtn');
-    toggleBtn.innerText = 'Start Session';
-    toggleBtn.classList.remove('running', 'paused');
-    document.getElementById('manualResetBtn').style.display = 'none';
-    clearInterval(sessionInterval);
-    clearSession();
-    document.getElementById('homeBtn').style.display = 'flex';
-    switchState('stopped', true);
+    finishSession();
 });
 
-// --- Modal: Cancel ---
 document.getElementById('modalCancelBtn').addEventListener('click', () => {
     document.getElementById('sessionModal').classList.remove('visible');
 });
 
-// --- Home Button ---
+document.getElementById('summarySaveBtn').addEventListener('click', () => {
+    const notes = document.getElementById('summaryNotes').value.trim();
+    if (pendingSummary) saveSessionToHistory(pendingSummary, notes);
+    pendingSummary = null;
+    document.getElementById('summaryModal').classList.remove('visible');
+    teardownSession();
+});
+
+document.getElementById('summaryDiscardBtn').addEventListener('click', () => {
+    pendingSummary = null;
+    document.getElementById('summaryModal').classList.remove('visible');
+    teardownSession();
+});
+
 document.getElementById('homeBtn').addEventListener('click', () => {
     isManualDisconnect = true;
     document.body.classList.remove('connected');
     document.getElementById('homeBtn').style.display = 'none';
-    if (bluetoothDevice && bluetoothDevice.gatt.connected) {
-        bluetoothDevice.gatt.disconnect();
-    } else {
-        isManualDisconnect = false;
-    }
+    if (bluetoothDevice && bluetoothDevice.gatt.connected) bluetoothDevice.gatt.disconnect();
+    else isManualDisconnect = false;
 });
 
 document.getElementById('connectBtn').addEventListener('click', async () => {
@@ -764,79 +626,41 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
         log('1. Waiting for you to select a device...');
         bluetoothDevice = await navigator.bluetooth.requestDevice({ filters: [{ services: ['heart_rate'] }] });
         bluetoothDevice.addEventListener('gattserverdisconnected', handleDisconnect);
-
         log('2. Connecting to Bluetooth server...');
         const server = await bluetoothDevice.gatt.connect();
-
         log('3. Requesting Heart Rate data...');
         const service = await server.getPrimaryService('heart_rate');
         const characteristic = await service.getCharacteristic('heart_rate_measurement');
-
-        log('4. Starting live notifications...<br><br>⚠️ TIP: If the app freezes here, the connection is stuck. Try:<br>1. closing the watch or HR monitor\'s app on your phone (e.g.Polar Flow).<br>2. Unpairing the phone from inside the watch or HR monitor\'s own settings menu.</b>');
-
+        log('4. Starting live notifications...<br><br>⚠️ TIP: If the app freezes here, the connection is stuck. Try:<br>1. Closing the watch app on your phone (e.g. Polar Flow).<br>2. Unpairing the phone from inside the watch settings menu.');
         await characteristic.startNotifications();
         characteristic.addEventListener('characteristicvaluechanged', handleHeartRate);
-        
         log('✅ Success! Waiting for first heartbeat...');
         document.body.classList.add('connected');
         requestWakeLock();
-
         const restored = restoreSession();
-        if (restored) {
-            restoreSessionUI();
-            sessionInterval = setInterval(handleTick, 1000);
-        } else {
-            document.getElementById('homeBtn').style.display = 'flex';
-        }
-        
-    } catch (error) { 
-        let errorMsg = '❌ Error: ' + error.message;
-        errorMsg += '<br><br>💡 Tip: Please close any other app (like Polar Flow) that might be paired with the HR device.';
-        log(errorMsg, true); 
+        if (restored) { restoreSessionUI(); sessionInterval = setInterval(handleTick, 1000); }
+        else document.getElementById('homeBtn').style.display = 'flex';
+    } catch (error) {
+        log('❌ Error: ' + error.message + '<br><br>💡 Tip: Please close any other app (like Polar Flow) that might be paired with the HR device.', true);
     }
 });
 
-        
-
-// Initialise speedometer at page load (draws needle at HR=0 and resting arc)
-// Also attempt to auto-reconnect if a session was in progress before the refresh.
-document.addEventListener('DOMContentLoaded', () => {
-    updateSpeedometer(0);
-    tryAutoReconnect();
-});
+document.addEventListener('DOMContentLoaded', () => { updateSpeedometer(0); tryAutoReconnect(); });
 
 async function tryAutoReconnect() {
     const restored = restoreSession();
     if (!restored) return;
-
-    // A session was in progress — restore UI immediately so timers keep running
     document.body.classList.add('connected');
     restoreSessionUI();
     sessionInterval = setInterval(handleTick, 1000);
     requestWakeLock();
-
-    function fallbackToHome() {
-        clearInterval(sessionInterval);
-        document.body.classList.remove('connected');
-    }
-
-    // getDevices() returns previously-paired devices without a user gesture
-    if (!navigator.bluetooth || !navigator.bluetooth.getDevices) {
-        fallbackToHome();
-        return;
-    }
-
+    function fallbackToHome() { clearInterval(sessionInterval); document.body.classList.remove('connected'); }
+    if (!navigator.bluetooth || !navigator.bluetooth.getDevices) { fallbackToHome(); return; }
     try {
         const devices = await navigator.bluetooth.getDevices();
-        if (devices.length === 0) {
-            fallbackToHome();
-            return;
-        }
-        // Use the first available device (this is a single-device app)
+        if (devices.length === 0) { fallbackToHome(); return; }
         bluetoothDevice = devices[0];
         bluetoothDevice.addEventListener('gattserverdisconnected', handleDisconnect);
         startReconnect();
-    } catch (e) {
-        fallbackToHome();
-    }
+    } catch (e) { fallbackToHome(); }
 }

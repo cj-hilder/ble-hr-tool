@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Session History – HR Pacer</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background: #0d0d0d;
+            color: #ddd;
+            font-family: sans-serif;
+            min-height: 100vh;
+            padding: 20px 16px 48px;
+        }
+
+        header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+        header a {
+            color: #666;
+            text-decoration: none;
+            font-size: 24px;
+            line-height: 1;
+            transition: color 0.2s;
+        }
+        header a:hover { color: #aaa; }
+        header h1 { font-size: 20px; color: #eee; font-weight: 700; }
+        header .session-count { margin-left: auto; font-size: 13px; color: #555; }
+
+        /* ── Empty state ── */
+        #emptyState {
+            text-align: center;
+            padding: 60px 20px;
+            color: #444;
+        }
+        #emptyState p { font-size: 16px; margin-bottom: 8px; }
+        #emptyState small { font-size: 13px; }
+
+        /* ── Charts section ── */
+        #chartsSection { display: none; }
+        .charts-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 28px;
+        }
+        @media (max-width: 480px) {
+            .charts-grid { grid-template-columns: 1fr; }
+        }
+        .chart-card {
+            background: #1a1a1a;
+            border-radius: 14px;
+            padding: 14px 14px 10px;
+        }
+        .chart-card h3 {
+            font-size: 11px;
+            color: #666;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+        }
+        .chart-card canvas { width: 100% !important; }
+
+        /* ── Sessions list ── */
+        #sessionsList { display: flex; flex-direction: column; gap: 10px; }
+
+        .session-card {
+            background: #1a1a1a;
+            border-radius: 14px;
+            overflow: hidden;
+            border: 1px solid #222;
+        }
+        .session-card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 16px;
+            cursor: pointer;
+            user-select: none;
+        }
+        .session-card-header:active { background: #222; }
+
+        .session-header-left { display: flex; flex-direction: column; gap: 3px; }
+        .session-date { font-size: 15px; color: #eee; font-weight: 600; }
+        .session-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 2px; }
+        .chip {
+            font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 600;
+            letter-spacing: 0.03em;
+        }
+        .chip-duration  { background: #1e1e2e; color: #888; border: 1px solid #333; }
+        .chip-active    { background: #0d2b14; color: #28a745; border: 1px solid #1a4726; }
+        .chip-resets    { background: #2b1010; color: #dc3545; border: 1px solid #4a1515; }
+
+        .session-chevron { color: #555; font-size: 18px; transition: transform 0.2s; }
+        .session-card.open .session-chevron { transform: rotate(90deg); }
+
+        .session-detail {
+            display: none;
+            padding: 0 16px 16px;
+        }
+        .session-card.open .session-detail { display: block; }
+
+        /* Notes */
+        .session-notes {
+            font-size: 13px; color: #888; font-style: italic;
+            margin-bottom: 12px; line-height: 1.5;
+            padding: 8px 10px;
+            background: #111;
+            border-radius: 8px;
+            border-left: 2px solid #333;
+        }
+
+        /* Stat groups inside expanded card */
+        .stat-group { margin-bottom: 14px; }
+        .stat-group-label {
+            font-size: 11px; color: #555;
+            letter-spacing: 0.08em; text-transform: uppercase;
+            margin-bottom: 8px;
+            padding-bottom: 4px;
+            border-bottom: 1px solid #222;
+        }
+        .active-label   { color: #28a745; }
+        .recovery-label { color: #fd7e14; }
+        .lag-label      { color: #17a2b8; }
+        .session-label  { color: #777; }
+
+        .stat-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 6px;
+            margin-bottom: 4px;
+        }
+        .stat-item {
+            display: flex; flex-direction: column; align-items: center; text-align: center;
+        }
+        .stat-item span { font-family: monospace; font-size: 15px; color: #ccc; }
+        .stat-item label { font-size: 10px; color: #555; text-transform: uppercase; letter-spacing: 0.04em; margin-top: 1px; }
+
+        /* Delete button */
+        .session-delete-btn {
+            display: block; width: 100%; margin-top: 12px;
+            padding: 10px; background: #1e0808; border: 1px solid #3a1010;
+            border-radius: 8px; color: #dc3545; font-size: 13px; font-weight: 600;
+            cursor: pointer; text-align: center;
+        }
+        .session-delete-btn:active { background: #2b0f0f; }
+    </style>
+</head>
+<body>
+
+<header>
+    <a href="index.html">&#8592;</a>
+    <h1>Session History</h1>
+    <span class="session-count" id="sessionCount"></span>
+</header>
+
+<div id="emptyState">
+    <p>No sessions saved yet.</p>
+    <small>Complete a session and tap "Save session" to start building your history.</small>
+</div>
+
+<div id="chartsSection">
+    <div class="charts-grid">
+        <div class="chart-card">
+            <h3>% Active Time</h3>
+            <canvas id="chartPctActive" height="120"></canvas>
+        </div>
+        <div class="chart-card">
+            <h3>Avg Lag (sec)</h3>
+            <canvas id="chartAvgLag" height="120"></canvas>
+        </div>
+        <div class="chart-card">
+            <h3>Avg Peak HR</h3>
+            <canvas id="chartAvgPeak" height="120"></canvas>
+        </div>
+        <div class="chart-card">
+            <h3>Session Length (min)</h3>
+            <canvas id="chartSessionLen" height="120"></canvas>
+        </div>
+    </div>
+
+    <div id="sessionsList"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+const HISTORY_KEY = 'hrPacerHistory';
+
+function formatTime(s) {
+    s = Math.max(0, Math.round(s));
+    if (s >= 3600) {
+        return String(Math.floor(s/3600)).padStart(2,'0') + ':' +
+               String(Math.floor((s%3600)/60)).padStart(2,'0') + ':' +
+               String(s%60).padStart(2,'0');
+    }
+    return String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0');
+}
+
+function fmtDate(iso) {
+    const d = new Date(iso);
+    return d.toLocaleDateString(undefined, { weekday:'short', month:'short', day:'numeric', year:'numeric' });
+}
+function fmtTime(iso) {
+    return new Date(iso).toLocaleTimeString(undefined, { hour:'2-digit', minute:'2-digit' });
+}
+function fmtT(s) { return s > 0 ? formatTime(s) : '--'; }
+function fmtN(n) { return n > 0 ? n : '--'; }
+
+function shortLabel(iso) {
+    const d = new Date(iso);
+    return `${d.getMonth()+1}/${d.getDate()}`;
+}
+
+function buildChartConfig(labels, data, color, unit) {
+    return {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [{
+                data,
+                borderColor: color,
+                backgroundColor: color + '22',
+                borderWidth: 2,
+                pointRadius: data.length <= 15 ? 3 : 1,
+                pointBackgroundColor: color,
+                tension: 0.3,
+                fill: true,
+            }]
+        },
+        options: {
+            responsive: true,
+            animation: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: ctx => `${ctx.parsed.y}${unit}`
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    ticks: { color: '#555', font: { size: 10 }, maxTicksLimit: 6 },
+                    grid: { color: '#1f1f1f' }
+                },
+                y: {
+                    ticks: { color: '#555', font: { size: 10 }, maxTicksLimit: 5 },
+                    grid: { color: '#1f1f1f' },
+                    beginAtZero: true,
+                }
+            }
+        }
+    };
+}
+
+function statItem(value, label) {
+    return `<div class="stat-item"><span>${value}</span><label>${label}</label></div>`;
+}
+
+function buildSessionCard(s, index, total) {
+    const resets = (s.numRecoveryPeriods || 0);
+    const durationMin = s.sessionLengthSec ? Math.round(s.sessionLengthSec / 60) : '--';
+
+    return `
+    <div class="session-card" id="card-${index}">
+        <div class="session-card-header" onclick="toggleCard(${index})">
+            <div class="session-header-left">
+                <div class="session-date">${fmtDate(s.date)} · ${fmtTime(s.date)}</div>
+                <div class="session-chips">
+                    <span class="chip chip-duration">${durationMin} min</span>
+                    <span class="chip chip-active">${s.pctActive || '--'}% active</span>
+                    ${resets > 0 ? `<span class="chip chip-resets">${resets} recovery periods</span>` : ''}
+                </div>
+            </div>
+            <span class="session-chevron">›</span>
+        </div>
+        <div class="session-detail">
+            ${s.notes ? `<div class="session-notes">"${s.notes}"</div>` : ''}
+
+            <div class="stat-group">
+                <div class="stat-group-label active-label">🟢 Active Periods</div>
+                <div class="stat-row">
+                    ${statItem(fmtT(s.totalActiveSec), 'Total')}
+                    ${statItem((s.pctActive || '--') + (s.pctActive ? '%':''), '% session')}
+                    ${statItem(fmtN(s.numActivePeriods), 'Count')}
+                </div>
+                <div class="stat-row">
+                    ${statItem(fmtT(s.longestActiveSec), 'Longest')}
+                    ${statItem(fmtT(s.avgActiveSec), 'Average')}
+                    ${statItem(fmtT(s.shortestActiveSec), 'Shortest')}
+                </div>
+                <div class="stat-row">
+                    ${statItem(fmtN(s.avgHrActive), 'Avg HR')}
+                    <div></div><div></div>
+                </div>
+            </div>
+
+            <div class="stat-group">
+                <div class="stat-group-label recovery-label">🟠 Recovery Periods</div>
+                <div class="stat-row">
+                    ${statItem(fmtT(s.totalRecoverySec), 'Total')}
+                    ${statItem((s.pctRecovery || '--') + (s.pctRecovery ? '%':''), '% session')}
+                    ${statItem(fmtN(s.numRecoveryPeriods), 'Count')}
+                </div>
+                <div class="stat-row">
+                    ${statItem(fmtT(s.longestRecoverySec), 'Longest')}
+                    ${statItem(fmtT(s.avgRecoverySec), 'Average')}
+                    ${statItem(fmtT(s.shortestRecoverySec), 'Shortest')}
+                </div>
+                <div class="stat-row">
+                    ${statItem(fmtN(s.avgHrRecovery), 'Avg HR')}
+                    <div></div><div></div>
+                </div>
+            </div>
+
+            <div class="stat-group">
+                <div class="stat-group-label lag-label">📈 Lag & Peak HR</div>
+                <div class="stat-row">
+                    ${statItem(fmtT(s.longestLagSec), 'Longest lag')}
+                    ${statItem(fmtT(s.avgLagSec), 'Avg lag')}
+                    ${statItem(fmtT(s.shortestLagSec), 'Shortest lag')}
+                </div>
+                <div class="stat-row">
+                    ${statItem(fmtN(s.highestPeakHr), 'Highest peak')}
+                    ${statItem(fmtN(s.avgPeakHr), 'Avg peak')}
+                    ${statItem(fmtN(s.lowestPeakHr), 'Lowest peak')}
+                </div>
+            </div>
+
+            <div class="stat-group">
+                <div class="stat-group-label session-label">📊 Session</div>
+                <div class="stat-row">
+                    ${statItem(fmtT(s.sessionLengthSec), 'Duration')}
+                    ${statItem(fmtN(s.highestHr), 'Highest HR')}
+                    ${statItem(fmtN(s.avgHr), 'Avg HR')}
+                </div>
+                <div class="stat-row">
+                    ${statItem(fmtN(s.lowestHr), 'Lowest HR')}
+                    <div></div><div></div>
+                </div>
+            </div>
+
+            <button class="session-delete-btn" onclick="deleteSession(${index}, event)">Delete this session</button>
+        </div>
+    </div>`;
+}
+
+function toggleCard(index) {
+    const card = document.getElementById(`card-${index}`);
+    card.classList.toggle('open');
+}
+
+function deleteSession(index, e) {
+    e.stopPropagation();
+    if (!confirm('Delete this session? This cannot be undone.')) return;
+    try {
+        const raw = localStorage.getItem(HISTORY_KEY);
+        const history = raw ? JSON.parse(raw) : [];
+        history.splice(index, 1);
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+        renderPage();
+    } catch(err) { alert('Failed to delete session.'); }
+}
+
+function renderPage() {
+    let history = [];
+    try {
+        const raw = localStorage.getItem(HISTORY_KEY);
+        history = raw ? JSON.parse(raw) : [];
+    } catch(e) {}
+
+    const empty = document.getElementById('emptyState');
+    const charts = document.getElementById('chartsSection');
+
+    if (history.length === 0) {
+        empty.style.display = 'block';
+        charts.style.display = 'none';
+        document.getElementById('sessionCount').innerText = '';
+        return;
+    }
+
+    empty.style.display = 'none';
+    charts.style.display = 'block';
+    document.getElementById('sessionCount').innerText = `${history.length} session${history.length !== 1 ? 's' : ''}`;
+
+    const labels = history.map(s => shortLabel(s.date));
+
+    // Chart data
+    const pctActive    = history.map(s => s.pctActive || 0);
+    const avgLag       = history.map(s => s.avgLagSec || 0);
+    const avgPeakHr    = history.map(s => s.avgPeakHr || 0);
+    const sessionMins  = history.map(s => s.sessionLengthSec ? Math.round(s.sessionLengthSec / 60) : 0);
+
+    // Destroy existing charts before re-rendering
+    ['chartPctActive','chartAvgLag','chartAvgPeak','chartSessionLen'].forEach(id => {
+        const existing = Chart.getChart(id);
+        if (existing) existing.destroy();
+    });
+
+    new Chart(document.getElementById('chartPctActive'),  buildChartConfig(labels, pctActive,   '#28a745', '%'));
+    new Chart(document.getElementById('chartAvgLag'),     buildChartConfig(labels, avgLag,       '#17a2b8', 's'));
+    new Chart(document.getElementById('chartAvgPeak'),    buildChartConfig(labels, avgPeakHr,    '#fd7e14', ' bpm'));
+    new Chart(document.getElementById('chartSessionLen'), buildChartConfig(labels, sessionMins,  '#6c757d', ' min'));
+
+    // Session cards (newest first)
+    const list = document.getElementById('sessionsList');
+    list.innerHTML = [...history].reverse().map((s, i) =>
+        buildSessionCard(s, history.length - 1 - i, history.length)
+    ).join('');
+}
+
+renderPage();
+</script>
+</body>
+</html>

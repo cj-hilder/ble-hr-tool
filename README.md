@@ -1,4 +1,4 @@
-# Autonomic HR Pacer v1.0
+# Autonomic HR Pacer v1.1
 
 **[Launch the Live App Here](https://cj-hilder.github.io/ble-hr-tool/)**
 
