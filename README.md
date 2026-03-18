@@ -31,7 +31,11 @@ You have pushed too far and failed to recover, or you manually tapped the 'reset
 If the app is showing "Continue activity", but you want to rest, you can pause the session. This means you can rest without the time being counted as activity. When you are ready, tap 'Resume session' and get back into it.
 
 ## Settings
-You must adjust the settings to suit your personal situation. This might involve trial and error until you find the settings that let you maximise exercise while minimising symptoms and staying within your known heart rate limits.
+You must adjust the settings to suit your personal situation. This might involve trial and error until you find the settings that let you maximise exercise while minimising symptoms and staying within your known heart rate limits. Settings can be customised for each different activity type. Spend some time understanding the settings and adjusting them to work with your heart rate behaviour before setting up custom activity types.
+
+## Activity types
+You can set up as many different activity types as you need, e.g. 'walking', 'cycling', 'housework', etc. Each activity type can have different settings and can be separately viewed in the history view.
+* **Viewing progress** It can be useful to set up at least one particular activity that you carry out in the same way at the same time every day. This activity can be viewed in the history view separately from all other activities. In this way you can see a graph of your progress in recovery from dysautonomia.
 
 ---
 ## ✨ Features
