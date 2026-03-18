@@ -433,6 +433,13 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     function openPanel() {
+        // If a session is running, show that session's activity in the panel
+        const sessionRunning = (typeof isSessionRunning !== 'undefined') && isSessionRunning;
+        const sessionActId   = (typeof currentActivityId !== 'undefined') && currentActivityId;
+        if (sessionRunning && sessionActId && activities.find(a => a.id === sessionActId)) {
+            selectedActivityId = sessionActId;
+            persistSelectedActivity();
+        }
         rebuildActivityDropdown();
         loadActivityIntoPanel(getSelectedActivity());
         panel.classList.add('open'); overlay.classList.add('open');
