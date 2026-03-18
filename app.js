@@ -568,7 +568,7 @@ function handleDisconnect() {
     clearTimeout(heartbeatTimeout);
     if (isSessionRunning && !isReconnecting) startReconnect();
     else if (!isSessionRunning) {
-        log('❌ Disconnected from device. Refresh the page to reconnect.', true);
+        log('❌ Disconnected from device.', true);
         document.body.classList.remove('connected');
         if (wakeLock !== null) wakeLock.release().then(() => { wakeLock = null; });
     }
