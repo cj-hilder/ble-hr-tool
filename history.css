@@ -202,3 +202,52 @@ header .session-count { margin-left: auto; font-size: 13px; color: #555; white-s
 .session-delete-btn:active { background: #2b0f0f; }
 
 #noResults { display: none; text-align: center; padding: 32px 20px; color: #444; font-size: 15px; }
+
+/* ── Error modal (import validation failures) ── */
+#errorModal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.75);
+    z-index: 400;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+#errorModal.visible { display: flex; }
+#errorModalBox {
+    background: #1e0e0e;
+    border: 1px solid #5a1a1a;
+    border-radius: 14px;
+    padding: 22px 20px 18px;
+    width: 100%;
+    max-width: 360px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+#errorModalTitle {
+    font-size: 15px;
+    font-weight: 700;
+    color: #f08080;
+    letter-spacing: 0.03em;
+}
+#errorModalMsg {
+    font-size: 14px;
+    color: #ccc;
+    line-height: 1.55;
+    word-break: break-word;
+}
+#errorModalOk {
+    align-self: flex-end;
+    padding: 9px 24px;
+    background: #3a1010;
+    border: 1px solid #5a1a1a;
+    border-radius: 8px;
+    color: #f08080;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+#errorModalOk:hover { background: #4a1515; }

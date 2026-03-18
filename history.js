@@ -57,6 +57,13 @@ function showToast(msg, type = '') {
     toastTimer = setTimeout(() => { el.className = ''; }, 3000);
 }
 
+// ── Error modal ──────────────────────────────────────────────────────────────
+function showErrorModal(title, message) {
+    document.getElementById('errorModalTitle').textContent = title;
+    document.getElementById('errorModalMsg').textContent  = message;
+    document.getElementById('errorModal').classList.add('visible');
+}
+
 // ── Three-dots menu ───────────────────────────────────────────────────────────
 function initMenu() {
     const menuBtn      = document.getElementById('menuBtn');
@@ -79,6 +86,10 @@ function initMenu() {
     document.getElementById('menuImport').addEventListener('click', () => {
         menuDropdown.classList.remove('open');
         document.getElementById('importFileInput').click();
+    });
+
+    document.getElementById('errorModalOk').addEventListener('click', () => {
+        document.getElementById('errorModal').classList.remove('visible');
     });
 
     document.getElementById('importFileInput').addEventListener('change', (e) => {
@@ -120,14 +131,14 @@ function doImport(file) {
         try {
             data = JSON.parse(e.target.result);
         } catch {
-            showToast('Invalid file — not valid JSON', 'error');
+            showErrorModal('Invalid file', 'The selected file is not valid JSON.');
             return;
         }
 
         // Validate structure
         const validationError = validateImportData(data);
         if (validationError) {
-            showToast(`Import failed: ${validationError}`, 'error');
+            showErrorModal('Import failed', validationError);
             return;
         }
 
@@ -160,7 +171,7 @@ function doImport(file) {
         showToast(`Imported ${sessionCount} session${sessionCount !== 1 ? 's' : ''}`, 'success');
         renderPage();
     };
-    reader.onerror = () => showToast('Failed to read file', 'error');
+    reader.onerror = () => showErrorModal('File error', 'Failed to read the selected file.');
     reader.readAsText(file);
 }
 
@@ -170,11 +181,15 @@ function validateImportData(data) {
     if (!data.exportedAt || !data.store)             return 'missing required fields (exportedAt, store)';
     if (typeof data.store !== 'object')              return 'store field is not an object';
 
-    // Validate that each stored value is valid JSON and history entries look right
+    // Validate stored values. SELECTED_ACTIVITY_KEY is a plain string (not JSON),
+    // so exclude it from the JSON parse check.
+    const JSON_KEYS = ALL_STORAGE_KEYS.filter(k => k !== SELECTED_ACTIVITY_KEY);
     for (const [key, val] of Object.entries(data.store)) {
         if (!ALL_STORAGE_KEYS.includes(key)) return `unexpected key "${key}" in store`;
-        if (typeof val !== 'string')          return `store["${key}"] must be a JSON string`;
-        try { JSON.parse(val); } catch { return `store["${key}"] is not valid JSON`; }
+        if (typeof val !== 'string')          return `store["${key}"] must be a string`;
+        if (JSON_KEYS.includes(key)) {
+            try { JSON.parse(val); } catch { return `store["${key}"] is not valid JSON`; }
+        }
     }
 
     // Validate history entries have expected shape
