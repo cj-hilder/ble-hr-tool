@@ -6,14 +6,9 @@ if ('serviceWorker' in navigator) {
 // Settings constants are declared and loaded from localStorage by settings.js
 
 // --- Speedometer geometry ---
-const SPEEDO_CX = 100;
-const SPEEDO_CY = 100;
-const SPEEDO_CIRCLE_R = 60;
-const SPEEDO_NEEDLE_INNER_R = 61;
-const SPEEDO_NEEDLE_OUTER_R = 68;
-const SPEEDO_ARC_R = 69;
-const SPEEDO_START_DEG = 112.5;
-const SPEEDO_SWEEP_DEG = 315;
+const SPEEDO_CX = 100, SPEEDO_CY = 100, SPEEDO_CIRCLE_R = 60;
+const SPEEDO_NEEDLE_INNER_R = 61, SPEEDO_NEEDLE_OUTER_R = 68;
+const SPEEDO_ARC_R = 69, SPEEDO_START_DEG = 112.5, SPEEDO_SWEEP_DEG = 315;
 
 let latestHR = 0;
 
@@ -33,8 +28,7 @@ function drawHrGraph() {
     const canvas = document.getElementById('hrGraphCanvas');
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    const W = canvas.width;
-    const H = canvas.height;
+    const W = canvas.width, H = canvas.height;
     ctx.clearRect(0, 0, W, H);
     ctx.globalAlpha = 0.7;
     if (hrHistory.length < 2) return;
@@ -110,10 +104,14 @@ let recoverySeconds = 0, totalActiveSeconds = 0, resetCount = 0;
 let activeToRestCount = 0, activeToResetCount = 0, restToActiveCount = 0, resetToActiveCount = 0;
 let maxHrInRest = 0, timeOfMaxHrInRest = 0, isRecoveryState = false;
 
+// ─── Activity tracking ────────────────────────────────────────────────────────
+let currentActivityId   = null;
+let currentActivityName = null;
+
 // ─── Period Tracking ──────────────────────────────────────────────────────────
-let activePeriods   = [];  // [{startSec,endSec,duration,avgHr}]
-let recoveryPeriods = [];  // [{startSec,endSec,duration,avgHr,maxHr,lagSec}]
-let currentPeriodType  = null;  // 'active' | 'recovery' | null
+let activePeriods   = [];
+let recoveryPeriods = [];
+let currentPeriodType  = null;
 let currentPeriodStart = 0;
 let currentPeriodHrSamples = [];
 let sessionHrSamples = [];
@@ -163,6 +161,18 @@ function closeRecoveryPeriod() {
     currentPeriodType = null; currentPeriodHrSamples = [];
 }
 
+// ─── Activity display ──────────────────────────────────────────────────────────
+function updateActivityDisplay() {
+    const el = document.getElementById('activityDisplay');
+    if (!el) return;
+    if (isSessionRunning && currentActivityName) {
+        el.textContent = currentActivityName;
+        el.style.display = 'block';
+    } else {
+        el.style.display = 'none';
+    }
+}
+
 // ─── Session persistence ──────────────────────────────────────────────────────
 function saveSession() {
     if (!isSessionRunning) return;
@@ -176,6 +186,7 @@ function saveSession() {
             sessionHrMax: sessionHrSamples.length ? Math.max(...sessionHrSamples) : 0,
             sessionHrSum: sessionHrSamples.reduce((a,b)=>a+b, 0),
             sessionHrCount: sessionHrSamples.length,
+            currentActivityId, currentActivityName,
         }));
     } catch (e) {}
 }
@@ -193,6 +204,12 @@ function restoreSession() {
         activePeriods = s.activePeriods || []; recoveryPeriods = s.recoveryPeriods || [];
         currentPeriodType = s.currentPeriodType || null; currentPeriodStart = s.currentPeriodStart || 0;
         currentPeriodHrSamples = [];
+        currentActivityId   = s.currentActivityId   || null;
+        currentActivityName = s.currentActivityName || null;
+        // Apply the restored activity's settings
+        if (currentActivityId && window.activitiesAPI) {
+            window.activitiesAPI.applySettings(currentActivityId);
+        }
         const cnt = s.sessionHrCount || 0;
         if (cnt > 0) {
             const avg = Math.round(s.sessionHrSum / cnt);
@@ -215,6 +232,7 @@ function restoreSessionUI() {
     }
     document.getElementById('stateIndicator').className = `state-dot ${currentState}`;
     updateSpeedometer(0);
+    updateActivityDisplay();
     const descEl = document.getElementById('stateDescription');
     const manualResetBtn = document.getElementById('manualResetBtn');
     const toggleBtn = document.getElementById('toggleSessionBtn');
@@ -273,7 +291,6 @@ function switchState(newState, isManual) {
     if (currentState === newState && newState !== 'stopped') return;
     const prevState = currentState;
 
-    // Period tracking
     if (newState === 'active') {
         if (currentPeriodType === 'recovery') closeRecoveryPeriod();
         else if (currentPeriodType === 'active') closeActivePeriod();
@@ -287,7 +304,6 @@ function switchState(newState, isManual) {
             if (currentPeriodType === 'active') closeActivePeriod();
             openRecoveryPeriod();
         }
-        // prevState === 'rest': recovery period continues uninterrupted
     } else if (newState === 'pause' || newState === 'stopped') {
         if (currentPeriodType === 'active') closeActivePeriod();
         else if (currentPeriodType === 'recovery') closeRecoveryPeriod();
@@ -411,7 +427,9 @@ function computeSessionSummary() {
     const totalRecoverySec = rDur.reduce((a, b) => a + b, 0);
     return {
         date: new Date().toISOString(),
-        // Active
+        activityName: currentActivityName || '',
+        activityId:   currentActivityId   || '',
+        activitySettings: window.activitiesAPI ? window.activitiesAPI.getSettingsSnapshot() : {},
         totalActiveSec: totalActiveSeconds,
         pctActive: sessionSeconds > 0 ? Math.round(totalActiveSeconds / sessionSeconds * 100) : 0,
         numActivePeriods: activePeriods.length,
@@ -419,7 +437,6 @@ function computeSessionSummary() {
         avgActiveSec:      aDur.length ? Math.round(arrAvg(aDur)) : 0,
         shortestActiveSec: aDur.length ? Math.min(...aDur) : 0,
         avgHrActive: aHr.length ? arrAvg(aHr) : 0,
-        // Recovery
         totalRecoverySec,
         pctRecovery: sessionSeconds > 0 ? Math.round(totalRecoverySec / sessionSeconds * 100) : 0,
         numRecoveryPeriods: recoveryPeriods.length,
@@ -427,14 +444,12 @@ function computeSessionSummary() {
         avgRecoverySec:      rDur.length ? Math.round(arrAvg(rDur)) : 0,
         shortestRecoverySec: rDur.length ? Math.min(...rDur) : 0,
         avgHrRecovery: rHr.length ? arrAvg(rHr) : 0,
-        // Lag & peak
         longestLagSec:  lags.length ? Math.max(...lags)  : 0,
         avgLagSec:      lags.length ? Math.round(arrAvg(lags)) : 0,
         shortestLagSec: lags.length ? Math.min(...lags)  : 0,
         highestPeakHr:  peaks.length ? Math.max(...peaks) : 0,
         avgPeakHr:      peaks.length ? arrAvg(peaks)      : 0,
         lowestPeakHr:   peaks.length ? Math.min(...peaks) : 0,
-        // Session
         sessionLengthSec: sessionSeconds,
         highestHr: sessionHrSamples.length ? Math.max(...sessionHrSamples) : 0,
         avgHr:     sessionHrSamples.length ? arrAvg(sessionHrSamples)      : 0,
@@ -498,8 +513,53 @@ function teardownSession() {
     document.getElementById('manualResetBtn').style.display = 'none';
     clearSession();
     document.getElementById('homeBtn').style.display = 'flex';
+    currentActivityId = null; currentActivityName = null;
+    updateActivityDisplay();
     switchState('stopped', true);
     if (wakeLock !== null) wakeLock.release().then(() => { wakeLock = null; });
+}
+
+// ─── Activity selection modal ─────────────────────────────────────────────────
+function showActivitySelectModal() {
+    const acts = window.activitiesAPI ? window.activitiesAPI.getAll() : [];
+    const modal = document.getElementById('activitySelectModal');
+    const select = document.getElementById('activitySelectDropdown');
+    const desc   = document.getElementById('activitySelectDesc');
+
+    select.innerHTML = acts.map(a =>
+        `<option value="${a.id}">${a.name}</option>`
+    ).join('');
+
+    // Pre-select the last used activity if it still exists
+    if (currentActivityId && acts.find(a => a.id === currentActivityId)) {
+        select.value = currentActivityId;
+    }
+
+    function updateDesc() {
+        const act = acts.find(a => a.id === select.value);
+        desc.textContent = act && act.description ? act.description : '';
+        desc.style.display = desc.textContent ? 'block' : 'none';
+    }
+    select.onchange = updateDesc;
+    updateDesc();
+
+    modal.classList.add('visible');
+}
+
+function startSession() {
+    isSessionRunning = true; sessionSeconds = 0; sessionStartTime = Date.now();
+    stateSeconds = 0; totalActiveSeconds = 0; resetCount = 0; recoverySeconds = 0;
+    activePeriods = []; recoveryPeriods = []; currentPeriodType = null; sessionHrSamples = [];
+    document.getElementById('homeBtn').style.display = 'none';
+    setTimerDisplay(document.getElementById('sessionTimerDisplay'), 0);
+    setTimerDisplay(document.getElementById('stateTimerDisplay'), 0);
+    setTimerDisplay(document.getElementById('totalActiveTimerDisplay'), 0);
+    document.getElementById('maxHrDisplay').innerText = '--';
+    document.getElementById('lagDisplay').innerText = '--';
+    document.getElementById('toggleSessionBtn').classList.add('running');
+    updateActivityDisplay();
+    switchState('active', true);
+    sessionInterval = setInterval(handleTick, 1000);
 }
 
 // ─── Disconnect / Reconnect ───────────────────────────────────────────────────
@@ -567,22 +627,28 @@ document.getElementById('manualResetBtn').addEventListener('click', () => {
 
 document.getElementById('toggleSessionBtn').addEventListener('click', () => {
     if (!isSessionRunning) {
-        isSessionRunning = true; sessionSeconds = 0; sessionStartTime = Date.now();
-        stateSeconds = 0; totalActiveSeconds = 0; resetCount = 0; recoverySeconds = 0;
-        activePeriods = []; recoveryPeriods = []; currentPeriodType = null; sessionHrSamples = [];
-        document.getElementById('homeBtn').style.display = 'none';
-        setTimerDisplay(document.getElementById('sessionTimerDisplay'), 0);
-        setTimerDisplay(document.getElementById('stateTimerDisplay'), 0);
-        setTimerDisplay(document.getElementById('totalActiveTimerDisplay'), 0);
-        document.getElementById('maxHrDisplay').innerText = '--';
-        document.getElementById('lagDisplay').innerText = '--';
-        document.getElementById('toggleSessionBtn').classList.add('running');
-        switchState('active', true);
-        sessionInterval = setInterval(handleTick, 1000);
+        showActivitySelectModal();
         return;
     }
     if (currentState === 'pause') { switchState('active', true); return; }
     document.getElementById('sessionModal').classList.add('visible');
+});
+
+// Activity select modal buttons
+document.getElementById('activitySelectStartBtn').addEventListener('click', () => {
+    const select = document.getElementById('activitySelectDropdown');
+    const actId  = select.value;
+    const acts   = window.activitiesAPI ? window.activitiesAPI.getAll() : [];
+    const act    = acts.find(a => a.id === actId);
+    document.getElementById('activitySelectModal').classList.remove('visible');
+    if (window.activitiesAPI) window.activitiesAPI.applySettings(actId);
+    currentActivityId   = actId;
+    currentActivityName = act ? act.name : '';
+    startSession();
+});
+
+document.getElementById('activitySelectCancelBtn').addEventListener('click', () => {
+    document.getElementById('activitySelectModal').classList.remove('visible');
 });
 
 document.getElementById('modalPauseBtn').addEventListener('click', () => {

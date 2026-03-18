@@ -19,90 +19,85 @@
             display: flex;
             align-items: center;
             gap: 12px;
-            margin-bottom: 24px;
+            margin-bottom: 20px;
         }
         header a {
-            color: #666;
-            text-decoration: none;
-            font-size: 24px;
-            line-height: 1;
-            transition: color 0.2s;
+            color: #666; text-decoration: none; font-size: 24px;
+            line-height: 1; transition: color 0.2s;
         }
         header a:hover { color: #aaa; }
         header h1 { font-size: 20px; color: #eee; font-weight: 700; }
         header .session-count { margin-left: auto; font-size: 13px; color: #555; }
 
-        /* ── Empty state ── */
-        #emptyState {
-            text-align: center;
-            padding: 60px 20px;
-            color: #444;
+        /* Filter bar */
+        #filterBar {
+            display: none;
+            margin-bottom: 20px;
         }
+        #filterBar label {
+            font-size: 11px; color: #555; letter-spacing: 0.08em;
+            text-transform: uppercase; display: block; margin-bottom: 6px;
+        }
+        #activityFilter {
+            width: 100%;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 8px;
+            color: #ccc;
+            font-size: 14px;
+            padding: 9px 12px;
+        }
+        #activityFilter:focus { outline: none; border-color: #4af; }
+
+        /* Empty state */
+        #emptyState { text-align: center; padding: 60px 20px; color: #444; }
         #emptyState p { font-size: 16px; margin-bottom: 8px; }
         #emptyState small { font-size: 13px; }
 
-        /* ── Charts section ── */
+        /* Charts */
         #chartsSection { display: none; }
         .charts-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 12px;
-            margin-bottom: 28px;
+            display: grid; grid-template-columns: 1fr 1fr;
+            gap: 12px; margin-bottom: 28px;
         }
-        @media (max-width: 480px) {
-            .charts-grid { grid-template-columns: 1fr; }
-        }
+        @media (max-width: 480px) { .charts-grid { grid-template-columns: 1fr; } }
         .chart-card {
-            background: #1a1a1a;
-            border-radius: 14px;
-            padding: 14px 14px 10px;
+            background: #1a1a1a; border-radius: 14px; padding: 14px 14px 10px;
         }
         .chart-card h3 {
-            font-size: 11px;
-            color: #666;
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
-            margin-bottom: 10px;
+            font-size: 11px; color: #666; letter-spacing: 0.08em;
+            text-transform: uppercase; margin-bottom: 10px;
         }
         .chart-card canvas { width: 100% !important; }
 
-        /* ── Sessions list ── */
+        /* Sessions list */
         #sessionsList { display: flex; flex-direction: column; gap: 10px; }
 
         .session-card {
-            background: #1a1a1a;
-            border-radius: 14px;
-            overflow: hidden;
-            border: 1px solid #222;
+            background: #1a1a1a; border-radius: 14px;
+            overflow: hidden; border: 1px solid #222;
         }
         .session-card-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 14px 16px;
-            cursor: pointer;
-            user-select: none;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 14px 16px; cursor: pointer; user-select: none;
         }
         .session-card-header:active { background: #222; }
-
         .session-header-left { display: flex; flex-direction: column; gap: 3px; }
         .session-date { font-size: 15px; color: #eee; font-weight: 600; }
         .session-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 2px; }
         .chip {
-            font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 600;
-            letter-spacing: 0.03em;
+            font-size: 11px; padding: 2px 8px; border-radius: 20px;
+            font-weight: 600; letter-spacing: 0.03em;
         }
         .chip-duration  { background: #1e1e2e; color: #888; border: 1px solid #333; }
         .chip-active    { background: #0d2b14; color: #28a745; border: 1px solid #1a4726; }
         .chip-resets    { background: #2b1010; color: #dc3545; border: 1px solid #4a1515; }
+        .chip-activity  { background: #0e1e30; color: #4af; border: 1px solid #1a3a55; }
 
         .session-chevron { color: #555; font-size: 18px; transition: transform 0.2s; }
         .session-card.open .session-chevron { transform: rotate(90deg); }
 
-        .session-detail {
-            display: none;
-            padding: 0 16px 16px;
-        }
+        .session-detail { display: none; padding: 0 16px 16px; }
         .session-card.open .session-detail { display: block; }
 
         /* Notes */
@@ -110,36 +105,73 @@
             font-size: 13px; color: #888; font-style: italic;
             margin-bottom: 12px; line-height: 1.5;
             padding: 8px 10px;
-            background: #111;
-            border-radius: 8px;
+            background: #111; border-radius: 8px;
             border-left: 2px solid #333;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+        .session-notes:hover { border-left-color: #555; }
+        .session-notes-placeholder { color: #444; font-style: italic; }
+
+        .notes-edit-area {
+            width: 100%;
+            background: #111;
+            border: 1px solid #4af;
+            border-radius: 8px;
+            color: #ccc;
+            font-size: 13px;
+            padding: 8px 10px;
+            resize: none;
+            font-family: sans-serif;
+            line-height: 1.5;
+            box-sizing: border-box;
+            margin-bottom: 8px;
+        }
+        .notes-edit-area:focus { outline: none; }
+        .notes-save-row { display: flex; gap: 8px; margin-bottom: 12px; }
+        .notes-save-btn {
+            padding: 6px 14px; background: #1a3a20; color: #28a745;
+            border: 1px solid #1a4726; border-radius: 6px;
+            font-size: 13px; font-weight: 600; cursor: pointer;
+        }
+        .notes-cancel-btn {
+            padding: 6px 12px; background: #222; color: #666;
+            border: 1px solid #333; border-radius: 6px;
+            font-size: 13px; cursor: pointer;
         }
 
-        /* Stat groups inside expanded card */
+        /* Stat groups */
         .stat-group { margin-bottom: 14px; }
         .stat-group-label {
             font-size: 11px; color: #555;
             letter-spacing: 0.08em; text-transform: uppercase;
-            margin-bottom: 8px;
-            padding-bottom: 4px;
+            margin-bottom: 8px; padding-bottom: 4px;
             border-bottom: 1px solid #222;
         }
         .active-label   { color: #28a745; }
         .recovery-label { color: #fd7e14; }
         .lag-label      { color: #17a2b8; }
         .session-label  { color: #777; }
+        .settings-label { color: #888; }
 
         .stat-row {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 6px;
-            margin-bottom: 4px;
+            display: grid; grid-template-columns: repeat(3, 1fr);
+            gap: 6px; margin-bottom: 4px;
         }
         .stat-item {
             display: flex; flex-direction: column; align-items: center; text-align: center;
         }
         .stat-item span { font-family: monospace; font-size: 15px; color: #ccc; }
-        .stat-item label { font-size: 10px; color: #555; text-transform: uppercase; letter-spacing: 0.04em; margin-top: 1px; }
+        .stat-item label {
+            font-size: 10px; color: #555; text-transform: uppercase;
+            letter-spacing: 0.04em; margin-top: 1px;
+        }
+
+        /* Settings summary in history */
+        .settings-summary {
+            font-size: 12px; color: #555; line-height: 1.8;
+            margin-top: 6px; font-family: monospace;
+        }
 
         /* Delete button */
         .session-delete-btn {
@@ -149,6 +181,11 @@
             cursor: pointer; text-align: center;
         }
         .session-delete-btn:active { background: #2b0f0f; }
+
+        /* No-results */
+        #noResults {
+            display: none; text-align: center; padding: 32px 20px; color: #444; font-size: 15px;
+        }
     </style>
 </head>
 <body>
@@ -158,6 +195,13 @@
     <h1>Session History</h1>
     <span class="session-count" id="sessionCount"></span>
 </header>
+
+<div id="filterBar">
+    <label>Filter by activity</label>
+    <select id="activityFilter">
+        <option value="">All activities</option>
+    </select>
+</div>
 
 <div id="emptyState">
     <p>No sessions saved yet.</p>
@@ -184,12 +228,15 @@
         </div>
     </div>
 
+    <div id="noResults">No sessions match this filter.</div>
     <div id="sessionsList"></div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script>
 const HISTORY_KEY = 'hrPacerHistory';
+let allHistory = [];
+let activeCharts = [];
 
 function formatTime(s) {
     s = Math.max(0, Math.round(s));
@@ -200,7 +247,6 @@ function formatTime(s) {
     }
     return String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0');
 }
-
 function fmtDate(iso) {
     const d = new Date(iso);
     return d.toLocaleDateString(undefined, { weekday:'short', month:'short', day:'numeric', year:'numeric' });
@@ -210,10 +256,12 @@ function fmtTime(iso) {
 }
 function fmtT(s) { return s > 0 ? formatTime(s) : '--'; }
 function fmtN(n) { return n > 0 ? n : '--'; }
-
 function shortLabel(iso) {
     const d = new Date(iso);
     return `${d.getMonth()+1}/${d.getDate()}`;
+}
+function escHtml(s) {
+    return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 function buildChartConfig(labels, data, color, unit) {
@@ -233,45 +281,99 @@ function buildChartConfig(labels, data, color, unit) {
             }]
         },
         options: {
-            responsive: true,
-            animation: false,
+            responsive: true, animation: false,
             plugins: {
                 legend: { display: false },
-                tooltip: {
-                    callbacks: {
-                        label: ctx => `${ctx.parsed.y}${unit}`
-                    }
-                }
+                tooltip: { callbacks: { label: ctx => `${ctx.parsed.y}${unit}` } }
             },
             scales: {
-                x: {
-                    ticks: { color: '#555', font: { size: 10 }, maxTicksLimit: 6 },
-                    grid: { color: '#1f1f1f' }
-                },
-                y: {
-                    ticks: { color: '#555', font: { size: 10 }, maxTicksLimit: 5 },
-                    grid: { color: '#1f1f1f' },
-                    beginAtZero: true,
-                }
+                x: { ticks: { color: '#555', font: { size: 10 }, maxTicksLimit: 6 }, grid: { color: '#1f1f1f' } },
+                y: { ticks: { color: '#555', font: { size: 10 }, maxTicksLimit: 5 }, grid: { color: '#1f1f1f' }, beginAtZero: true }
             }
         }
     };
 }
 
 function statItem(value, label) {
-    return `<div class="stat-item"><span>${value}</span><label>${label}</label></div>`;
+    return `<div class="stat-item"><span>${escHtml(String(value))}</span><label>${escHtml(label)}</label></div>`;
 }
 
-function buildSessionCard(s, index, total) {
+// Notes editing
+function showNotesEdit(realIndex, currentNotes) {
+    const container = document.getElementById(`notes-container-${realIndex}`);
+    container.innerHTML = `
+        <textarea class="notes-edit-area" id="notes-textarea-${realIndex}" rows="3">${escHtml(currentNotes || '')}</textarea>
+        <div class="notes-save-row">
+            <button class="notes-save-btn" onclick="saveNotes(${realIndex})">Save</button>
+            <button class="notes-cancel-btn" onclick="cancelNotesEdit(${realIndex}, ${JSON.stringify(currentNotes||'').replace(/'/g,"&#39;")})">Cancel</button>
+        </div>
+    `;
+    const ta = document.getElementById(`notes-textarea-${realIndex}`);
+    if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+}
+
+function saveNotes(realIndex) {
+    const ta = document.getElementById(`notes-textarea-${realIndex}`);
+    if (!ta) return;
+    const newNotes = ta.value.trim();
+    try {
+        const raw = localStorage.getItem(HISTORY_KEY);
+        const history = raw ? JSON.parse(raw) : [];
+        if (history[realIndex] !== undefined) {
+            history[realIndex].notes = newNotes;
+            localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+            allHistory = history;
+        }
+    } catch(e) { alert('Failed to save notes.'); return; }
+    renderNotesDisplay(realIndex, newNotes);
+}
+
+function cancelNotesEdit(realIndex, currentNotes) {
+    renderNotesDisplay(realIndex, currentNotes);
+}
+
+function renderNotesDisplay(realIndex, notes) {
+    const container = document.getElementById(`notes-container-${realIndex}`);
+    if (!container) return;
+    if (notes) {
+        container.innerHTML = `<div class="session-notes" title="Click to edit notes" onclick="showNotesEdit(${realIndex}, ${JSON.stringify(notes).replace(/'/g,"&#39;")})">${escHtml(notes)}</div>`;
+    } else {
+        container.innerHTML = `<div class="session-notes session-notes-placeholder" title="Click to add notes" onclick="showNotesEdit(${realIndex}, '')">Add notes…</div>`;
+    }
+}
+
+function buildSessionCard(s, realIndex) {
     const resets = (s.numRecoveryPeriods || 0);
     const durationMin = s.sessionLengthSec ? Math.round(s.sessionLengthSec / 60) : '--';
+    const actName = s.activityName || '';
+
+    const notesHtml = s.notes
+        ? `<div class="session-notes" title="Click to edit notes" onclick="showNotesEdit(${realIndex}, ${JSON.stringify(s.notes||'').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;')})">${escHtml(s.notes)}</div>`
+        : `<div class="session-notes session-notes-placeholder" title="Click to add notes" onclick="showNotesEdit(${realIndex}, '')">Add notes…</div>`;
+
+    // Settings summary
+    let settingsHtml = '';
+    if (s.activitySettings && Object.keys(s.activitySettings).length > 0) {
+        const ss = s.activitySettings;
+        const lines = [
+            `Max HR: ${ss.MAX_HR || '--'} · Resting HR: ${ss.RESTING_HR || '--'} ±${ss.RESTING_HR_BANDWIDTH || '--'}`,
+            `Active: ${ss.ACTIVE_THRESHOLD_LOWER || '--'}–${ss.ACTIVE_THRESHOLD_UPPER || '--'} bpm · Brady: ${ss.BRADYCARDIA_THRESHOLD || '--'}`,
+            `Max recovery: ${ss.MAX_RECOVERY_PERIOD || '--'}s · Max lag: ${ss.MAX_RESPONSE_LAG || '--'}s`,
+        ];
+        settingsHtml = `
+            <div class="stat-group">
+                <div class="stat-group-label settings-label">⚙️ Session Settings</div>
+                <div class="settings-summary">${lines.map(l => escHtml(l)).join('<br>')}</div>
+            </div>`;
+    }
 
     return `
-    <div class="session-card" id="card-${index}">
-        <div class="session-card-header" onclick="toggleCard(${index})">
+    <div class="session-card" id="card-${realIndex}">
+        <div class="session-card-header" onclick="toggleCard(${realIndex})">
             <div class="session-header-left">
                 <div class="session-date">${fmtDate(s.date)} · ${fmtTime(s.date)}</div>
                 <div class="session-chips">
+                    ${actName ? `<span class="chip chip-activity">${escHtml(actName)}</span>` : ''}
                     <span class="chip chip-duration">${durationMin} min</span>
                     <span class="chip chip-active">${s.pctActive || '--'}% active</span>
                     ${resets > 0 ? `<span class="chip chip-resets">${resets} recovery periods</span>` : ''}
@@ -280,7 +382,7 @@ function buildSessionCard(s, index, total) {
             <span class="session-chevron">›</span>
         </div>
         <div class="session-detail">
-            ${s.notes ? `<div class="session-notes">"${s.notes}"</div>` : ''}
+            <div id="notes-container-${realIndex}">${notesHtml}</div>
 
             <div class="stat-group">
                 <div class="stat-group-label active-label">🟢 Active Periods</div>
@@ -345,74 +447,113 @@ function buildSessionCard(s, index, total) {
                 </div>
             </div>
 
-            <button class="session-delete-btn" onclick="deleteSession(${index}, event)">Delete this session</button>
+            ${settingsHtml}
+
+            <button class="session-delete-btn" onclick="deleteSession(${realIndex}, event)">Delete this session</button>
         </div>
     </div>`;
 }
 
 function toggleCard(index) {
-    const card = document.getElementById(`card-${index}`);
-    card.classList.toggle('open');
+    document.getElementById(`card-${index}`).classList.toggle('open');
 }
 
 function deleteSession(index, e) {
     e.stopPropagation();
     if (!confirm('Delete this session? This cannot be undone.')) return;
     try {
-        const raw = localStorage.getItem(HISTORY_KEY);
-        const history = raw ? JSON.parse(raw) : [];
-        history.splice(index, 1);
-        localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+        allHistory.splice(index, 1);
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(allHistory));
         renderPage();
     } catch(err) { alert('Failed to delete session.'); }
 }
 
+function getActivityNames(history) {
+    const names = new Set();
+    history.forEach(s => { if (s.activityName) names.add(s.activityName); });
+    return [...names].sort();
+}
+
+function renderCharts(history) {
+    activeCharts.forEach(c => c.destroy());
+    activeCharts = [];
+
+    if (history.length === 0) return;
+
+    const labels       = history.map(s => shortLabel(s.date));
+    const pctActive    = history.map(s => s.pctActive || 0);
+    const avgLag       = history.map(s => s.avgLagSec || 0);
+    const avgPeakHr    = history.map(s => s.avgPeakHr || 0);
+    const sessionMins  = history.map(s => s.sessionLengthSec ? Math.round(s.sessionLengthSec / 60) : 0);
+
+    activeCharts.push(new Chart(document.getElementById('chartPctActive'),  buildChartConfig(labels, pctActive,   '#28a745', '%')));
+    activeCharts.push(new Chart(document.getElementById('chartAvgLag'),     buildChartConfig(labels, avgLag,       '#17a2b8', 's')));
+    activeCharts.push(new Chart(document.getElementById('chartAvgPeak'),    buildChartConfig(labels, avgPeakHr,    '#fd7e14', ' bpm')));
+    activeCharts.push(new Chart(document.getElementById('chartSessionLen'), buildChartConfig(labels, sessionMins,  '#6c757d', ' min')));
+}
+
 function renderPage() {
-    let history = [];
     try {
         const raw = localStorage.getItem(HISTORY_KEY);
-        history = raw ? JSON.parse(raw) : [];
-    } catch(e) {}
+        allHistory = raw ? JSON.parse(raw) : [];
+    } catch(e) { allHistory = []; }
 
-    const empty = document.getElementById('emptyState');
-    const charts = document.getElementById('chartsSection');
+    const empty   = document.getElementById('emptyState');
+    const charts  = document.getElementById('chartsSection');
+    const filterBar = document.getElementById('filterBar');
 
-    if (history.length === 0) {
+    if (allHistory.length === 0) {
         empty.style.display = 'block';
         charts.style.display = 'none';
+        filterBar.style.display = 'none';
         document.getElementById('sessionCount').innerText = '';
         return;
     }
 
     empty.style.display = 'none';
     charts.style.display = 'block';
-    document.getElementById('sessionCount').innerText = `${history.length} session${history.length !== 1 ? 's' : ''}`;
 
-    const labels = history.map(s => shortLabel(s.date));
+    // Populate filter dropdown
+    const actNames = getActivityNames(allHistory);
+    const filterSel = document.getElementById('activityFilter');
+    const currentFilter = filterSel.value;
+    if (actNames.length > 0) {
+        filterBar.style.display = 'block';
+        filterSel.innerHTML = '<option value="">All activities</option>' +
+            actNames.map(n => `<option value="${escHtml(n)}"${currentFilter === n ? ' selected' : ''}>${escHtml(n)}</option>`).join('');
+    } else {
+        filterBar.style.display = 'none';
+    }
 
-    // Chart data
-    const pctActive    = history.map(s => s.pctActive || 0);
-    const avgLag       = history.map(s => s.avgLagSec || 0);
-    const avgPeakHr    = history.map(s => s.avgPeakHr || 0);
-    const sessionMins  = history.map(s => s.sessionLengthSec ? Math.round(s.sessionLengthSec / 60) : 0);
+    // Filter
+    const filterValue = filterSel.value;
+    const filtered = filterValue
+        ? allHistory.map((s, i) => ({ s, i })).filter(({ s }) => s.activityName === filterValue)
+        : allHistory.map((s, i) => ({ s, i }));
 
-    // Destroy existing charts before re-rendering
-    ['chartPctActive','chartAvgLag','chartAvgPeak','chartSessionLen'].forEach(id => {
-        const existing = Chart.getChart(id);
-        if (existing) existing.destroy();
-    });
+    document.getElementById('sessionCount').innerText =
+        filtered.length !== allHistory.length
+            ? `${filtered.length} of ${allHistory.length} session${allHistory.length !== 1 ? 's' : ''}`
+            : `${allHistory.length} session${allHistory.length !== 1 ? 's' : ''}`;
 
-    new Chart(document.getElementById('chartPctActive'),  buildChartConfig(labels, pctActive,   '#28a745', '%'));
-    new Chart(document.getElementById('chartAvgLag'),     buildChartConfig(labels, avgLag,       '#17a2b8', 's'));
-    new Chart(document.getElementById('chartAvgPeak'),    buildChartConfig(labels, avgPeakHr,    '#fd7e14', ' bpm'));
-    new Chart(document.getElementById('chartSessionLen'), buildChartConfig(labels, sessionMins,  '#6c757d', ' min'));
+    // Charts use filtered data
+    renderCharts(filtered.map(({ s }) => s));
 
-    // Session cards (newest first)
+    const noResults = document.getElementById('noResults');
     const list = document.getElementById('sessionsList');
-    list.innerHTML = [...history].reverse().map((s, i) =>
-        buildSessionCard(s, history.length - 1 - i, history.length)
-    ).join('');
+
+    if (filtered.length === 0) {
+        noResults.style.display = 'block';
+        list.innerHTML = '';
+    } else {
+        noResults.style.display = 'none';
+        // Show newest first; realIndex is the index in allHistory for editing/deleting
+        list.innerHTML = [...filtered].reverse().map(({ s, i }) => buildSessionCard(s, i)).join('');
+    }
 }
+
+// Filter change
+document.getElementById('activityFilter').addEventListener('change', renderPage);
 
 renderPage();
 </script>

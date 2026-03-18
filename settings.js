@@ -1,6 +1,6 @@
 // settings.js — must be loaded before app.js
-// Declares all setting constants as globals (window.*), loads from
-// localStorage, and injects a hamburger button + slide-in panel.
+// Manages activity types (each with their own settings), exposes activitiesAPI,
+// and injects the hamburger settings panel.
 
 (function () {
 
@@ -23,199 +23,220 @@ const FIELDS = [
     { key: 'MAX_HR', label: 'Max HR', unit: 'bpm',
       desc: 'Your personal maximum heart rate. Used to scale the speedometer and the HR history graph. Calculate it with <a href="https://www.targetheartratecalculator.org/">this tool</a>.' },
     { key: 'BRADYCARDIA_THRESHOLD', label: 'Bradycardia threshold', unit: 'bpm',
-      desc: 'If HR drops below this it triggers a heart rate reset (stop activity and wait for a return to resting heart rate). Detects an unusually low heart rate that may indicate overexertion or heart rate recovery undershoot.' },
+      desc: 'If HR drops below this it triggers a heart rate reset. Detects an unusually low heart rate that may indicate overexertion or heart rate recovery undershoot.' },
     { group: 'Resting HR' },
     { key: 'RESTING_HR', label: 'Resting HR', unit: 'bpm',
       desc: 'Your typical resting heart rate. Used as the target to return to during a heart rate reset.' },
     { key: 'RESTING_HR_BANDWIDTH', label: 'Bandwidth', unit: 'bpm',
-      desc: 'Width of the acceptable resting HR window. HR must stay within this band for 15 consecutive seconds before a HR reset is considered complete and you are returned to "Continue activity".' },
+      desc: 'Width of the acceptable resting HR window. HR must stay within this band for 15 consecutive seconds before a HR reset is considered complete.' },
     { group: 'Active Thresholds' },
     { key: 'ACTIVE_THRESHOLD_UPPER', label: 'Upper threshold', unit: 'bpm',
-      desc: 'If HR exceeds this during activity it will trigger "Rest or pull back". If you are unsure how to determine this, the safe choice is resting HR + 15.' },
+      desc: 'If HR exceeds this during activity it will trigger "Rest or pull back". If you are unsure, the safe choice is resting HR + 15.' },
     { key: 'ACTIVE_THRESHOLD_LOWER', label: 'Lower threshold', unit: 'bpm',
       desc: 'HR must fall below this to transition back to "Continue activity". Usually set just below the upper threshold.' },
     { group: 'Recovery Limits' },
     { key: 'MAX_RECOVERY_PERIOD', label: 'Max recovery period', unit: 's',
-      desc: 'Maximum time allowed in the "Rest or pull back" state before a forced HR reset is triggered. Detects very long rest periods that indicate impaired HR recovery.' },
+      desc: 'Maximum time allowed in the "Rest or pull back" state before a forced HR reset is triggered.' },
     { key: 'MAX_RESPONSE_LAG', label: 'Max response lag', unit: 's',
-      desc: 'If HR has not started falling within this many seconds of "Rest or pull back", a HR reset is forced. This detects a slow HR response to stopping activity.' },
+      desc: 'If HR has not started falling within this many seconds of "Rest or pull back", a HR reset is forced.' },
     { key: 'NUM_RESETS_B4_WARN', label: 'Resets before warning', unit: '',
-      desc: 'Number of HR resets allowed before the app shows a prominent warning to end the session. Reaching this count suggests the autonomic system is struggling to recover.' },
+      desc: 'Number of HR resets allowed before the app shows a prominent warning to end the session.' },
     { group: 'Target Zone' },
     { key: 'TARGET_MIN_HR', label: 'Target min', unit: 'bpm',
-      desc: 'Lower edge of the target zone. The target zone is shown as an arc on the speedometer. It is purely a guide and does not affect active/rest state.' },
+      desc: 'Lower edge of the target zone shown on the speedometer. Purely a guide.' },
     { key: 'TARGET_MAX_HR', label: 'Target max', unit: 'bpm',
       desc: 'Upper edge of the target zone.' },
-    
 ];
 
-const STORAGE_KEY = 'hrPacerSettings';
+const ACTIVITIES_KEY        = 'hrPacerActivities';
+const SELECTED_ACTIVITY_KEY = 'hrPacerSelectedActivity';
 
-// --- Load persisted values, exposing each as a global ---
-function load() {
-    let saved = {};
-    try { saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch (e) {}
-    for (const [key, def] of Object.entries(DEFAULTS)) {
-        window[key] = (key in saved) ? Number(saved[key]) : def;
-    }
+// ── Activity management ──────────────────────────────────────────────────────
+
+let activities = [];
+let selectedActivityId = '';
+
+function generateId() {
+    return 'act_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
 }
 
-function save() {
-    const data = {};
-    for (const key of Object.keys(DEFAULTS)) data[key] = window[key];
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    // Redraw speedometer in case thresholds or MAX_HR changed
-    if (typeof updateSpeedometer === 'function' && typeof latestHR !== 'undefined') {
-        updateSpeedometer(latestHR);
-    }
+function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-load();
+function loadActivities() {
+    try {
+        const raw = localStorage.getItem(ACTIVITIES_KEY);
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed) && parsed.length > 0) activities = parsed;
+        }
+    } catch(e) {}
 
-// --- Inject UI after DOM is ready ---
+    if (activities.length === 0) {
+        const migratedSettings = {};
+        try {
+            const old = JSON.parse(localStorage.getItem('hrPacerSettings') || '{}');
+            for (const [k, v] of Object.entries(DEFAULTS))
+                migratedSettings[k] = (k in old) ? Number(old[k]) : v;
+        } catch(e) {
+            for (const [k, v] of Object.entries(DEFAULTS)) migratedSettings[k] = v;
+        }
+        activities = [{
+            id: 'default',
+            name: 'General Activity',
+            description: 'Default heart rate pacing protocol for general physical activity.',
+            settings: { ...migratedSettings }
+        }];
+        persistActivities();
+    }
+
+    const savedSel = localStorage.getItem(SELECTED_ACTIVITY_KEY);
+    selectedActivityId = (savedSel && activities.find(a => a.id === savedSel))
+        ? savedSel : activities[0].id;
+}
+
+function persistActivities() {
+    localStorage.setItem(ACTIVITIES_KEY, JSON.stringify(activities));
+}
+
+function persistSelectedActivity() {
+    localStorage.setItem(SELECTED_ACTIVITY_KEY, selectedActivityId);
+}
+
+function getSelectedActivity() {
+    return activities.find(a => a.id === selectedActivityId) || activities[0];
+}
+
+function loadActivitySettingsIntoGlobals(act) {
+    const a = act || getSelectedActivity();
+    for (const [k, v] of Object.entries(DEFAULTS))
+        window[k] = (a.settings && k in a.settings) ? Number(a.settings[k]) : v;
+}
+
+// ── Initialize synchronously ─────────────────────────────────────────────────
+loadActivities();
+loadActivitySettingsIntoGlobals();
+
+// ── Public API ───────────────────────────────────────────────────────────────
+window.activitiesAPI = {
+    getAll:   ()   => JSON.parse(JSON.stringify(activities)),
+    getById:  (id) => { const a = activities.find(x => x.id === id); return a ? JSON.parse(JSON.stringify(a)) : null; },
+    applySettings: (id) => {
+        const act = activities.find(a => a.id === id) || getSelectedActivity();
+        loadActivitySettingsIntoGlobals(act);
+    },
+    getSettingsSnapshot: () => {
+        const snap = {};
+        for (const k of Object.keys(DEFAULTS)) snap[k] = window[k];
+        return snap;
+    }
+};
+
+// ── Build Settings Panel ─────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
 
-    // Styles
     const style = document.createElement('style');
     style.textContent = `
         #settingsBtn {
-            position: fixed;
-            top: 10px; right: 12px;
-            z-index: 200;
-            background: transparent;
-            color: #888;
-            font-size: 26px;
-            padding: 2px 8px;
-            border-radius: 6px;
-            line-height: 1;
-            transition: color 0.2s;
+            position: fixed; top: 10px; right: 12px; z-index: 200;
+            background: transparent; color: #888; font-size: 26px;
+            padding: 2px 8px; border-radius: 6px; line-height: 1; transition: color 0.2s;
         }
         #settingsBtn:hover { color: white; }
-
         #settingsOverlay {
-            display: none;
-            position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,0.55);
-            z-index: 299;
+            display: none; position: fixed; inset: 0;
+            background: rgba(0,0,0,0.55); z-index: 299;
         }
         #settingsOverlay.open { display: block; }
-
         #settingsPanel {
-            position: fixed;
-            top: 0; right: 0;
-            width: min(300px, 88vw);
-            height: 100vh;
-            background: #111;
-            border-left: 1px solid #2a2a2a;
-            z-index: 300;
-            display: flex;
-            flex-direction: column;
-            transform: translateX(100%);
-            transition: transform 0.25s ease;
+            position: fixed; top: 0; right: 0;
+            width: min(320px, 92vw); height: 100vh;
+            background: #111; border-left: 1px solid #2a2a2a;
+            z-index: 300; display: flex; flex-direction: column;
+            transform: translateX(100%); transition: transform 0.25s ease;
         }
         #settingsPanel.open { transform: translateX(0); }
-
         #settingsPanelHeader {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 14px 16px;
-            border-bottom: 1px solid #2a2a2a;
-            flex-shrink: 0;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 14px 16px; border-bottom: 1px solid #2a2a2a; flex-shrink: 0;
         }
         #settingsPanelHeader span {
-            font-size: 11px;
-            font-weight: bold;
-            letter-spacing: 0.12em;
-            text-transform: uppercase;
-            color: #888;
+            font-size: 11px; font-weight: bold; letter-spacing: 0.12em;
+            text-transform: uppercase; color: #888;
         }
         #settingsCloseBtn {
-            background: transparent;
-            color: #666;
-            font-size: 26px;
-            line-height: 1;
-            padding: 0 4px;
-            transition: color 0.2s;
+            background: transparent; color: #666; font-size: 26px;
+            line-height: 1; padding: 0 4px; transition: color 0.2s; cursor: pointer; border: none;
         }
         #settingsCloseBtn:hover { color: white; }
+        #settingsPanelBody { overflow-y: auto; flex: 1; padding-bottom: 24px; }
 
-        #settingsPanelBody {
-            overflow-y: auto;
-            flex: 1;
-            padding-bottom: 24px;
+        /* Activity section */
+        #activitySection { padding: 14px 16px 14px; border-bottom: 1px solid #2a2a2a; }
+        #activitySectionTitle {
+            font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+            color: #4af; margin-bottom: 10px;
         }
+        #sgActivitySelect {
+            width: 100%; background: #1c1c1c; border: 1px solid #333;
+            border-radius: 6px; color: white; font-size: 14px; padding: 7px 8px;
+            margin-bottom: 8px; box-sizing: border-box;
+        }
+        #sgActivitySelect:focus { outline: none; border-color: #4af; }
+        #sgActivityDescDisplay {
+            font-size: 12px; color: #888; font-style: italic;
+            margin-bottom: 12px; line-height: 1.5; min-height: 16px;
+        }
+        .sg-act-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+        .sg-act-field label {
+            font-size: 10px; color: #555; letter-spacing: 0.08em; text-transform: uppercase;
+        }
+        .sg-act-input {
+            background: #1c1c1c; border: 1px solid #333; border-radius: 6px;
+            color: white; font-size: 14px; padding: 7px 9px; width: 100%; box-sizing: border-box;
+        }
+        .sg-act-input:focus { outline: none; border-color: #4af; }
+        #sgActivityDescEdit { resize: vertical; min-height: 58px; font-family: sans-serif; }
+        #activityActions { display: flex; gap: 8px; margin-top: 4px; }
+        #sgNewActivityBtn {
+            flex: 1; padding: 8px 6px; background: #1c2b1c; color: #28a745;
+            border: 1px solid #1f4020; border-radius: 6px; font-size: 12px; font-weight: 600;
+            cursor: pointer; transition: background 0.2s;
+        }
+        #sgNewActivityBtn:hover { background: #1f3a1f; }
+        #sgDeleteActivityBtn {
+            flex: 1; padding: 8px 6px; background: #2b1010; color: #dc3545;
+            border: 1px solid #4a1515; border-radius: 6px; font-size: 12px; font-weight: 600;
+            cursor: pointer; transition: background 0.2s;
+        }
+        #sgDeleteActivityBtn:hover { background: #3a1414; }
+        #sgDeleteActivityBtn:disabled { opacity: 0.3; cursor: default; }
 
+        /* Settings fields */
         .sg-group {
-            font-size: 10px;
-            letter-spacing: 0.14em;
-            text-transform: uppercase;
-            color: #4af;
-            padding: 18px 16px 6px;
+            font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+            color: #4af; padding: 18px 16px 6px;
         }
-        .sg-row {
-            display: flex;
-            flex-direction: column;
-            padding: 9px 16px;
-        }
-        .sg-top {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-        .sg-label {
-            font-size: 14px;
-            color: #ccc;
-        }
-        .sg-desc {
-            font-size: 11px;
-            color: #aaa;
-            margin-top: 5px;
-            line-height: 1.4;
-        }
-        .sg-desc a:link {
-            color: #fff; 
-        }
-        .sg-desc a: visited {
-            color: #ddd; 
-        }
-        .sg-left {
-            flex: 1;
-            padding-right: 12px;
-        }
-        .sg-right {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
+        .sg-row { display: flex; flex-direction: column; padding: 9px 16px; }
+        .sg-top { display: flex; align-items: center; justify-content: space-between; }
+        .sg-label { font-size: 14px; color: #ccc; }
+        .sg-desc { font-size: 11px; color: #aaa; margin-top: 5px; line-height: 1.4; }
+        .sg-desc a:link { color: #fff; }
+        .sg-desc a:visited { color: #ddd; }
+        .sg-left { flex: 1; padding-right: 12px; }
+        .sg-right { display: flex; align-items: center; gap: 6px; }
         .sg-input {
-            width: 62px;
-            background: #1c1c1c;
-            border: 1px solid #333;
-            border-radius: 6px;
-            color: white;
-            font-size: 15px;
-            font-family: monospace;
-            text-align: right;
-            padding: 5px 8px;
+            width: 62px; background: #1c1c1c; border: 1px solid #333;
+            border-radius: 6px; color: white; font-size: 15px;
+            font-family: monospace; text-align: right; padding: 5px 8px;
         }
         .sg-input:focus { outline: none; border-color: #4af; }
-        .sg-unit {
-            font-size: 11px;
-            color: #555;
-            width: 24px;
-        }
+        .sg-unit { font-size: 11px; color: #555; width: 24px; }
         #settingsResetBtn {
-            display: block;
-            margin: 20px 16px 0;
-            width: calc(100% - 32px);
-            padding: 10px;
-            background: #1a1a1a;
-            color: #666;
-            font-size: 13px;
-            border-radius: 8px;
-            border: 1px solid #2a2a2a;
+            display: block; margin: 20px 16px 0; width: calc(100% - 32px);
+            padding: 10px; background: #1a1a1a; color: #666; font-size: 13px;
+            border-radius: 8px; border: 1px solid #2a2a2a; cursor: pointer;
             transition: color 0.2s, border-color 0.2s;
         }
         #settingsResetBtn:hover { color: #ccc; border-color: #555; }
@@ -224,11 +245,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Hamburger button
     const btn = document.createElement('button');
-    btn.id = 'settingsBtn';
-    btn.innerHTML = '&#9776;';
+    btn.id = 'settingsBtn'; btn.innerHTML = '&#9776;';
     document.body.appendChild(btn);
 
-    // Backdrop
     const overlay = document.createElement('div');
     overlay.id = 'settingsOverlay';
     document.body.appendChild(overlay);
@@ -239,100 +258,195 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const header = document.createElement('div');
     header.id = 'settingsPanelHeader';
-    const title = document.createElement('span');
-    title.textContent = 'Settings';
+    const titleSpan = document.createElement('span');
+    titleSpan.textContent = 'Settings';
     const closeBtn = document.createElement('button');
-    closeBtn.id = 'settingsCloseBtn';
-    closeBtn.innerHTML = '&times;';
-    header.appendChild(title);
-    header.appendChild(closeBtn);
+    closeBtn.id = 'settingsCloseBtn'; closeBtn.innerHTML = '&times;';
+    header.appendChild(titleSpan); header.appendChild(closeBtn);
     panel.appendChild(header);
 
     const body = document.createElement('div');
     body.id = 'settingsPanelBody';
 
+    // Activity section
+    body.innerHTML = `
+        <div id="activitySection">
+            <div id="activitySectionTitle">Activity Type</div>
+            <select id="sgActivitySelect"></select>
+            <div id="sgActivityDescDisplay"></div>
+            <div class="sg-act-field">
+                <label>Name</label>
+                <input type="text" id="sgActivityName" class="sg-act-input" placeholder="Activity name">
+            </div>
+            <div class="sg-act-field">
+                <label>Description</label>
+                <textarea id="sgActivityDescEdit" class="sg-act-input" placeholder="Describe when to use this activity…" rows="3"></textarea>
+            </div>
+            <div id="activityActions">
+                <button id="sgNewActivityBtn">+ New Activity</button>
+                <button id="sgDeleteActivityBtn">🗑 Delete</button>
+            </div>
+        </div>
+    `;
+
+    // Settings fields
     for (const item of FIELDS) {
         if (item.group) {
             const g = document.createElement('div');
-            g.className = 'sg-group';
-            g.textContent = item.group;
+            g.className = 'sg-group'; g.textContent = item.group;
             body.appendChild(g);
         } else {
             const row = document.createElement('div');
             row.className = 'sg-row';
-
-            const top = document.createElement('div');
-            top.className = 'sg-top';
-
-            const lbl = document.createElement('div');
-            lbl.className = 'sg-label';
-            lbl.textContent = item.label;
-
-            const right = document.createElement('div');
-            right.className = 'sg-right';
-
+            const top = document.createElement('div'); top.className = 'sg-top';
+            const left = document.createElement('div'); left.className = 'sg-left';
+            const lbl = document.createElement('div'); lbl.className = 'sg-label'; lbl.textContent = item.label;
+            const desc = document.createElement('div'); desc.className = 'sg-desc'; desc.innerHTML = item.desc;
+            left.appendChild(lbl); left.appendChild(desc);
+            const right = document.createElement('div'); right.className = 'sg-right';
             const input = document.createElement('input');
-            input.type = 'number';
-            input.className = 'sg-input';
-            input.id = `sg_${item.key}`;
-            input.value = window[item.key];
-
-            const unit = document.createElement('span');
-            unit.className = 'sg-unit';
-            unit.textContent = item.unit;
-
-            right.appendChild(input);
-            right.appendChild(unit);
-            top.appendChild(lbl);
-            top.appendChild(right);
-
-            const desc = document.createElement('div');
-            desc.className = 'sg-desc';
-            desc.innerHTML = item.desc;
-            row.appendChild(top);
-            row.appendChild(desc);
-            body.appendChild(row);
-
-            input.addEventListener('change', () => {
-                const v = Number(input.value);
-                if (!isNaN(v)) { window[item.key] = v; save(); }
-            });
+            input.type = 'number'; input.className = 'sg-input'; input.id = `sg_${item.key}`;
+            const unit = document.createElement('span'); unit.className = 'sg-unit'; unit.textContent = item.unit;
+            right.appendChild(input); right.appendChild(unit);
+            top.appendChild(left); top.appendChild(right);
+            row.appendChild(top); body.appendChild(row);
         }
     }
 
     const resetBtn = document.createElement('button');
-    resetBtn.id = 'settingsResetBtn';
-    resetBtn.textContent = 'Reset to defaults';
+    resetBtn.id = 'settingsResetBtn'; resetBtn.textContent = 'Reset to defaults';
     body.appendChild(resetBtn);
-
     panel.appendChild(body);
     document.body.appendChild(panel);
 
-    // Open/close
-    function openPanel() {
+    // ── Activity UI wiring ────────────────────────────────────────────────────
+    const activitySelect    = document.getElementById('sgActivitySelect');
+    const activityDescDisp  = document.getElementById('sgActivityDescDisplay');
+    const activityNameInp   = document.getElementById('sgActivityName');
+    const activityDescEdit  = document.getElementById('sgActivityDescEdit');
+    const newActivityBtn    = document.getElementById('sgNewActivityBtn');
+    const deleteActivityBtn = document.getElementById('sgDeleteActivityBtn');
+
+    function rebuildActivityDropdown() {
+        activitySelect.innerHTML = activities.map(a =>
+            `<option value="${escHtml(a.id)}">${escHtml(a.name)}</option>`
+        ).join('');
+        activitySelect.value = selectedActivityId;
+        deleteActivityBtn.disabled = activities.length <= 1;
+    }
+
+    function loadActivityIntoPanel(act) {
+        activityNameInp.value  = act.name;
+        activityDescEdit.value = act.description || '';
+        activityDescDisp.textContent = act.description || '';
         for (const item of FIELDS) {
-            if (item.key) document.getElementById(`sg_${item.key}`).value = window[item.key];
+            if (!item.key) continue;
+            const el = document.getElementById(`sg_${item.key}`);
+            if (el) el.value = (act.settings && item.key in act.settings)
+                ? act.settings[item.key] : DEFAULTS[item.key];
         }
-        panel.classList.add('open');
-        overlay.classList.add('open');
+    }
+
+    function applyGlobalsIfNeeded() {
+        const sessionRunning = (typeof isSessionRunning !== 'undefined') && isSessionRunning;
+        const sameActivity   = (typeof currentActivityId !== 'undefined') && currentActivityId === selectedActivityId;
+        if (!sessionRunning || sameActivity) {
+            loadActivitySettingsIntoGlobals(getSelectedActivity());
+            if (typeof updateSpeedometer === 'function' && typeof latestHR !== 'undefined') {
+                updateSpeedometer(latestHR);
+            }
+        }
+    }
+
+    activitySelect.addEventListener('change', () => {
+        selectedActivityId = activitySelect.value;
+        persistSelectedActivity();
+        loadActivityIntoPanel(getSelectedActivity());
+        applyGlobalsIfNeeded();
+    });
+
+    activityNameInp.addEventListener('change', () => {
+        const act = getSelectedActivity();
+        const trimmed = activityNameInp.value.trim();
+        if (trimmed) { act.name = trimmed; persistActivities(); rebuildActivityDropdown(); }
+    });
+
+    activityDescEdit.addEventListener('input', () => {
+        const act = getSelectedActivity();
+        act.description = activityDescEdit.value;
+        activityDescDisp.textContent = act.description;
+        persistActivities();
+    });
+
+    newActivityBtn.addEventListener('click', () => {
+        const newAct = { id: generateId(), name: 'New Activity', description: '', settings: { ...DEFAULTS } };
+        activities.push(newAct);
+        persistActivities();
+        selectedActivityId = newAct.id;
+        persistSelectedActivity();
+        rebuildActivityDropdown();
+        loadActivityIntoPanel(newAct);
+        activityNameInp.focus(); activityNameInp.select();
+    });
+
+    deleteActivityBtn.addEventListener('click', () => {
+        if (activities.length <= 1) { alert('You need at least one activity type.'); return; }
+        const act = getSelectedActivity();
+        if (!confirm(`Delete activity "${act.name}"? This cannot be undone.`)) return;
+        activities = activities.filter(a => a.id !== selectedActivityId);
+        persistActivities();
+        selectedActivityId = activities[0].id;
+        persistSelectedActivity();
+        rebuildActivityDropdown();
+        loadActivityIntoPanel(getSelectedActivity());
+        applyGlobalsIfNeeded();
+    });
+
+    for (const item of FIELDS) {
+        if (!item.key) continue;
+        const input = document.getElementById(`sg_${item.key}`);
+        if (!input) continue;
+        input.addEventListener('change', () => {
+            const v = Number(input.value);
+            if (isNaN(v)) return;
+            const act = getSelectedActivity();
+            if (!act.settings) act.settings = {};
+            act.settings[item.key] = v;
+            persistActivities();
+            const sessionRunning = (typeof isSessionRunning !== 'undefined') && isSessionRunning;
+            const sameActivity   = (typeof currentActivityId !== 'undefined') && currentActivityId === selectedActivityId;
+            if (!sessionRunning || sameActivity) {
+                window[item.key] = v;
+                if (typeof updateSpeedometer === 'function' && typeof latestHR !== 'undefined') {
+                    updateSpeedometer(latestHR);
+                }
+            }
+        });
+    }
+
+    resetBtn.addEventListener('click', () => {
+        const act = getSelectedActivity();
+        act.settings = { ...DEFAULTS };
+        persistActivities();
+        loadActivityIntoPanel(act);
+        applyGlobalsIfNeeded();
+    });
+
+    function openPanel() {
+        rebuildActivityDropdown();
+        loadActivityIntoPanel(getSelectedActivity());
+        panel.classList.add('open'); overlay.classList.add('open');
     }
     function closePanel() {
-        panel.classList.remove('open');
-        overlay.classList.remove('open');
+        panel.classList.remove('open'); overlay.classList.remove('open');
     }
 
     btn.addEventListener('click', openPanel);
     closeBtn.addEventListener('click', closePanel);
     overlay.addEventListener('click', closePanel);
 
-    resetBtn.addEventListener('click', () => {
-        for (const [key, def] of Object.entries(DEFAULTS)) window[key] = def;
-        localStorage.removeItem(STORAGE_KEY);
-        for (const item of FIELDS) {
-            if (item.key) document.getElementById(`sg_${item.key}`).value = window[item.key];
-        }
-        save();
-    });
+    rebuildActivityDropdown();
+    loadActivityIntoPanel(getSelectedActivity());
 });
 
 })();
