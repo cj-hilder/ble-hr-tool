@@ -8,12 +8,15 @@ const SELECTED_ACTIVITY_KEY = 'hrPacerSelectedActivity';
 const EXPORT_VERSION = 1;
 
 // All localStorage keys we own — used for export/import
+const LAST_ACTIVITY_KEY = 'hrPacerLastActivity';
+
 const ALL_STORAGE_KEYS = [
     HISTORY_KEY,
     ACTIVITIES_KEY,
     SETTINGS_KEY,
     SESSION_KEY,
     SELECTED_ACTIVITY_KEY,
+    LAST_ACTIVITY_KEY,
 ];
 
 let allHistory   = [];
@@ -183,7 +186,8 @@ function validateImportData(data) {
 
     // Validate stored values. SELECTED_ACTIVITY_KEY is a plain string (not JSON),
     // so exclude it from the JSON parse check.
-    const JSON_KEYS = ALL_STORAGE_KEYS.filter(k => k !== SELECTED_ACTIVITY_KEY);
+    const PLAIN_STRING_KEYS = [SELECTED_ACTIVITY_KEY, LAST_ACTIVITY_KEY];
+    const JSON_KEYS = ALL_STORAGE_KEYS.filter(k => !PLAIN_STRING_KEYS.includes(k));
     for (const [key, val] of Object.entries(data.store)) {
         if (!ALL_STORAGE_KEYS.includes(key)) return `unexpected key "${key}" in store`;
         if (typeof val !== 'string')          return `store["${key}"] must be a string`;

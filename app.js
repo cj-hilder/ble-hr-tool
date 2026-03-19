@@ -96,8 +96,9 @@ const MAX_RECONNECT_ATTEMPTS = 10;
 let currentState = 'stopped';
 let sessionInterval, wakeLock = null, heartbeatTimeout;
 
-const SESSION_KEY = 'hrPacerSession';
-const HISTORY_KEY = 'hrPacerHistory';
+const SESSION_KEY       = 'hrPacerSession';
+const HISTORY_KEY       = 'hrPacerHistory';
+const LAST_ACTIVITY_KEY = 'hrPacerLastActivity';
 
 let sessionStartTime = 0, sessionSeconds = 0, stateSeconds = 0;
 let recoverySeconds = 0, totalActiveSeconds = 0, resetCount = 0;
@@ -275,16 +276,42 @@ function resetTimeout() {
 
 let audioCtx;
 function triggerNotification() {
-    if ('vibrate' in navigator) navigator.vibrate([300, 100, 300]);
+    const vibLevel  = (typeof ALERT_VIBRATION !== 'undefined') ? ALERT_VIBRATION : 1;
+    const soundLevel = (typeof ALERT_SOUND    !== 'undefined') ? ALERT_SOUND     : 1;
+
+    // Vibration
+    if ('vibrate' in navigator) {
+        if      (vibLevel === 1) navigator.vibrate([300, 100, 300]);
+        else if (vibLevel === 2) navigator.vibrate([150, 60, 150, 60, 150, 60, 400]);
+    }
+
+    // Sound
+    if (soundLevel === 0) return;
     try {
         if (!audioCtx) { const AC = window.AudioContext || window.webkitAudioContext; audioCtx = new AC(); }
         if (audioCtx.state === 'suspended') audioCtx.resume();
-        const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
-        osc.type = 'sine'; osc.frequency.setValueAtTime(500, audioCtx.currentTime);
-        gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
-        osc.connect(gain); gain.connect(audioCtx.destination);
-        osc.start(); osc.stop(audioCtx.currentTime + 0.5);
+
+        if (soundLevel === 1) {
+            // Subtle: single soft sine tone
+            const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+            osc.type = 'sine'; osc.frequency.setValueAtTime(500, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.5);
+        } else if (soundLevel === 2) {
+            // Intense: two sharp high-pitched beeps at full volume
+            [0, 0.22].forEach(offset => {
+                const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(1100, audioCtx.currentTime + offset);
+                gain.gain.setValueAtTime(1.0, audioCtx.currentTime + offset);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + offset + 0.18);
+                osc.connect(gain); gain.connect(audioCtx.destination);
+                osc.start(audioCtx.currentTime + offset);
+                osc.stop(audioCtx.currentTime + offset + 0.18);
+            });
+        }
     } catch (e) { console.log('Audio notification failed:', e); }
 }
 
@@ -512,6 +539,7 @@ function saveSessionToHistory(summary, notes) {
         const history = raw ? JSON.parse(raw) : [];
         history.push({ ...summary, notes });
         localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+        if (summary.activityId) localStorage.setItem(LAST_ACTIVITY_KEY, summary.activityId);
     } catch (e) { console.error('Failed to save session history', e); }
 }
 
@@ -547,8 +575,11 @@ function showActivitySelectModal() {
         `<option value="${a.id}">${a.name}</option>`
     ).join('');
 
-    // Pre-select the last used activity if it still exists
-    if (currentActivityId && acts.find(a => a.id === currentActivityId)) {
+    // Pre-select: prefer last-used activity (from previous session), fall back to current
+    const lastActId = localStorage.getItem(LAST_ACTIVITY_KEY);
+    if (lastActId && acts.find(a => a.id === lastActId)) {
+        select.value = lastActId;
+    } else if (currentActivityId && acts.find(a => a.id === currentActivityId)) {
         select.value = currentActivityId;
     }
 

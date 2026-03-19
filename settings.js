@@ -16,7 +16,15 @@ const DEFAULTS = {
     MAX_RECOVERY_PERIOD:    240,
     MAX_RESPONSE_LAG:       60,
     NUM_RESETS_B4_WARN:     3,
+    ALERT_VIBRATION:        1,   // 0=off, 1=subtle, 2=intense
+    ALERT_SOUND:            1,   // 0=off, 1=subtle, 2=intense
 };
+
+const ALERT_OPTIONS = [
+    { value: 0, label: 'Off'     },
+    { value: 1, label: 'Subtle'  },
+    { value: 2, label: 'Intense' },
+];
 
 const FIELDS = [
     { group: 'Heart Rate Range' },
@@ -46,6 +54,11 @@ const FIELDS = [
       desc: 'Lower edge of the target zone shown on the speedometer. Purely a guide.' },
     { key: 'TARGET_MAX_HR', label: 'Target max', unit: 'bpm',
       desc: 'Upper edge of the target zone.' },
+    { group: 'Alerts' },
+    { key: 'ALERT_VIBRATION', label: 'Vibration', type: 'select', options: ALERT_OPTIONS,
+      desc: 'Subtle: two short pulses. Intense: rapid triple burst — designed to cut through background noise.' },
+    { key: 'ALERT_SOUND', label: 'Sound', type: 'select', options: ALERT_OPTIONS,
+      desc: 'Subtle: single soft tone. Intense: two sharp high-pitched beeps at higher volume.' },
 ];
 
 const ACTIVITIES_KEY        = 'hrPacerActivities';
@@ -233,6 +246,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         .sg-input:focus { outline: none; border-color: #4af; }
         .sg-unit { font-size: 11px; color: #555; width: 24px; }
+        .sg-select {
+            background: #1c1c1c; border: 1px solid #333; border-radius: 6px;
+            color: white; font-size: 14px; padding: 5px 6px;
+        }
+        .sg-select:focus { outline: none; border-color: #4af; }
         #settingsResetBtn {
             display: block; margin: 20px 16px 0; width: calc(100% - 32px);
             padding: 10px; background: #1a1a1a; color: #666; font-size: 13px;
@@ -304,10 +322,21 @@ document.addEventListener('DOMContentLoaded', () => {
             const desc = document.createElement('div'); desc.className = 'sg-desc'; desc.innerHTML = item.desc;
             left.appendChild(lbl); left.appendChild(desc);
             const right = document.createElement('div'); right.className = 'sg-right';
-            const input = document.createElement('input');
-            input.type = 'number'; input.className = 'sg-input'; input.id = `sg_${item.key}`;
-            const unit = document.createElement('span'); unit.className = 'sg-unit'; unit.textContent = item.unit;
-            right.appendChild(input); right.appendChild(unit);
+            if (item.type === 'select') {
+                const sel = document.createElement('select');
+                sel.className = 'sg-select'; sel.id = `sg_${item.key}`;
+                (item.options || []).forEach(opt => {
+                    const o = document.createElement('option');
+                    o.value = opt.value; o.textContent = opt.label;
+                    sel.appendChild(o);
+                });
+                right.appendChild(sel);
+            } else {
+                const input = document.createElement('input');
+                input.type = 'number'; input.className = 'sg-input'; input.id = `sg_${item.key}`;
+                const unit = document.createElement('span'); unit.className = 'sg-unit'; unit.textContent = item.unit;
+                right.appendChild(input); right.appendChild(unit);
+            }
             top.appendChild(left); top.appendChild(right);
             row.appendChild(top); body.appendChild(row);
         }
@@ -342,8 +371,10 @@ document.addEventListener('DOMContentLoaded', () => {
         for (const item of FIELDS) {
             if (!item.key) continue;
             const el = document.getElementById(`sg_${item.key}`);
-            if (el) el.value = (act.settings && item.key in act.settings)
+            if (!el) continue;
+            const val = (act.settings && item.key in act.settings)
                 ? act.settings[item.key] : DEFAULTS[item.key];
+            el.value = String(val); // works for both number inputs and selects
         }
     }
 
@@ -404,10 +435,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     for (const item of FIELDS) {
         if (!item.key) continue;
-        const input = document.getElementById(`sg_${item.key}`);
-        if (!input) continue;
-        input.addEventListener('change', () => {
-            const v = Number(input.value);
+        const el = document.getElementById(`sg_${item.key}`);
+        if (!el) continue;
+        el.addEventListener('change', () => {
+            const v = Number(el.value);
             if (isNaN(v)) return;
             const act = getSelectedActivity();
             if (!act.settings) act.settings = {};
