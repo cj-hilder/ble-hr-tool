@@ -111,7 +111,8 @@ let currentActivityName = null;
 // ─── Period Tracking ──────────────────────────────────────────────────────────
 let activePeriods   = [];
 let recoveryPeriods = [];
-let currentPeriodType  = null;
+let currentPeriodType  = null;  // 'active' | 'recovery' | null
+const MIN_PERIOD_SEC = 5;  // periods shorter than this are excluded from all calculations
 let currentPeriodStart = 0;
 let currentPeriodHrSamples = [];
 let sessionHrSamples = [];
@@ -144,20 +145,21 @@ function arrAvg(arr) {
 function openActivePeriod() {
     currentPeriodType = 'active'; currentPeriodStart = sessionSeconds; currentPeriodHrSamples = [];
 }
-function closeActivePeriod() {
+function closeActivePeriod(isTerminal = false) {
     if (currentPeriodType !== 'active') return;
     activePeriods.push({ startSec: currentPeriodStart, endSec: sessionSeconds,
-        duration: Math.max(0, sessionSeconds - currentPeriodStart), avgHr: arrAvg(currentPeriodHrSamples) });
+        duration: Math.max(0, sessionSeconds - currentPeriodStart), avgHr: arrAvg(currentPeriodHrSamples),
+        terminal: isTerminal });
     currentPeriodType = null; currentPeriodHrSamples = [];
 }
 function openRecoveryPeriod() {
     currentPeriodType = 'recovery'; currentPeriodStart = sessionSeconds; currentPeriodHrSamples = [];
 }
-function closeRecoveryPeriod() {
+function closeRecoveryPeriod(isTerminal = false) {
     if (currentPeriodType !== 'recovery') return;
     recoveryPeriods.push({ startSec: currentPeriodStart, endSec: sessionSeconds,
         duration: Math.max(0, sessionSeconds - currentPeriodStart), avgHr: arrAvg(currentPeriodHrSamples),
-        maxHr: maxHrInRest, lagSec: timeOfMaxHrInRest });
+        maxHr: maxHrInRest, lagSec: timeOfMaxHrInRest, terminal: isTerminal });
     currentPeriodType = null; currentPeriodHrSamples = [];
 }
 
@@ -417,29 +419,44 @@ function handleHeartRate(event) {
 
 // ─── Session summary ──────────────────────────────────────────────────────────
 function computeSessionSummary() {
-    const aDur = activePeriods.map(p => p.duration);
-    const aHr  = activePeriods.map(p => p.avgHr).filter(v => v > 0);
-    const rDur = recoveryPeriods.map(p => p.duration);
-    const rHr  = recoveryPeriods.map(p => p.avgHr).filter(v => v > 0);
-    const valid = recoveryPeriods.filter(p => p.maxHr > 0);
-    const lags  = valid.map(p => p.lagSec);
-    const peaks = valid.map(p => p.maxHr);
-    const totalRecoverySec = rDur.reduce((a, b) => a + b, 0);
+    // Rule 1: periods < MIN_PERIOD_SEC are excluded from everything (as if they didn't exist).
+    // Rule 2: the terminal period (state active when session was ended) contributes to total
+    //         time only — it is excluded from count, length, HR, lag, and peak calculations.
+
+    const allActive   = activePeriods.filter(p => p.duration >= MIN_PERIOD_SEC);
+    const allRecovery = recoveryPeriods.filter(p => p.duration >= MIN_PERIOD_SEC);
+
+    // Totals include the terminal period (if it met the minimum duration).
+    const totalActiveSec   = allActive.reduce((s, p) => s + p.duration, 0);
+    const totalRecoverySec = allRecovery.reduce((s, p) => s + p.duration, 0);
+
+    // Stats arrays exclude the terminal period.
+    const statsActive   = allActive.filter(p => !p.terminal);
+    const statsRecovery = allRecovery.filter(p => !p.terminal);
+
+    const aDur = statsActive.map(p => p.duration);
+    const aHr  = statsActive.map(p => p.avgHr).filter(v => v > 0);
+    const rDur = statsRecovery.map(p => p.duration);
+    const rHr  = statsRecovery.map(p => p.avgHr).filter(v => v > 0);
+    const validR = statsRecovery.filter(p => p.maxHr > 0);
+    const lags   = validR.map(p => p.lagSec);
+    const peaks  = validR.map(p => p.maxHr);
+
     return {
         date: new Date().toISOString(),
         activityName: currentActivityName || '',
         activityId:   currentActivityId   || '',
         activitySettings: window.activitiesAPI ? window.activitiesAPI.getSettingsSnapshot() : {},
-        totalActiveSec: totalActiveSeconds,
-        pctActive: sessionSeconds > 0 ? Math.round(totalActiveSeconds / sessionSeconds * 100) : 0,
-        numActivePeriods: activePeriods.length,
+        totalActiveSec,
+        pctActive: sessionSeconds > 0 ? Math.round(totalActiveSec / sessionSeconds * 100) : 0,
+        numActivePeriods: statsActive.length,
         longestActiveSec:  aDur.length ? Math.max(...aDur) : 0,
         avgActiveSec:      aDur.length ? Math.round(arrAvg(aDur)) : 0,
         shortestActiveSec: aDur.length ? Math.min(...aDur) : 0,
         avgHrActive: aHr.length ? arrAvg(aHr) : 0,
         totalRecoverySec,
         pctRecovery: sessionSeconds > 0 ? Math.round(totalRecoverySec / sessionSeconds * 100) : 0,
-        numRecoveryPeriods: recoveryPeriods.length,
+        numRecoveryPeriods: statsRecovery.length,
         longestRecoverySec:  rDur.length ? Math.max(...rDur) : 0,
         avgRecoverySec:      rDur.length ? Math.round(arrAvg(rDur)) : 0,
         shortestRecoverySec: rDur.length ? Math.min(...rDur) : 0,
@@ -499,8 +516,8 @@ function saveSessionToHistory(summary, notes) {
 }
 
 function finishSession() {
-    if (currentPeriodType === 'active') closeActivePeriod();
-    else if (currentPeriodType === 'recovery') closeRecoveryPeriod();
+    if (currentPeriodType === 'active') closeActivePeriod(true);
+    else if (currentPeriodType === 'recovery') closeRecoveryPeriod(true);
     clearInterval(sessionInterval);
     isSessionRunning = false;
     pendingSummary = computeSessionSummary();
@@ -568,7 +585,7 @@ function handleDisconnect() {
     clearTimeout(heartbeatTimeout);
     if (isSessionRunning && !isReconnecting) startReconnect();
     else if (!isSessionRunning) {
-        log('❌ Disconnected from device.', true);
+        log('❌ Disconnected from device. Refresh the page to reconnect.', true);
         document.body.classList.remove('connected');
         if (wakeLock !== null) wakeLock.release().then(() => { wakeLock = null; });
     }
