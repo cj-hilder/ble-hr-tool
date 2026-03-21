@@ -1,4 +1,8 @@
-body { font-family: sans-serif; text-align: center; margin: 0; background-color: white; transition: background-color 0.3s; overscroll-behavior-y: none; }
+body { font-family: sans-serif; text-align: center; margin: 0; background-color: white; transition: background-color 0.3s; overscroll-behavior-y: none;
+-webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation; /* disables double-tap zoom */
+} 
 button { cursor: pointer; border: none; font-weight: bold; }
 
 #setupUI { margin-top: 50px; }
