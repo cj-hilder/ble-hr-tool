@@ -116,7 +116,7 @@ The key parameters and their purpose:
 
 **Active thresholds**
 - *Upper threshold* — The ceiling for the Active state. If unsure, resting HR + 15 is a conservative starting point.
-- *Lower threshold* — HR must fall below this to exit 'Rest or pull back' to Active. Usually set just below the upper threshold.
+- *Lower threshold* — HR must fall below this to transition from 'Rest or pull back' to 'Active'. Usually set just below the upper threshold.
 
 **Recovery limits**
 - *Max recovery period* — The total time allowed in 'Rest or pull back' before a forced heart rate Reset.
