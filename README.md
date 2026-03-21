@@ -15,10 +15,10 @@ Most commercial exercise apps and smart watches are built for healthy individual
 Patients with dysautonomia have a fundamentally different experience. The autonomic nervous system (ANS) loses its normal gain control, producing three characteristic patterns:
 
 - **HR rises faster and higher than the exertion warrants**
-- **HR recovery is delayed and is slower than normal ** — heart rate continues to go up for a time after stopping exertion, and then comes down slowly.
-- **HR sometimes overshoots on the way down** — heart rate  drops below normal resting HR before stabilising.
+- **HR recovery is delayed and is slower than normal** Heart rate continues to go up for a time after stopping exertion, and then comes down slowly.
+- **HR overshoots on the way down** Heart rate drops below normal resting HR before stabilising.
 
-Standard apps have no way to detect or respond to any of these patterns. This app is built specifically around them.
+Standard apps have no way to display or respond to any of these patterns. This app is built specifically to help visualise and respond to them.
 
 ---
 
@@ -27,7 +27,7 @@ Standard apps have no way to detect or respond to any of these patterns. This ap
 The app is based on three principles:
 
 1. **Staying as active as possible is essential.** Complete rest leads to deconditioning that worsens the situation. 
-2. **A dysregulated ANS means HR will sometimes go too high or too low for the level of exertion.** This cannot always be prevented through careful pacing. The goal is to respond correctly *when it happens*, not to predict and avoid it perfectly.
+2. **A dysregulated ANS means HR will sometimes go too high or too low for the level of exertion.** This cannot always be prevented through careful pacing. The goal is to respond *when it happens*, not to predict and avoid it.
 3. **When HR goes outside the range appropriate for the current level of exertion, stop all activity until it returns.** Only exercise when the heart is in range.
 
 The app implements this by monitoring your live heart rate via a Bluetooth HR monitor and alerting you — with sound and vibration — when your heart rate crosses into or out of threshold zones, allowing you to follow strict pacing without having to watch the screen continuously.
@@ -40,7 +40,7 @@ How you should use the app depends on where you are in your recovery. The two co
 
 ### If you have PEM or chronic fatigue
 
-Your active threshold is a **ceiling, not a target**. The goal is consistent compliance with the limit, not progression. Do not raise the threshold because you feel ready for more — in the presence of PEM risk, that instinct should be resisted.
+Your active threshold is a **ceiling, not a target**. The goal is consistent compliance with the limit, not progression. Do not raise the threshold because you feel ready for more. In the presence of PEM risk, that instinct should be resisted.
 
 **Setting the threshold: the Workwell Foundation protocol**
 
@@ -48,25 +48,21 @@ The standard for determining your safe HR ceiling is a two-day Cardiopulmonary E
 
 Clinical assessment is always preferable. The RHR + 15 rule is a conservative, accessible alternative that errs on the side of safety rather than maximising your activity.
 
-Success looks like: gradually shorter recovery periods, fewer resets, and more time in the active state — all at a *fixed* threshold. The session history graphs are there to show improving ANS regulation quality at your current limit. That stabilisation is the prerequisite for eventually considering progression, not a signal to push immediately.
+Success will appear as gradually shorter recovery periods, fewer resets, and more time in the active state — all at a *fixed* threshold. The session history graphs are there to show improving ANS regulation quality at your current limit. That stabilisation is the prerequisite for eventually considering progression, not a signal to push immediately.
 
 ### If you do not have PEM or chronic fatigue
 
-Your active threshold is a **progressive rehabilitation target**. The goal is to raise it carefully over time as the ANS demonstrates it can handle the current level.
+Your active threshold is a **progressive target**. The goal is to raise it carefully over time as the ANS demonstrates it can handle the current level.
 
 **The Buffalo Protocol — and why it needs adaptation**
 
 The standard clinical approach for post-concussion autonomic rehabilitation is the [Buffalo Concussion Treadmill Test (BCTT)](https://pubmed.ncbi.nlm.nih.gov/24225521/), developed by Drs Leddy and Willer at the University at Buffalo. It identifies your individual symptom threshold through a graded treadmill test, then prescribes exercise at 80–90% of that threshold. This is a well-validated, evidence-based approach when the ANS is sufficiently stable to make the threshold meaningful.
 
-The difficulty with dysautonomia-related HR instability is that the BCTT presupposes a reasonably stable and predictable HR response to exertion. When the heart is poorly regulated it is difficult to either establish or stick to an appropriate threshold. 
+The difficulty with dysautonomia-related HR instability is that the BCTT presupposes a reasonably stable and predictable HR response to exertion. When the heart is poorly regulated it is difficult to either establish or exercise within an appropriate threshold. 
 
 A practical alternative is to **start with the Workwell RHR + 15 approach as an initial ceiling**, and progressively raise the threshold as HR regulation and symptoms improve. The session history graphs provide the evidence to guide those adjustments: sustained reductions in recovery lag times and reset frequency at a stable threshold are reasonable indicators that a modest upward increment is warranted. Raise the threshold incrementally and monitor the response over several sessions before raising it again.
 
 This approach uses the same logic as the Buffalo Protocol, sub-symptom threshold exercise to drive autonomic recovery, but replaces the clinical measurement with a conservative starting point and a methodology for ongoing progression.
-
-### Transitioning between contexts
-
-The distinction is not always fixed. Some people transition from the first context to the second as they recover. The history graphs are intended to help detecting that transition: if lag times and reset counts show consistent improvement over weeks at a stable threshold, this may indicate that PEM risk has receded enough to consider cautious progression. This transition should ideally be discussed with your healthcare provider.
 
 ---
 
@@ -78,7 +74,7 @@ The app operates in four states.
 
 Your heart rate is within your physiological exercise zone — above the bradycardia threshold and below your active threshold. The app tracks total activity time to help you budget the amount of daily exertion.
 
-If your heart rate drops *below* the bradycardia threshold during activity, the app forces a heart rate Reset. This catches the HR overshoot pattern — an unusually low reading during exertion can indicate that the ANS has already lost control in the downward direction.
+If your heart rate drops *below* the bradycardia threshold during activity, the app forces a heart rate Reset. This catches the HR overshoot pattern — an unusually low reading during exertion can indicate that the ANS has already lost control.
 
 ### 🟠 Rest or pull back
 
@@ -120,11 +116,11 @@ The key parameters and their purpose:
 
 **Active thresholds**
 - *Upper threshold* — The ceiling for the Active state. If unsure, resting HR + 15 is a conservative starting point.
-- *Lower threshold* — HR must fall below this to exit Rest or pull back to Active. Usually set just below the upper threshold.
+- *Lower threshold* — HR must fall below this to exit 'Rest or pull back' to Active. Usually set just below the upper threshold.
 
 **Recovery limits**
-- *Max recovery period* — The total time allowed in Rest or pull back before a forced heart rate Reset.
-- *Max response lag* — How long HR is allowed to keep rising after entering Rest or pull back before a heart rate Reset is forced. This specifically targets the delayed-recovery pattern.
+- *Max recovery period* — The total time allowed in 'Rest or pull back' before a forced heart rate Reset.
+- *Max response lag* — How long HR is allowed to keep rising after entering 'Rest or pull back' before a heart rate Reset is forced. This specifically targets the delayed-recovery pattern.
 - *Resets before warning* — How many heart rate Resets trigger the end-session advisory.
 
 **Target zone**
