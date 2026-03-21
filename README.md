@@ -14,9 +14,9 @@ Most commercial exercise apps and smart watches are built for healthy individual
 
 Patients with dysautonomia have a fundamentally different experience. The autonomic nervous system (ANS) loses its normal gain control, producing three characteristic patterns:
 
-- **HR rises faster and higher than the exertion warrants**
-- **HR recovery is delayed and is slower than normal** Heart rate continues to go up for a time after stopping exertion, and then comes down slowly.
-- **HR overshoots on the way down** Heart rate drops below normal resting HR before stabilising.
+- **HR rises faster and higher than the exertion warrants.**
+- **HR recovery is delayed and is slower than normal.** Heart rate continues to go up for a time after stopping exertion, and then comes down slowly.
+- **HR overshoots on the way down.** Heart rate drops below normal resting HR before stabilising.
 
 Standard apps have no way to display or respond to any of these patterns. This app is built specifically to help visualise and respond to them.
 
