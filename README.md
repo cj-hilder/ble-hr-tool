@@ -28,7 +28,7 @@ The app is based on three principles:
 
 1. **Staying as active as possible is essential.** Complete rest leads to deconditioning that worsens the situation. 
 2. **A dysregulated ANS means HR will sometimes go too high or too low for the level of exertion.** This cannot always be prevented through careful pacing. The goal is to make it visible and to allow you to respond when it happens.
-3. **Only exercise when the heart rate is appropriate to the level of exertion.** When HR goes outside the appropriate range, stop activity until it returns.** 
+3. **Only exercise when the heart rate is appropriate to the level of exertion.** When HR goes outside the appropriate range, stop activity until it returns.
 
 The app implements this by monitoring your live heart rate via a Bluetooth HR monitor and alerting you — with sound and vibration — when your heart rate crosses into or out of threshold zones, allowing you to follow strict pacing without having to watch the screen continuously.
 
