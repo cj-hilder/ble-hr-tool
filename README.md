@@ -12,7 +12,7 @@ This app was built by a software developer managing their own post-concussion dy
 
 Most commercial exercise apps and smart watches are built for healthy individuals with well-regulated autonomic nervous systems. They assume your heart rate will rise predictably when you exert yourself and drop predictably when you stop.
 
-Patients with dysautonomia have a fundamentally different experience. The autonomic nervous system (ANS) loses its normal gain control, producing three characteristic patterns:
+Patients with dysautonomia have a different experience. The autonomic nervous system (ANS) loses its normal control, producing three characteristic patterns:
 
 - **HR rises faster and higher than the exertion warrants.**
 - **HR recovery is delayed and is slower than normal.** Heart rate continues to go up for a time after stopping exertion, and then comes down slowly.
@@ -27,8 +27,8 @@ Standard apps have no way to display or respond to any of these patterns. This a
 The app is based on three principles:
 
 1. **Staying as active as possible is essential.** Complete rest leads to deconditioning that worsens the situation. 
-2. **A dysregulated ANS means HR will sometimes go too high or too low for the level of exertion.** This cannot always be prevented through careful pacing. The goal is to respond *when it happens*, not to predict and avoid it.
-3. **When HR goes outside the range appropriate for the current level of exertion, stop all activity until it returns.** Only exercise when the heart is in range.
+2. **A dysregulated ANS means HR will sometimes go too high or too low for the level of exertion.** This cannot always be prevented through careful pacing. The goal is to make it visible and to allow you to respond when it happens.
+3. **Only exercise when the heart rate is appropriate to the level of exertion.** When HR goes outside the appropriate range, stop activity until it returns.** 
 
 The app implements this by monitoring your live heart rate via a Bluetooth HR monitor and alerting you — with sound and vibration — when your heart rate crosses into or out of threshold zones, allowing you to follow strict pacing without having to watch the screen continuously.
 
@@ -40,7 +40,7 @@ How you should use the app depends on where you are in your recovery. The two co
 
 ### If you have PEM or chronic fatigue
 
-Your active threshold is a **ceiling, not a target**. The goal is consistent compliance with the limit, not progression. Do not raise the threshold because you feel ready for more. In the presence of PEM risk, that instinct should be resisted.
+Your active threshold is a **ceiling, not a target**. The goal is consistent compliance with the limit, not progression. Do not raise the threshold because you feel ready for more.
 
 **Setting the threshold: the Workwell Foundation protocol**
 
@@ -48,7 +48,7 @@ The standard for determining your safe HR ceiling is a two-day Cardiopulmonary E
 
 Clinical assessment is always preferable. The RHR + 15 rule is a conservative, accessible alternative that errs on the side of safety rather than maximising your activity.
 
-Success will appear as gradually shorter recovery periods, fewer resets, and more time in the active state — all at a *fixed* threshold. The session history graphs are there to show improving ANS regulation quality at your current limit. That stabilisation is the prerequisite for eventually considering progression, not a signal to push immediately.
+Success will appear as gradually shorter lag and recovery periods, fewer resets, and more time in the active state — all at a *fixed* threshold.
 
 ### If you do not have PEM or chronic fatigue
 
@@ -58,9 +58,9 @@ Your active threshold is a **progressive target**. The goal is to raise it caref
 
 The standard clinical approach for post-concussion autonomic rehabilitation is the [Buffalo Concussion Treadmill Test (BCTT)](https://pubmed.ncbi.nlm.nih.gov/24225521/), developed by Drs Leddy and Willer at the University at Buffalo. It identifies your individual symptom threshold through a graded treadmill test, then prescribes exercise at 80–90% of that threshold. This is a well-validated, evidence-based approach when the ANS is sufficiently stable to make the threshold meaningful.
 
-The difficulty with dysautonomia-related HR instability is that the BCTT presupposes a reasonably stable and predictable HR response to exertion. When the heart is poorly regulated it is difficult to either establish or exercise within an appropriate threshold. 
+The difficulty with dysautonomia-related HR instability is that the BCTT presupposes a reasonably stable and predictable HR response to exertion. When the heart is poorly regulated it is difficult to either establish, or exercise within, an appropriate threshold. 
 
-A practical alternative is to **start with the Workwell RHR + 15 approach as an initial ceiling**, and progressively raise the threshold as HR regulation and symptoms improve. The session history graphs provide the evidence to guide those adjustments: sustained reductions in recovery lag times and reset frequency at a stable threshold are reasonable indicators that a modest upward increment is warranted. Raise the threshold incrementally and monitor the response over several sessions before raising it again.
+A practical alternative is to **start with the Workwell RHR + 15 approach as an initial ceiling**, and progressively raise the threshold as HR regulation and symptoms improve. HR regulation improvement will appear as shorter lag and recovery periods, fewer resets, and more time in the active state. Raise the threshold incrementally and monitor the response watching both HR regulation and symptoms.
 
 This approach uses the same logic as the Buffalo Protocol, sub-symptom threshold exercise to drive autonomic recovery, but replaces the clinical measurement with a conservative starting point and a methodology for ongoing progression.
 
@@ -108,7 +108,7 @@ You must adjust the settings to suit your personal situation. Changes take effec
 The key parameters and their purpose:
 
 **Heart rate range**
-- *Max HR* — Used to scale the speedometer and history graph. Use a calculator based on your age and condition; in dysautonomia, formula-derived estimates are generally more meaningful than a measured maximum. (This is not used in any calculations so it is not critical that it is your correct maximum HR.)
+- *Max HR* — Used to scale the speedometer and history graph. Use a calculator based on your age and sex (in dysautonomia, formula-derived estimates are generally more meaningful than a measured maximum). This is not used in any state transitions so it is not critical that it is your *correct* maximum HR.
 - *Bradycardia threshold* — HR below this during activity triggers a heart rate Reset. Set it to a level that represents a clearly abnormal low for your resting state.
 
 **Resting HR**
