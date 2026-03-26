@@ -19,8 +19,11 @@ const DEFAULTS = {
     ALERT_VIBRATION:        1,   // 0=off, 1=subtle, 2=intense
     ALERT_SOUND:            1,   // 0=off, 1=subtle, 2=intense
     RFB_ENABLED:            0,   // 0=off, 1=on
-    RFB_FREQUENCY:          6.0, // breaths per minute
-    RFB_DURATION:           2.0, // minutes
+    RFB_INHALE_SEC:         5.0, // inhale duration in seconds
+    RFB_EXHALE_SEC:         5.0, // exhale duration in seconds (sum gives breath period)
+    RFB_DURATION:           2.0, // minutes to spend in RFB after resting HR achieved
+    RFB_SOUND:              1,   // 0=off, 1=on
+    RFB_VIBRATION:          1,   // 0=off, 1=on
 };
 
 const ALERT_OPTIONS = [
@@ -65,10 +68,18 @@ const FIELDS = [
     { group: 'Resonance Frequency Breathing' },
     { key: 'RFB_ENABLED', label: 'Enable RFB', type: 'toggle',
       desc: 'During the reset state the status dot turns blue and pulses as a breath pacer. A sine-wave overlay on the graph shows the expected HR coherence pattern.' },
-    { key: 'RFB_FREQUENCY', label: 'Breathing rate', unit: 'bpm',
-      desc: 'Target breaths per minute. 6.0 is the classic resonance frequency for most adults. Adjust between 4.5–7 to find your personal resonance frequency.' },
+    { key: 'RFB_INHALE_SEC', label: 'Inhale', unit: 's',
+      desc: 'Duration of each inhale in seconds. Longer inhales increase parasympathetic activation.' },
+    { key: 'RFB_EXHALE_SEC', label: 'Exhale', unit: 's',
+      desc: 'Duration of each exhale in seconds. Longer exhales increase vagal tone.' },
+    { type: 'display', id: 'rfbRateDisplay', label: 'Breathing rate',
+      desc: 'Calculated from inhale + exhale. 6.0 bpm is the classic adult resonance frequency.' },
     { key: 'RFB_DURATION', label: 'RFB duration', unit: 'min',
-      desc: 'Extra minutes to spend in resonance breathing after heart rate returns to resting, before the app transitions back to "Continue activity".' },
+      desc: 'Extra minutes to spend in resonance breathing after heart rate returns to resting.' },
+    { key: 'RFB_SOUND', label: 'Inhale sound guide', type: 'toggle',
+      desc: 'Rising filtered noise during each inhale — starts low and brightens, helping you pace the breath without watching the screen.' },
+    { key: 'RFB_VIBRATION', label: 'Inhale vibration guide', type: 'toggle',
+      desc: 'An initial pulse, followed by buzzing that accelerates through the inhale, then a closing pulse.' },
 ];
 
 const ACTIVITIES_KEY        = 'hrPacerActivities';
@@ -274,6 +285,10 @@ document.addEventListener('DOMContentLoaded', () => {
             border-radius: 50%; background: white; transition: left 0.2s;
         }
         input.sg-toggle:checked::after { left: 23px; }
+        .sg-computed {
+            font-family: monospace; font-size: 15px;
+            color: #4af; padding: 5px 8px;
+        }
         #settingsResetBtn {
             display: block; margin: 20px 16px 0; width: calc(100% - 32px);
             padding: 10px; background: #1a1a1a; color: #666; font-size: 13px;
@@ -345,7 +360,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const desc = document.createElement('div'); desc.className = 'sg-desc'; desc.innerHTML = item.desc;
             left.appendChild(lbl); left.appendChild(desc);
             const right = document.createElement('div'); right.className = 'sg-right';
-            if (item.type === 'select') {
+            if (item.type === 'display') {
+                const span = document.createElement('span');
+                span.className = 'sg-computed'; span.id = item.id;
+                right.appendChild(span);
+            } else if (item.type === 'select') {
                 const sel = document.createElement('select');
                 sel.className = 'sg-select'; sel.id = `sg_${item.key}`;
                 (item.options || []).forEach(opt => {
@@ -391,6 +410,16 @@ document.addEventListener('DOMContentLoaded', () => {
         deleteActivityBtn.disabled = activities.length <= 1;
     }
 
+    function updateRfbRateDisplay() {
+        const el = document.getElementById('rfbRateDisplay');
+        if (!el) return;
+        const inhaleEl = document.getElementById('sg_RFB_INHALE_SEC');
+        const exhaleEl = document.getElementById('sg_RFB_EXHALE_SEC');
+        const i = inhaleEl ? parseFloat(inhaleEl.value) || 5 : 5;
+        const e = exhaleEl ? parseFloat(exhaleEl.value) || 5 : 5;
+        el.textContent = (60 / (i + e)).toFixed(2) + ' bpm';
+    }
+
     function loadActivityIntoPanel(act) {
         activityNameInp.value  = act.name;
         activityDescEdit.value = act.description || '';
@@ -402,8 +431,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const val = (act.settings && item.key in act.settings)
                 ? act.settings[item.key] : DEFAULTS[item.key];
             if (el.type === 'checkbox') { el.checked = !!Number(val); }
-            else { el.value = String(val); } // works for both number inputs and selects
+            else { el.value = String(val); }
         }
+        updateRfbRateDisplay();
     }
 
     function applyGlobalsIfNeeded() {
@@ -481,6 +511,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     updateSpeedometer(latestHR);
                 }
             }
+            if (item.key === 'RFB_INHALE_SEC' || item.key === 'RFB_EXHALE_SEC') updateRfbRateDisplay();
         });
     }
 

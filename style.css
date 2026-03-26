@@ -199,6 +199,7 @@ body.connected #trainingUI {
     align-items: center;
     padding-bottom: 4px; 
 }
+#manualResetBtn.rfb { background: #1a7fff; transition: background 0.3s; }
 
 #toggleSessionBtn {
     padding: 20px 0; 

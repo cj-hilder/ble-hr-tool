@@ -99,10 +99,10 @@ function drawHrGraph() {
     }
 
     // ── RFB breathing guide overlay ───────────────────────────────────────────
-    const rfbFreq = (typeof RFB_FREQUENCY !== 'undefined' && RFB_FREQUENCY > 0) ? RFB_FREQUENCY : 6;
     const rfbResting = (typeof RESTING_HR !== 'undefined') ? RESTING_HR : 65;
     if (currentState === 'reset' && (typeof RFB_ENABLED !== 'undefined') && RFB_ENABLED && rfbWallStartTime > 0) {
-        const breathPeriodMs = (60 / rfbFreq) * 1000;
+        const breathPeriodMs = rfbBreathPeriodMs();
+        const inhaleFrac     = rfbGetInhaleFrac();
         const amplitude = 8; // ±8 bpm visual range
         ctx.globalAlpha = 0.85;
         ctx.strokeStyle = '#000000';
@@ -113,7 +113,7 @@ function drawHrGraph() {
             const ts = windowStart + (px / W) * HR_HISTORY_MS;
             const elapsed = ts - rfbWallStartTime;
             const phase = ((elapsed % breathPeriodMs) + breathPeriodMs) % breathPeriodMs / breathPeriodMs;
-            const sineVal = Math.sin(phase * 2 * Math.PI);
+            const sineVal = rfbAsymSine(phase, inhaleFrac);
             const y = toY(rfbResting + sineVal * amplitude);
             if (px === 0) ctx.moveTo(0, y); else ctx.lineTo(px, y);
         }
@@ -162,6 +162,30 @@ let rfbPhase = false;         // true when in the post-HR-reset RFB countdown
 let rfbSecondsRemaining = 0;  // seconds left in the RFB hold period
 let rfbWallStartTime = 0;     // Date.now() when RFB animation was started (graph phase anchor)
 let rfbAnimFrame = null;      // requestAnimationFrame handle
+let rfbPrevPhase  = -1;       // previous animation phase (detect inhale/exhale transitions)
+let rfbInhaleActive = false;  // whether we are currently in the inhale portion
+let rfbAudioNodes = null;     // currently playing inhale audio nodes
+
+// Breath timing helpers — read live globals so changes take effect immediately.
+function rfbBreathPeriodMs() {
+    const i = (typeof RFB_INHALE_SEC !== 'undefined' && RFB_INHALE_SEC > 0) ? RFB_INHALE_SEC : 5;
+    const e = (typeof RFB_EXHALE_SEC !== 'undefined' && RFB_EXHALE_SEC > 0) ? RFB_EXHALE_SEC : 5;
+    return (i + e) * 1000;
+}
+function rfbGetInhaleSec() {
+    return (typeof RFB_INHALE_SEC !== 'undefined' && RFB_INHALE_SEC > 0) ? RFB_INHALE_SEC : 5;
+}
+function rfbGetInhaleFrac() {
+    const i = rfbGetInhaleSec();
+    const e = (typeof RFB_EXHALE_SEC !== 'undefined' && RFB_EXHALE_SEC > 0) ? RFB_EXHALE_SEC : 5;
+    return i / (i + e);
+}
+// Asymmetric sine: +1 at mid-inhale, −1 at mid-exhale, 0 at transitions.
+function rfbAsymSine(phase, inhaleFrac) {
+    if (inhaleFrac <= 0 || inhaleFrac >= 1) return Math.sin(phase * 2 * Math.PI);
+    if (phase < inhaleFrac) return Math.sin((phase / inhaleFrac) * Math.PI);
+    return -Math.sin(((phase - inhaleFrac) / (1 - inhaleFrac)) * Math.PI);
+}
 
 const SESSION_KEY       = 'hrPacerSession';
 const HISTORY_KEY       = 'hrPacerHistory';
@@ -314,13 +338,16 @@ function restoreSessionUI() {
     if (currentState === 'active') {
         descEl.innerText = 'Continue activity'; descEl.style.color = '#28a745';
         manualResetBtn.innerHTML = '&#8634;'; manualResetBtn.style.display = 'flex';
+        manualResetBtn.classList.remove('rfb');
         toggleBtn.innerText = 'Pause session'; toggleBtn.classList.remove('paused');
     } else if (currentState === 'rest') {
         descEl.innerText = 'Rest or pull back'; descEl.style.color = '#fd7e14';
         manualResetBtn.innerHTML = '&#8634;'; manualResetBtn.style.display = 'flex';
+        manualResetBtn.classList.remove('rfb');
         toggleBtn.innerText = 'Pause session'; toggleBtn.classList.remove('paused');
     } else if (currentState === 'reset') {
         manualResetBtn.innerHTML = '&#9654;'; manualResetBtn.style.display = 'flex';
+        manualResetBtn.classList.toggle('rfb', !!rfbOn);
         toggleBtn.innerText = 'Pause session'; toggleBtn.classList.remove('paused');
         if (rfbOn) {
             document.getElementById('stateIndicator').className = 'state-dot reset-rfb';
@@ -337,7 +364,8 @@ function restoreSessionUI() {
         }
     } else if (currentState === 'pause') {
         descEl.innerText = 'Pause activity'; descEl.style.color = '#888888';
-        manualResetBtn.style.display = 'none'; toggleBtn.innerText = 'Resume session'; toggleBtn.classList.add('paused');
+        manualResetBtn.style.display = 'none'; manualResetBtn.classList.remove('rfb');
+        toggleBtn.innerText = 'Resume session'; toggleBtn.classList.add('paused');
     }
     document.getElementById('homeBtn').style.display = 'none';
 }
@@ -403,8 +431,8 @@ function triggerNotification() {
 function computeCoherence() {
     if (!hasRrData || rrHistory.length < 8) return null;
     if (!rfbWallStartTime || rfbWallStartTime === 0) return null;
-    const freq = (typeof RFB_FREQUENCY !== 'undefined' && RFB_FREQUENCY > 0) ? RFB_FREQUENCY : 6;
-    const breathPeriodMs = (60 / freq) * 1000;
+    const breathPeriodMs = rfbBreathPeriodMs();
+    const inhaleFrac     = rfbGetInhaleFrac();
     // Need at least 1.5 breath cycles of data to give a meaningful score
     const minWindowMs = breathPeriodMs * 1.5;
     const windowMs = Math.max(30000, minWindowMs);
@@ -415,7 +443,8 @@ function computeCoherence() {
     const actuals  = samples.map(s => s.hr);
     const expected = samples.map(s => {
         const elapsed = s.ts - rfbWallStartTime;
-        return Math.sin((elapsed / breathPeriodMs) * 2 * Math.PI);
+        const phase = ((elapsed % breathPeriodMs) + breathPeriodMs) % breathPeriodMs / breathPeriodMs;
+        return rfbAsymSine(phase, inhaleFrac);
     });
 
     // Pearson r
@@ -426,9 +455,8 @@ function computeCoherence() {
         const da = actuals[i] - meanA, de = expected[i] - meanE;
         num += da * de; denomA += da * da; denomE += de * de;
     }
-    if (denomA < 1e-9 || denomE < 1e-9) return null; // flat signal
+    if (denomA < 1e-9 || denomE < 1e-9) return null;
     const r = num / Math.sqrt(denomA * denomE);
-    // Clamp to 0–1 (negative = antiphase = 0 coherence)
     return Math.max(0, Math.min(1, r));
 }
 
@@ -458,36 +486,158 @@ function updateCoherenceDisplay() {
     valEl.style.color = color;
 }
 
+// ─── RFB Inhale Sound & Vibration ─────────────────────────────────────────────
+function buildInhaleVibration(inhaleSec) {
+    // Pattern: opening pulse → accelerating buzz → closing pulse
+    // Total duration fits within inhaleSec.
+    const totalMs    = Math.round(inhaleSec * 1000);
+    const openPulse  = 120, openGap = 40, closePulse = 120;
+    const buzzMs     = totalMs - openPulse - openGap - closePulse;
+    const pattern    = [openPulse, openGap];
+    if (buzzMs > 0) {
+        // Buzz cycles: period linearly interpolates from 200 ms → 60 ms (increasing frequency)
+        const startPeriod = 200, endPeriod = 60;
+        let elapsed = 0;
+        while (elapsed < buzzMs - closePulse - 20) {
+            const t      = Math.min(1, elapsed / buzzMs);
+            const period = startPeriod + (endPeriod - startPeriod) * t;
+            const on     = Math.max(15, Math.round(period * 0.55));
+            const off    = Math.max(10, Math.round(period * 0.45));
+            pattern.push(on, off);
+            elapsed += on + off;
+        }
+    }
+    pattern.push(closePulse);
+    return pattern;
+}
+
+function startInhaleSound(inhaleSec) {
+    stopInhaleSound();
+    if (!(typeof RFB_SOUND !== 'undefined' && RFB_SOUND)) return;
+    try {
+        if (!audioCtx) { const AC = window.AudioContext || window.webkitAudioContext; audioCtx = new AC(); }
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const t  = audioCtx.currentTime;
+        const dur = Math.max(0.3, inhaleSec);
+
+        // White noise source (looped buffer)
+        const bufLen = audioCtx.sampleRate * 2;
+        const buf    = audioCtx.createBuffer(1, bufLen, audioCtx.sampleRate);
+        const data   = buf.getChannelData(0);
+        // Pink-ish: apply a simple first-order filter while filling buffer
+        let b0 = 0;
+        for (let i = 0; i < bufLen; i++) {
+            const white = Math.random() * 2 - 1;
+            b0 = 0.99765 * b0 + white * 0.0990460;
+            data[i] = b0 * 3.5;   // crude pink approximation
+        }
+        const source = audioCtx.createBufferSource();
+        source.buffer = buf; source.loop = true;
+
+        // Bandpass filter — center frequency sweeps 180 Hz → 1600 Hz over inhale
+        const bpf = audioCtx.createBiquadFilter();
+        bpf.type = 'bandpass'; bpf.Q.value = 1.4;
+        bpf.frequency.setValueAtTime(180, t);
+        bpf.frequency.exponentialRampToValueAtTime(1600, t + dur);
+
+        // High-shelf subtle brightness boost at top of inhale
+        const shelf = audioCtx.createBiquadFilter();
+        shelf.type = 'highshelf'; shelf.frequency.value = 1200;
+        shelf.gain.setValueAtTime(0, t);
+        shelf.gain.linearRampToValueAtTime(6, t + dur);
+
+        // Gain envelope: fast attack, hold, fast release
+        const gainNode = audioCtx.createGain();
+        gainNode.gain.setValueAtTime(0.001, t);
+        gainNode.gain.exponentialRampToValueAtTime(0.38, t + Math.min(0.18, dur * 0.12));
+        gainNode.gain.setValueAtTime(0.38, t + dur - Math.min(0.15, dur * 0.1));
+        gainNode.gain.exponentialRampToValueAtTime(0.001, t + dur);
+
+        source.connect(bpf);
+        bpf.connect(shelf);
+        shelf.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        source.start(t);
+        source.stop(t + dur);
+        rfbAudioNodes = { source };
+    } catch (e) { console.log('RFB inhale sound error:', e); }
+}
+
+function stopInhaleSound() {
+    if (rfbAudioNodes) {
+        try { rfbAudioNodes.source.stop(); } catch (e) {}
+        rfbAudioNodes = null;
+    }
+}
+
+function startInhaleVibration(inhaleSec) {
+    if (!(typeof RFB_VIBRATION !== 'undefined' && RFB_VIBRATION)) return;
+    if ('vibrate' in navigator) navigator.vibrate(buildInhaleVibration(inhaleSec));
+}
+
 // ─── RFB Breathing Animation ──────────────────────────────────────────────────
 function startRfbAnimation() {
-    stopRfbAnimation();                  // cancel any running frame first
-    rfbWallStartTime = Date.now();       // phase anchor shared with the graph
+    stopRfbAnimation();
+    rfbWallStartTime  = Date.now();
+    rfbPrevPhase      = -1;
+    rfbInhaleActive   = false;
+
     function animate() {
         if (currentState !== 'reset' || !(typeof RFB_ENABLED !== 'undefined' && RFB_ENABLED)) {
             stopRfbAnimation(); return;
         }
         const indicator = document.getElementById('stateIndicator');
         if (!indicator) { rfbAnimFrame = requestAnimationFrame(animate); return; }
-        const freq = (typeof RFB_FREQUENCY !== 'undefined' && RFB_FREQUENCY > 0) ? RFB_FREQUENCY : 6;
-        const breathPeriodMs = (60 / freq) * 1000;
+
+        const breathPeriodMs = rfbBreathPeriodMs();
+        const inhaleFrac     = rfbGetInhaleFrac();
         const elapsed = Date.now() - rfbWallStartTime;
-        const phase = ((elapsed % breathPeriodMs) + breathPeriodMs) % breathPeriodMs / breathPeriodMs;
+        const phase   = ((elapsed % breathPeriodMs) + breathPeriodMs) % breathPeriodMs / breathPeriodMs;
+        const nowInhale = phase < inhaleFrac;
 
-        // phase 0→0.5 = inhale (dot expands), 0.5→1 = exhale (dot contracts)
-        const scale = phase < 0.5
-            ? 1 + (phase / 0.5) * 0.35
-            : 1.35 - ((phase - 0.5) / 0.5) * 0.35;
+        // ── Inhale/exhale transition detection ──────────────────────────────
+        if (rfbPrevPhase === -1) {
+            // First frame: set state without triggering (may be mid-cycle on restore)
+            rfbInhaleActive = nowInhale;
+            if (nowInhale) {
+                // We restored mid-inhale — calculate how far through we are and
+                // start sound/vibration for the remaining inhale time
+                const inhaleSec  = rfbGetInhaleSec();
+                const elapsed1Frac = phase / inhaleFrac;           // 0..1 through inhale
+                const remaining  = inhaleSec * (1 - elapsed1Frac);
+                if (remaining > 0.3) {
+                    startInhaleSound(remaining);
+                    startInhaleVibration(remaining);
+                }
+            }
+        } else if (nowInhale && !rfbInhaleActive) {
+            // Transition: exhale → inhale
+            rfbInhaleActive = true;
+            const inhaleSec = rfbGetInhaleSec();
+            startInhaleSound(inhaleSec);
+            startInhaleVibration(inhaleSec);
+        } else if (!nowInhale && rfbInhaleActive) {
+            // Transition: inhale → exhale
+            rfbInhaleActive = false;
+            stopInhaleSound();
+            if ('vibrate' in navigator) navigator.vibrate(0);
+        }
+        rfbPrevPhase = phase;
 
-        // Subtle brightness flash at each breath changeover
-        const flashZone = 0.022;
-        const nearZero = phase < flashZone || phase > (1 - flashZone);
-        const nearHalf = Math.abs(phase - 0.5) < flashZone;
-        const brightness = (nearZero || nearHalf) ? 1.8 : 1.0;
+        // ── Dot scale: expands during inhale, contracts during exhale ───────
+        const sineVal = rfbAsymSine(phase, inhaleFrac); // -1 to +1
+        const scale   = 1 + (sineVal + 1) / 2 * 0.35;  // maps −1..+1 → 1.0..1.35
+
+        // ── Flash at each breath changeover (inhale start & exhale start) ───
+        const flashZone  = 0.022;
+        const nearTrans  = phase < flashZone || phase > (1 - flashZone) ||
+                           Math.abs(phase - inhaleFrac) < flashZone;
+        const brightness = nearTrans ? 1.8 : 1.0;
 
         indicator.style.transform = `scale(${scale.toFixed(3)})`;
-        indicator.style.filter = `brightness(${brightness})`;
-        drawHrGraph();              // keep the overlay scrolling in sync
-        updateCoherenceDisplay();   // refresh coherence score each frame
+        indicator.style.filter    = `brightness(${brightness})`;
+        drawHrGraph();
+        updateCoherenceDisplay();
         rfbAnimFrame = requestAnimationFrame(animate);
     }
     rfbAnimFrame = requestAnimationFrame(animate);
@@ -497,6 +647,10 @@ function stopRfbAnimation() {
     if (rfbAnimFrame) { cancelAnimationFrame(rfbAnimFrame); rfbAnimFrame = null; }
     const indicator = document.getElementById('stateIndicator');
     if (indicator) { indicator.style.transform = ''; indicator.style.filter = ''; }
+    stopInhaleSound();
+    if ('vibrate' in navigator) navigator.vibrate(0);
+    rfbPrevPhase    = -1;
+    rfbInhaleActive = false;
 }
 
 // ─── Core state machine ───────────────────────────────────────────────────────
@@ -561,20 +715,24 @@ function switchState(newState, isManual) {
     if (newState === 'active') {
         descEl.innerText = 'Continue activity'; descEl.style.color = '#28a745';
         manualResetBtn.innerHTML = '&#8634;'; manualResetBtn.style.display = 'flex';
+        manualResetBtn.classList.remove('rfb');
         toggleBtn.innerText = 'Pause session'; toggleBtn.classList.remove('paused');
     } else if (newState === 'rest') {
         descEl.innerText = 'Rest or pull back'; descEl.style.color = '#fd7e14';
         manualResetBtn.innerHTML = '&#8634;'; manualResetBtn.style.display = 'flex';
+        manualResetBtn.classList.remove('rfb');
         toggleBtn.innerText = 'Pause session'; toggleBtn.classList.remove('paused');
     } else if (newState === 'reset') {
         manualResetBtn.innerHTML = '&#9654;'; manualResetBtn.style.display = 'flex';
+        manualResetBtn.classList.toggle('rfb', !!rfbOn);
         toggleBtn.innerText = 'Pause session'; toggleBtn.classList.remove('paused');
         descEl.innerText = resetCount >= NUM_RESETS_B4_WARN ? '⚠️ Finish this session ASAP' : 'Reset to resting HR';
         descEl.style.color = rfbOn ? '#1a7fff' : '#dc3545';
         if (rfbOn) startRfbAnimation();
     } else if (newState === 'pause') {
         descEl.innerText = 'Pause activity'; descEl.style.color = '#888888';
-        manualResetBtn.style.display = 'none'; toggleBtn.innerText = 'Resume session'; toggleBtn.classList.add('paused');
+        manualResetBtn.style.display = 'none'; manualResetBtn.classList.remove('rfb');
+        toggleBtn.innerText = 'Resume session'; toggleBtn.classList.add('paused');
     } else { descEl.innerText = ''; }
 }
 
@@ -900,10 +1058,16 @@ function onReconnectSuccess() {
     isReconnecting = false; reconnectAttempts = 0;
     document.getElementById('stateIndicator').classList.remove('reconnecting');
     const descEl = document.getElementById('stateDescription');
+    const manualResetBtn = document.getElementById('manualResetBtn');
     const rfbOn = (typeof RFB_ENABLED !== 'undefined') && RFB_ENABLED;
-    if (currentState === 'active')      { descEl.innerText = 'Continue activity'; descEl.style.color = '#28a745'; }
-    else if (currentState === 'rest')   { descEl.innerText = 'Rest or pull back'; descEl.style.color = '#fd7e14'; }
-    else if (currentState === 'reset')  {
+    if (currentState === 'active') {
+        descEl.innerText = 'Continue activity'; descEl.style.color = '#28a745';
+        manualResetBtn.classList.remove('rfb');
+    } else if (currentState === 'rest') {
+        descEl.innerText = 'Rest or pull back'; descEl.style.color = '#fd7e14';
+        manualResetBtn.classList.remove('rfb');
+    } else if (currentState === 'reset') {
+        manualResetBtn.classList.toggle('rfb', !!rfbOn);
         if (rfbOn) {
             document.getElementById('stateIndicator').className = 'state-dot reset-rfb';
             descEl.style.color = '#1a7fff';
@@ -917,8 +1081,10 @@ function onReconnectSuccess() {
             descEl.innerText = resetCount >= NUM_RESETS_B4_WARN ? '⚠️ Finish this session ASAP' : 'Reset to resting HR';
             descEl.style.color = '#dc3545';
         }
+    } else if (currentState === 'pause') {
+        descEl.innerText = 'Pause activity'; descEl.style.color = '#888888';
+        manualResetBtn.classList.remove('rfb');
     }
-    else if (currentState === 'pause')  { descEl.innerText = 'Pause activity'; descEl.style.color = '#888888'; }
 }
 
 // ─── Event Listeners ──────────────────────────────────────────────────────────
