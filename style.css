@@ -87,6 +87,7 @@ body.connected #trainingUI {
 .state-dot.active { background-color: #28a745; }
 .state-dot.rest { background-color: #fd7e14; }
 .state-dot.reset { background-color: #dc3545; }
+.state-dot.reset-rfb { background-color: #1a7fff; }
 .state-dot.pause { background-color: #888888; }
 
 @keyframes reconnect-pulse {

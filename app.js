@@ -30,34 +30,64 @@ function drawHrGraph() {
     const ctx = canvas.getContext('2d');
     const W = canvas.width, H = canvas.height;
     ctx.clearRect(0, 0, W, H);
-    ctx.globalAlpha = 0.7;
-    if (hrHistory.length < 2) return;
+
     const now = Date.now();
-    const windowStart = Math.max(hrHistory[0].ts, now - HR_HISTORY_MS);
+    const windowStart = hrHistory.length > 0
+        ? Math.max(hrHistory[0].ts, now - HR_HISTORY_MS)
+        : now - HR_HISTORY_MS;
     function toX(ts) { return ((ts - windowStart) / HR_HISTORY_MS) * W; }
     function toY(hr)  { return H - (hr / MAX_HR) * H; }
-    ctx.strokeStyle = hrHistory[0].state === 'active' ? 'black' : 'white';
-    ctx.lineWidth = 3; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-    const GAP_HALF = 2.0;
-    ctx.beginPath();
-    let pathStarted = false, prevState = null;
-    for (let i = 0; i < hrHistory.length; i++) {
-        const { hr, state, ts } = hrHistory[i];
-        const x = toX(ts), y = toY(hr);
-        const isStateChange = prevState !== null && state !== prevState;
-        if (isStateChange) {
-            ctx.stroke();
-            ctx.strokeStyle = state === 'active' ? 'black' : 'white';
-            ctx.beginPath(); ctx.moveTo(x + GAP_HALF, y); pathStarted = true;
-        } else if (!pathStarted) {
-            ctx.moveTo(x, y); pathStarted = true;
-        } else {
-            const nextBreaks = i < hrHistory.length - 1 && hrHistory[i + 1].state !== state;
-            ctx.lineTo(nextBreaks ? x - GAP_HALF : x, y);
+
+    // ── Main HR history line ───────────────────────────────────────────────────
+    if (hrHistory.length >= 2) {
+        ctx.globalAlpha = 0.7;
+        ctx.strokeStyle = hrHistory[0].state === 'active' ? 'black' : 'white';
+        ctx.lineWidth = 3; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+        const GAP_HALF = 2.0;
+        ctx.beginPath();
+        let pathStarted = false, prevState = null;
+        for (let i = 0; i < hrHistory.length; i++) {
+            const { hr, state, ts } = hrHistory[i];
+            const x = toX(ts), y = toY(hr);
+            const isStateChange = prevState !== null && state !== prevState;
+            if (isStateChange) {
+                ctx.stroke();
+                ctx.strokeStyle = state === 'active' ? 'black' : 'white';
+                ctx.beginPath(); ctx.moveTo(x + GAP_HALF, y); pathStarted = true;
+            } else if (!pathStarted) {
+                ctx.moveTo(x, y); pathStarted = true;
+            } else {
+                const nextBreaks = i < hrHistory.length - 1 && hrHistory[i + 1].state !== state;
+                ctx.lineTo(nextBreaks ? x - GAP_HALF : x, y);
+            }
+            prevState = state;
         }
-        prevState = state;
+        ctx.stroke();
     }
-    ctx.stroke();
+
+    // ── RFB breathing guide overlay ───────────────────────────────────────────
+    // Drawn whenever in reset state with RFB enabled, regardless of history length.
+    const rfbFreq = (typeof RFB_FREQUENCY !== 'undefined' && RFB_FREQUENCY > 0) ? RFB_FREQUENCY : 6;
+    const rfbResting = (typeof RESTING_HR !== 'undefined') ? RESTING_HR : 65;
+    if (currentState === 'reset' && (typeof RFB_ENABLED !== 'undefined') && RFB_ENABLED && rfbWallStartTime > 0) {
+        const breathPeriodMs = (60 / rfbFreq) * 1000;
+        const amplitude = 8; // ±8 bpm visual range
+        ctx.globalAlpha = 0.85;
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 1;
+        ctx.lineJoin = 'round';
+        ctx.beginPath();
+        for (let px = 0; px <= W; px++) {
+            const ts = windowStart + (px / W) * HR_HISTORY_MS;
+            const elapsed = ts - rfbWallStartTime;
+            const phase = ((elapsed % breathPeriodMs) + breathPeriodMs) % breathPeriodMs / breathPeriodMs;
+            // phase 0 = start of inhale → HR rises; phase 0.5 = start of exhale → HR falls
+            const sineVal = Math.sin(phase * 2 * Math.PI);
+            const y = toY(rfbResting + sineVal * amplitude);
+            if (px === 0) ctx.moveTo(0, y); else ctx.lineTo(px, y);
+        }
+        ctx.stroke();
+    }
 }
 
 function _hrToSvgDeg(hr) {
@@ -95,6 +125,12 @@ let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 10;
 let currentState = 'stopped';
 let sessionInterval, wakeLock = null, heartbeatTimeout;
+
+// ─── RFB (Resonance Frequency Breathing) ─────────────────────────────────────
+let rfbPhase = false;         // true when in the post-HR-reset RFB countdown
+let rfbSecondsRemaining = 0;  // seconds left in the RFB hold period
+let rfbWallStartTime = 0;     // Date.now() when RFB animation was started (graph phase anchor)
+let rfbAnimFrame = null;      // requestAnimationFrame handle
 
 const SESSION_KEY       = 'hrPacerSession';
 const HISTORY_KEY       = 'hrPacerHistory';
@@ -190,6 +226,7 @@ function saveSession() {
             sessionHrSum: sessionHrSamples.reduce((a,b)=>a+b, 0),
             sessionHrCount: sessionHrSamples.length,
             currentActivityId, currentActivityName,
+            rfbPhase, rfbSecondsRemaining,
         }));
     } catch (e) {}
 }
@@ -209,6 +246,8 @@ function restoreSession() {
         currentPeriodHrSamples = [];
         currentActivityId   = s.currentActivityId   || null;
         currentActivityName = s.currentActivityName || null;
+        rfbPhase            = s.rfbPhase            || false;
+        rfbSecondsRemaining = s.rfbSecondsRemaining || 0;
         // Apply the restored activity's settings
         if (currentActivityId && window.activitiesAPI) {
             window.activitiesAPI.applySettings(currentActivityId);
@@ -239,6 +278,7 @@ function restoreSessionUI() {
     const descEl = document.getElementById('stateDescription');
     const manualResetBtn = document.getElementById('manualResetBtn');
     const toggleBtn = document.getElementById('toggleSessionBtn');
+    const rfbOn = (typeof RFB_ENABLED !== 'undefined') && RFB_ENABLED;
     toggleBtn.classList.add('running');
     if (currentState === 'active') {
         descEl.innerText = 'Continue activity'; descEl.style.color = '#28a745';
@@ -251,8 +291,19 @@ function restoreSessionUI() {
     } else if (currentState === 'reset') {
         manualResetBtn.innerHTML = '&#9654;'; manualResetBtn.style.display = 'flex';
         toggleBtn.innerText = 'Pause session'; toggleBtn.classList.remove('paused');
-        descEl.innerText = resetCount >= NUM_RESETS_B4_WARN ? '⚠️ Finish this session ASAP' : 'Reset to resting HR';
-        descEl.style.color = '#dc3545';
+        if (rfbOn) {
+            document.getElementById('stateIndicator').className = 'state-dot reset-rfb';
+            descEl.style.color = '#1a7fff';
+            if (rfbPhase) {
+                descEl.innerText = `RFB — ${formatTime(Math.ceil(rfbSecondsRemaining))} remaining`;
+            } else {
+                descEl.innerText = resetCount >= NUM_RESETS_B4_WARN ? '⚠️ Finish this session ASAP' : 'Reset to resting HR';
+            }
+            startRfbAnimation();
+        } else {
+            descEl.innerText = resetCount >= NUM_RESETS_B4_WARN ? '⚠️ Finish this session ASAP' : 'Reset to resting HR';
+            descEl.style.color = '#dc3545';
+        }
     } else if (currentState === 'pause') {
         descEl.innerText = 'Pause activity'; descEl.style.color = '#888888';
         manualResetBtn.style.display = 'none'; toggleBtn.innerText = 'Resume session'; toggleBtn.classList.add('paused');
@@ -315,6 +366,46 @@ function triggerNotification() {
     } catch (e) { console.log('Audio notification failed:', e); }
 }
 
+// ─── RFB Breathing Animation ──────────────────────────────────────────────────
+function startRfbAnimation() {
+    stopRfbAnimation();                  // cancel any running frame first
+    rfbWallStartTime = Date.now();       // phase anchor shared with the graph
+    function animate() {
+        if (currentState !== 'reset' || !(typeof RFB_ENABLED !== 'undefined' && RFB_ENABLED)) {
+            stopRfbAnimation(); return;
+        }
+        const indicator = document.getElementById('stateIndicator');
+        if (!indicator) { rfbAnimFrame = requestAnimationFrame(animate); return; }
+        const freq = (typeof RFB_FREQUENCY !== 'undefined' && RFB_FREQUENCY > 0) ? RFB_FREQUENCY : 6;
+        const breathPeriodMs = (60 / freq) * 1000;
+        const elapsed = Date.now() - rfbWallStartTime;
+        const phase = ((elapsed % breathPeriodMs) + breathPeriodMs) % breathPeriodMs / breathPeriodMs;
+
+        // phase 0→0.5 = inhale (dot expands), 0.5→1 = exhale (dot contracts)
+        const scale = phase < 0.5
+            ? 1 + (phase / 0.5) * 0.35
+            : 1.35 - ((phase - 0.5) / 0.5) * 0.35;
+
+        // Subtle brightness flash at each breath changeover
+        const flashZone = 0.022;
+        const nearZero = phase < flashZone || phase > (1 - flashZone);
+        const nearHalf = Math.abs(phase - 0.5) < flashZone;
+        const brightness = (nearZero || nearHalf) ? 1.8 : 1.0;
+
+        indicator.style.transform = `scale(${scale.toFixed(3)})`;
+        indicator.style.filter = `brightness(${brightness})`;
+        drawHrGraph();  // keep the overlay scrolling in sync
+        rfbAnimFrame = requestAnimationFrame(animate);
+    }
+    rfbAnimFrame = requestAnimationFrame(animate);
+}
+
+function stopRfbAnimation() {
+    if (rfbAnimFrame) { cancelAnimationFrame(rfbAnimFrame); rfbAnimFrame = null; }
+    const indicator = document.getElementById('stateIndicator');
+    if (indicator) { indicator.style.transform = ''; indicator.style.filter = ''; }
+}
+
 // ─── Core state machine ───────────────────────────────────────────────────────
 function switchState(newState, isManual) {
     if (currentState === newState && newState !== 'stopped') return;
@@ -357,7 +448,15 @@ function switchState(newState, isManual) {
         document.getElementById('lagDisplay').innerText = '--';
     }
 
-    document.getElementById('stateIndicator').className = `state-dot ${newState}`;
+    // Stop RFB animation and clear RFB phase whenever leaving reset
+    if (newState !== 'reset') {
+        stopRfbAnimation();
+        rfbPhase = false; rfbSecondsRemaining = 0;
+    }
+
+    const rfbOn = (typeof RFB_ENABLED !== 'undefined') && RFB_ENABLED;
+    const indicatorClass = (newState === 'reset' && rfbOn) ? 'reset-rfb' : newState;
+    document.getElementById('stateIndicator').className = `state-dot ${indicatorClass}`;
     updateSpeedometer(latestHR);
     if (newState !== 'pause') triggerNotification();
 
@@ -376,7 +475,8 @@ function switchState(newState, isManual) {
         manualResetBtn.innerHTML = '&#9654;'; manualResetBtn.style.display = 'flex';
         toggleBtn.innerText = 'Pause session'; toggleBtn.classList.remove('paused');
         descEl.innerText = resetCount >= NUM_RESETS_B4_WARN ? '⚠️ Finish this session ASAP' : 'Reset to resting HR';
-        descEl.style.color = '#dc3545';
+        descEl.style.color = rfbOn ? '#1a7fff' : '#dc3545';
+        if (rfbOn) startRfbAnimation();
     } else if (newState === 'pause') {
         descEl.innerText = 'Pause activity'; descEl.style.color = '#888888';
         manualResetBtn.style.display = 'none'; toggleBtn.innerText = 'Resume session'; toggleBtn.classList.add('paused');
@@ -393,6 +493,20 @@ function updateTimers(increment) {
     if (currentState === 'rest') {
         if (stateSeconds > MAX_RECOVERY_PERIOD) switchState('reset', false);
         else if (timeOfMaxHrInRest > MAX_RESPONSE_LAG) switchState('reset', false);
+    }
+    // RFB hold-period countdown (entered after resting HR is achieved for 15 s)
+    if (currentState === 'reset' && rfbPhase) {
+        rfbSecondsRemaining -= increment;
+        if (rfbSecondsRemaining <= 0) {
+            rfbPhase = false;
+            switchState('active', false);
+        } else {
+            const descEl = document.getElementById('stateDescription');
+            if (descEl) {
+                descEl.innerText = `RFB — ${formatTime(Math.ceil(rfbSecondsRemaining))} remaining`;
+                descEl.style.color = '#1a7fff';
+            }
+        }
     }
     setTimerDisplay(document.getElementById('sessionTimerDisplay'), sessionSeconds);
     setTimerDisplay(document.getElementById('stateTimerDisplay'),   stateSeconds);
@@ -439,7 +553,18 @@ function handleHeartRate(event) {
         } else if (currentState === 'reset') {
             const lo = RESTING_HR - RESTING_HR_BANDWIDTH / 2, hi = RESTING_HR + RESTING_HR_BANDWIDTH / 2;
             if (currentHeartRate >= lo && currentHeartRate <= hi) resetToActiveCount++; else resetToActiveCount = 0;
-            if (resetToActiveCount >= 15) switchState('active', false);
+            if (resetToActiveCount >= 15) {
+                const rfbOn = (typeof RFB_ENABLED !== 'undefined') && RFB_ENABLED;
+                const rfbDurMin = (typeof RFB_DURATION !== 'undefined') ? RFB_DURATION : 2.0;
+                if (rfbOn && !rfbPhase && rfbDurMin > 0) {
+                    // Enter RFB hold period — don't switch to active yet
+                    rfbPhase = true;
+                    rfbSecondsRemaining = rfbDurMin * 60;
+                } else if (!rfbOn) {
+                    switchState('active', false);
+                }
+                // If rfbPhase already true, updateTimers handles the countdown
+            }
         }
     }
 }
@@ -660,17 +785,34 @@ function onReconnectSuccess() {
     isReconnecting = false; reconnectAttempts = 0;
     document.getElementById('stateIndicator').classList.remove('reconnecting');
     const descEl = document.getElementById('stateDescription');
+    const rfbOn = (typeof RFB_ENABLED !== 'undefined') && RFB_ENABLED;
     if (currentState === 'active')      { descEl.innerText = 'Continue activity'; descEl.style.color = '#28a745'; }
     else if (currentState === 'rest')   { descEl.innerText = 'Rest or pull back'; descEl.style.color = '#fd7e14'; }
-    else if (currentState === 'reset')  { descEl.innerText = resetCount >= 3 ? 'Finish this session ASAP' : 'Reset to resting HR'; descEl.style.color = '#dc3545'; }
+    else if (currentState === 'reset')  {
+        if (rfbOn) {
+            document.getElementById('stateIndicator').className = 'state-dot reset-rfb';
+            descEl.style.color = '#1a7fff';
+            if (rfbPhase) {
+                descEl.innerText = `RFB — ${formatTime(Math.ceil(rfbSecondsRemaining))} remaining`;
+            } else {
+                descEl.innerText = resetCount >= NUM_RESETS_B4_WARN ? '⚠️ Finish this session ASAP' : 'Reset to resting HR';
+            }
+            startRfbAnimation();
+        } else {
+            descEl.innerText = resetCount >= NUM_RESETS_B4_WARN ? '⚠️ Finish this session ASAP' : 'Reset to resting HR';
+            descEl.style.color = '#dc3545';
+        }
+    }
     else if (currentState === 'pause')  { descEl.innerText = 'Pause activity'; descEl.style.color = '#888888'; }
 }
 
 // ─── Event Listeners ──────────────────────────────────────────────────────────
 document.getElementById('manualResetBtn').addEventListener('click', () => {
     if (!isSessionRunning) return;
-    if (currentState === 'reset') switchState('active', true);
-    else if (currentState === 'active' || currentState === 'rest') switchState('reset', true);
+    if (currentState === 'reset') {
+        rfbPhase = false; rfbSecondsRemaining = 0;
+        switchState('active', true);
+    } else if (currentState === 'active' || currentState === 'rest') switchState('reset', true);
 });
 
 document.getElementById('toggleSessionBtn').addEventListener('click', () => {

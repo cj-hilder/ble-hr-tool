@@ -18,6 +18,9 @@ const DEFAULTS = {
     NUM_RESETS_B4_WARN:     3,
     ALERT_VIBRATION:        1,   // 0=off, 1=subtle, 2=intense
     ALERT_SOUND:            1,   // 0=off, 1=subtle, 2=intense
+    RFB_ENABLED:            0,   // 0=off, 1=on
+    RFB_FREQUENCY:          6.0, // breaths per minute
+    RFB_DURATION:           2.0, // minutes
 };
 
 const ALERT_OPTIONS = [
@@ -59,6 +62,13 @@ const FIELDS = [
       desc: 'Subtle: two short pulses. Intense: rapid triple burst — designed to cut through background noise.' },
     { key: 'ALERT_SOUND', label: 'Sound', type: 'select', options: ALERT_OPTIONS,
       desc: 'Subtle: single soft tone. Intense: two sharp high-pitched beeps at higher volume.' },
+    { group: 'Resonance Frequency Breathing' },
+    { key: 'RFB_ENABLED', label: 'Enable RFB', type: 'toggle',
+      desc: 'During the reset state the status dot turns blue and pulses as a breath pacer. A sine-wave overlay on the graph shows the expected HR coherence pattern.' },
+    { key: 'RFB_FREQUENCY', label: 'Breathing rate', unit: 'bpm',
+      desc: 'Target breaths per minute. 6.0 is the classic resonance frequency for most adults. Adjust between 4.5–7 to find your personal resonance frequency.' },
+    { key: 'RFB_DURATION', label: 'RFB duration', unit: 'min',
+      desc: 'Extra minutes to spend in resonance breathing after heart rate returns to resting, before the app transitions back to "Continue activity".' },
 ];
 
 const ACTIVITIES_KEY        = 'hrPacerActivities';
@@ -251,6 +261,19 @@ document.addEventListener('DOMContentLoaded', () => {
             color: white; font-size: 14px; padding: 5px 6px;
         }
         .sg-select:focus { outline: none; border-color: #4af; }
+        input.sg-toggle {
+            appearance: none; -webkit-appearance: none;
+            width: 46px; height: 26px; background: #333; border-radius: 13px;
+            cursor: pointer; position: relative; transition: background 0.2s;
+            flex-shrink: 0; border: none; outline: none;
+        }
+        input.sg-toggle:checked { background: #4af; }
+        input.sg-toggle::after {
+            content: ''; position: absolute;
+            top: 3px; left: 3px; width: 20px; height: 20px;
+            border-radius: 50%; background: white; transition: left 0.2s;
+        }
+        input.sg-toggle:checked::after { left: 23px; }
         #settingsResetBtn {
             display: block; margin: 20px 16px 0; width: calc(100% - 32px);
             padding: 10px; background: #1a1a1a; color: #666; font-size: 13px;
@@ -331,6 +354,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     sel.appendChild(o);
                 });
                 right.appendChild(sel);
+            } else if (item.type === 'toggle') {
+                const inp = document.createElement('input');
+                inp.type = 'checkbox'; inp.className = 'sg-toggle'; inp.id = `sg_${item.key}`;
+                right.appendChild(inp);
             } else {
                 const input = document.createElement('input');
                 input.type = 'number'; input.className = 'sg-input'; input.id = `sg_${item.key}`;
@@ -374,7 +401,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!el) continue;
             const val = (act.settings && item.key in act.settings)
                 ? act.settings[item.key] : DEFAULTS[item.key];
-            el.value = String(val); // works for both number inputs and selects
+            if (el.type === 'checkbox') { el.checked = !!Number(val); }
+            else { el.value = String(val); } // works for both number inputs and selects
         }
     }
 
@@ -438,8 +466,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const el = document.getElementById(`sg_${item.key}`);
         if (!el) continue;
         el.addEventListener('change', () => {
-            const v = Number(el.value);
-            if (isNaN(v)) return;
+            let v;
+            if (el.type === 'checkbox') { v = el.checked ? 1 : 0; }
+            else { v = Number(el.value); if (isNaN(v)) return; }
             const act = getSelectedActivity();
             if (!act.settings) act.settings = {};
             act.settings[item.key] = v;
