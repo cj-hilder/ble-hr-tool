@@ -106,7 +106,29 @@ body.connected #trainingUI {
     align-items: center;
     justify-content: center;
     margin-top: -1vh; 
-    margin-bottom: 20px;
+    margin-bottom: 4px;
+}
+
+#coherenceDisplay {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: 8px;
+    height: 3vh;
+    margin-bottom: 12px;
+}
+.coherence-label {
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    color: #555;
+    font-family: sans-serif;
+    text-transform: uppercase;
+}
+.coherence-value {
+    font-family: monospace;
+    font-size: 18px;
+    font-weight: bold;
+    transition: color 0.6s;
 }
 
 /* New Stats Block (80% of Timer size) */

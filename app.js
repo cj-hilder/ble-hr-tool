@@ -16,6 +16,36 @@ let latestHR = 0;
 const hrHistory = [];
 const HR_HISTORY_MS = 90000;
 
+// --- Beat-to-beat RR history (from H10 or compatible sensor) ---
+const rrHistory = [];   // { hr: instantaneous bpm, state, ts }
+let hasRrData = false;  // true once valid RR intervals have been received
+
+function recordRrHistory(rrValuesMs, notifTs) {
+    // rrValuesMs: array of RR durations in ms, oldest first.
+    // The last RR value ends at notifTs; work backwards to assign timestamps.
+    let ts = notifTs;
+    for (let i = rrValuesMs.length - 1; i >= 0; i--) {
+        const instantHr = Math.round(60000 / rrValuesMs[i]);
+        if (instantHr >= 24 && instantHr <= 240) {
+            rrHistory.push({ hr: instantHr, state: currentState, ts });
+        }
+        ts -= rrValuesMs[i];
+    }
+    // Sort by ts in case of any ordering artefact, then trim to window
+    rrHistory.sort((a, b) => a.ts - b.ts);
+    const cutoff = notifTs - HR_HISTORY_MS;
+    while (rrHistory.length > 0 && rrHistory[0].ts < cutoff) rrHistory.shift();
+    hasRrData = true;
+}
+
+// Returns the best available HR history: beat-to-beat if fresh, else averaged.
+function getActiveHrHistory() {
+    if (hasRrData && rrHistory.length >= 2 && (Date.now() - rrHistory[rrHistory.length - 1].ts) < 5000) {
+        return rrHistory;
+    }
+    return hrHistory;
+}
+
 function recordHrHistory(hr) {
     const now = Date.now();
     hrHistory.push({ hr, state: currentState, ts: now });
@@ -32,22 +62,25 @@ function drawHrGraph() {
     ctx.clearRect(0, 0, W, H);
 
     const now = Date.now();
-    const windowStart = hrHistory.length > 0
-        ? Math.max(hrHistory[0].ts, now - HR_HISTORY_MS)
+    const activeHistory = getActiveHrHistory();
+    const windowStart = activeHistory.length > 0
+        ? Math.max(activeHistory[0].ts, now - HR_HISTORY_MS)
         : now - HR_HISTORY_MS;
     function toX(ts) { return ((ts - windowStart) / HR_HISTORY_MS) * W; }
     function toY(hr)  { return H - (hr / MAX_HR) * H; }
 
-    // ── Main HR history line ───────────────────────────────────────────────────
-    if (hrHistory.length >= 2) {
+    // ── HR line (beat-to-beat if available, averaged as fallback) ─────────────
+    if (activeHistory.length >= 2) {
         ctx.globalAlpha = 0.7;
-        ctx.strokeStyle = hrHistory[0].state === 'active' ? 'black' : 'white';
-        ctx.lineWidth = 3; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+        // Beat-to-beat data is drawn thinner since it has natural jaggedness
+        ctx.lineWidth = hasRrData && activeHistory === rrHistory ? 1.5 : 3;
+        ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+        ctx.strokeStyle = activeHistory[0].state === 'active' ? 'black' : 'white';
         const GAP_HALF = 2.0;
         ctx.beginPath();
         let pathStarted = false, prevState = null;
-        for (let i = 0; i < hrHistory.length; i++) {
-            const { hr, state, ts } = hrHistory[i];
+        for (let i = 0; i < activeHistory.length; i++) {
+            const { hr, state, ts } = activeHistory[i];
             const x = toX(ts), y = toY(hr);
             const isStateChange = prevState !== null && state !== prevState;
             if (isStateChange) {
@@ -57,7 +90,7 @@ function drawHrGraph() {
             } else if (!pathStarted) {
                 ctx.moveTo(x, y); pathStarted = true;
             } else {
-                const nextBreaks = i < hrHistory.length - 1 && hrHistory[i + 1].state !== state;
+                const nextBreaks = i < activeHistory.length - 1 && activeHistory[i + 1].state !== state;
                 ctx.lineTo(nextBreaks ? x - GAP_HALF : x, y);
             }
             prevState = state;
@@ -66,7 +99,6 @@ function drawHrGraph() {
     }
 
     // ── RFB breathing guide overlay ───────────────────────────────────────────
-    // Drawn whenever in reset state with RFB enabled, regardless of history length.
     const rfbFreq = (typeof RFB_FREQUENCY !== 'undefined' && RFB_FREQUENCY > 0) ? RFB_FREQUENCY : 6;
     const rfbResting = (typeof RESTING_HR !== 'undefined') ? RESTING_HR : 65;
     if (currentState === 'reset' && (typeof RFB_ENABLED !== 'undefined') && RFB_ENABLED && rfbWallStartTime > 0) {
@@ -81,7 +113,6 @@ function drawHrGraph() {
             const ts = windowStart + (px / W) * HR_HISTORY_MS;
             const elapsed = ts - rfbWallStartTime;
             const phase = ((elapsed % breathPeriodMs) + breathPeriodMs) % breathPeriodMs / breathPeriodMs;
-            // phase 0 = start of inhale → HR rises; phase 0.5 = start of exhale → HR falls
             const sineVal = Math.sin(phase * 2 * Math.PI);
             const y = toY(rfbResting + sineVal * amplitude);
             if (px === 0) ctx.moveTo(0, y); else ctx.lineTo(px, y);
@@ -366,6 +397,67 @@ function triggerNotification() {
     } catch (e) { console.log('Audio notification failed:', e); }
 }
 
+// ─── Coherence Score ──────────────────────────────────────────────────────────
+// Pearson correlation between actual beat-to-beat HR and the expected RFB sine.
+// Requires RR data and an active rfbWallStartTime. Returns 0–1 or null.
+function computeCoherence() {
+    if (!hasRrData || rrHistory.length < 8) return null;
+    if (!rfbWallStartTime || rfbWallStartTime === 0) return null;
+    const freq = (typeof RFB_FREQUENCY !== 'undefined' && RFB_FREQUENCY > 0) ? RFB_FREQUENCY : 6;
+    const breathPeriodMs = (60 / freq) * 1000;
+    // Need at least 1.5 breath cycles of data to give a meaningful score
+    const minWindowMs = breathPeriodMs * 1.5;
+    const windowMs = Math.max(30000, minWindowMs);
+    const cutoff = Date.now() - windowMs;
+    const samples = rrHistory.filter(s => s.ts >= cutoff);
+    if (samples.length < 8) return null;
+
+    const actuals  = samples.map(s => s.hr);
+    const expected = samples.map(s => {
+        const elapsed = s.ts - rfbWallStartTime;
+        return Math.sin((elapsed / breathPeriodMs) * 2 * Math.PI);
+    });
+
+    // Pearson r
+    const meanA = actuals.reduce((a, b) => a + b, 0) / actuals.length;
+    const meanE = expected.reduce((a, b) => a + b, 0) / expected.length;
+    let num = 0, denomA = 0, denomE = 0;
+    for (let i = 0; i < actuals.length; i++) {
+        const da = actuals[i] - meanA, de = expected[i] - meanE;
+        num += da * de; denomA += da * da; denomE += de * de;
+    }
+    if (denomA < 1e-9 || denomE < 1e-9) return null; // flat signal
+    const r = num / Math.sqrt(denomA * denomE);
+    // Clamp to 0–1 (negative = antiphase = 0 coherence)
+    return Math.max(0, Math.min(1, r));
+}
+
+function updateCoherenceDisplay() {
+    const el = document.getElementById('coherenceDisplay');
+    const valEl = document.getElementById('coherenceValue');
+    if (!el || !valEl) return;
+    const rfbOn = (typeof RFB_ENABLED !== 'undefined') && RFB_ENABLED;
+    if (currentState !== 'reset' || !rfbOn || !hasRrData) {
+        el.style.display = 'none'; return;
+    }
+    const c = computeCoherence();
+    if (c === null) {
+        // Not enough data yet — show a waiting state
+        el.style.display = 'flex';
+        valEl.textContent = '…';
+        valEl.style.color = '#444';
+        return;
+    }
+    const pct = Math.round(c * 100);
+    let color;
+    if      (pct >= 70) color = '#4af';          // good — blue (matching RFB theme)
+    else if (pct >= 40) color = '#ffc107';        // fair — amber
+    else                color = '#dc3545';        // low  — red
+    el.style.display = 'flex';
+    valEl.textContent = pct + '%';
+    valEl.style.color = color;
+}
+
 // ─── RFB Breathing Animation ──────────────────────────────────────────────────
 function startRfbAnimation() {
     stopRfbAnimation();                  // cancel any running frame first
@@ -394,7 +486,8 @@ function startRfbAnimation() {
 
         indicator.style.transform = `scale(${scale.toFixed(3)})`;
         indicator.style.filter = `brightness(${brightness})`;
-        drawHrGraph();  // keep the overlay scrolling in sync
+        drawHrGraph();              // keep the overlay scrolling in sync
+        updateCoherenceDisplay();   // refresh coherence score each frame
         rfbAnimFrame = requestAnimationFrame(animate);
     }
     rfbAnimFrame = requestAnimationFrame(animate);
@@ -452,6 +545,8 @@ function switchState(newState, isManual) {
     if (newState !== 'reset') {
         stopRfbAnimation();
         rfbPhase = false; rfbSecondsRemaining = 0;
+        const cEl = document.getElementById('coherenceDisplay');
+        if (cEl) cEl.style.display = 'none';
     }
 
     const rfbOn = (typeof RFB_ENABLED !== 'undefined') && RFB_ENABLED;
@@ -520,13 +615,33 @@ function handleTick() {
 
 function handleHeartRate(event) {
     if (isReconnecting) return;
-    const flags = event.target.value.getUint8(0);
+    const dv = event.target.value;
+    const flags   = dv.getUint8(0);
     const is16bit = flags & 0x01;
-    const currentHeartRate = is16bit ? event.target.value.getUint16(1, true) : event.target.value.getUint8(1);
+    const currentHeartRate = is16bit ? dv.getUint16(1, true) : dv.getUint8(1);
     document.getElementById('heartRateDisplay').innerText = currentHeartRate;
     resetTimeout();
     if (currentHeartRate === 0) return;
     updateSpeedometer(currentHeartRate);
+
+    // ── Parse RR intervals (bit 4 of flags; H10 and compatible sensors) ───────
+    // Per BT Heart Rate spec: flags bit3 = Energy Expended present (skip 2 bytes),
+    // flags bit4 = RR intervals present. Each RR is uint16 LE in units of 1/1024 s.
+    const rrPresent      = (flags >> 4) & 0x01;
+    const energyPresent  = (flags >> 3) & 0x01;
+    if (rrPresent) {
+        let rrOffset = is16bit ? 3 : 2;          // skip flags + HR bytes
+        if (energyPresent) rrOffset += 2;        // skip Energy Expended uint16
+        const rrValuesMs = [];
+        while (rrOffset + 1 < dv.byteLength) {
+            const raw  = dv.getUint16(rrOffset, true);  // 1/1024 s units
+            const ms   = (raw / 1024) * 1000;
+            if (ms > 250 && ms < 2500) rrValuesMs.push(ms); // 24–240 bpm sanity gate
+            rrOffset += 2;
+        }
+        if (rrValuesMs.length > 0) recordRrHistory(rrValuesMs, Date.now());
+    }
+
     recordHrHistory(currentHeartRate);
 
     if (isSessionRunning) {
