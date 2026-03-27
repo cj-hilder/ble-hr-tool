@@ -13,14 +13,15 @@ const DEFAULTS = {
     ACTIVE_THRESHOLD_UPPER: 80,
     ACTIVE_THRESHOLD_LOWER: 77,
     BRADYCARDIA_THRESHOLD:  55,
+    ACTIVE_TIME_LIMIT:      0,   // minutes; 0 = no limit
     MAX_RECOVERY_PERIOD:    240,
     MAX_RESPONSE_LAG:       60,
     NUM_RESETS_B4_WARN:     3,
     ALERT_VIBRATION:        1,   // 0=off, 1=subtle, 2=intense
     ALERT_SOUND:            1,   // 0=off, 1=subtle, 2=intense
     RFB_ENABLED:            0,   // 0=off, 1=on
-    RFB_INHALE_SEC:         5.0, // inhale duration in seconds
-    RFB_EXHALE_SEC:         5.0, // exhale duration in seconds (sum gives breath period)
+    RFB_INHALE_SEC:         4.0, // inhale duration in seconds
+    RFB_EXHALE_SEC:         6.0, // exhale duration in seconds (sum gives breath period)
     RFB_DURATION:           2.0, // minutes to spend in RFB after resting HR achieved
     RFB_SOUND:              1,   // 0=off, 1=on
     RFB_VIBRATION:          1,   // 0=off, 1=on
@@ -48,6 +49,8 @@ const FIELDS = [
       desc: 'If HR exceeds this during activity it will trigger "Rest or pull back". If you are unsure, the safe choice is resting HR + 15.' },
     { key: 'ACTIVE_THRESHOLD_LOWER', label: 'Lower threshold', unit: 'bpm',
       desc: 'HR must fall below this to transition back to "Continue activity". Usually set just below the upper threshold.' },
+    { key: 'ACTIVE_TIME_LIMIT', label: 'Activity time limit', unit: 'min',
+      desc: 'Total active time allowed per session in minutes. When reached the app transitions to reset state. Set to 0 for no limit.' },
     { group: 'Recovery Limits' },
     { key: 'MAX_RECOVERY_PERIOD', label: 'Max recovery period', unit: 's',
       desc: 'Maximum time allowed in the "Rest or pull back" state before a forced HR reset is triggered.' },

@@ -158,12 +158,13 @@ let currentState = 'stopped';
 let sessionInterval, wakeLock = null, heartbeatTimeout;
 
 // ─── RFB (Resonance Frequency Breathing) ─────────────────────────────────────
-let rfbPhase = false;         // true when in the post-HR-reset RFB countdown
-let rfbSecondsRemaining = 0;  // seconds left in the RFB hold period
-let rfbWallStartTime = 0;     // Date.now() when RFB animation was started (graph phase anchor)
-let rfbAnimFrame = null;      // requestAnimationFrame handle
-let rfbScheduleTimer = null;  // setTimeout handle for inhale scheduling
-let rfbAudioNodes = null;     // currently playing inhale audio nodes
+let rfbPhase = false;
+let rfbSecondsRemaining = 0;
+let rfbWallStartTime = 0;      // phase anchor: set once per session, never reset between RFB periods
+let rfbSessionClockStart = 0;  // Date.now() of the very first RFB entry this session (0 = not yet started)
+let rfbAnimFrame = null;
+let rfbScheduleTimer = null;
+let rfbAudioNodes = null;
 
 // Breath timing helpers — read live globals so changes take effect immediately.
 function rfbBreathPeriodMs() {
@@ -204,6 +205,7 @@ let sessionStartTime = 0, sessionSeconds = 0, stateSeconds = 0;
 let recoverySeconds = 0, totalActiveSeconds = 0, resetCount = 0;
 let activeToRestCount = 0, activeToResetCount = 0, restToActiveCount = 0, resetToActiveCount = 0;
 let maxHrInRest = 0, timeOfMaxHrInRest = 0, isRecoveryState = false;
+let activityLimitTriggered = false;
 
 // ─── Activity tracking ────────────────────────────────────────────────────────
 let currentActivityId   = null;
@@ -290,7 +292,8 @@ function saveSession() {
             sessionHrSum: sessionHrSamples.reduce((a,b)=>a+b, 0),
             sessionHrCount: sessionHrSamples.length,
             currentActivityId, currentActivityName,
-            rfbPhase, rfbSecondsRemaining,
+            rfbPhase, rfbSecondsRemaining, rfbSessionClockStart,
+            activityLimitTriggered,
         }));
     } catch (e) {}
 }
@@ -312,6 +315,8 @@ function restoreSession() {
         currentActivityName = s.currentActivityName || null;
         rfbPhase            = s.rfbPhase            || false;
         rfbSecondsRemaining = s.rfbSecondsRemaining || 0;
+        rfbSessionClockStart = s.rfbSessionClockStart || 0;
+        activityLimitTriggered = s.activityLimitTriggered || false;
         // Apply the restored activity's settings
         if (currentActivityId && window.activitiesAPI) {
             window.activitiesAPI.applySettings(currentActivityId);
@@ -627,8 +632,11 @@ function rfbScheduleNextCycle() {
 // ─── RFB Breathing Animation ──────────────────────────────────────────────────
 function startRfbAnimation() {
     stopRfbAnimation();
-    rfbWallStartTime = Date.now();
-    rfbScheduleNextCycle();   // kick off sound/vibration scheduler
+    // Use the session-persistent clock: set once on first RFB entry, never reset between periods.
+    // This keeps the breath phase continuous across multiple RFB states in a session.
+    if (rfbSessionClockStart === 0) rfbSessionClockStart = Date.now();
+    rfbWallStartTime = rfbSessionClockStart;
+    rfbScheduleNextCycle();
 
     function animate() {
         if (currentState !== 'reset' || !(typeof RFB_ENABLED !== 'undefined' && RFB_ENABLED)) {
@@ -762,6 +770,14 @@ function updateTimers(increment) {
     if (currentState === 'active') {
         totalActiveSeconds += increment;
         setTimerDisplay(document.getElementById('totalActiveTimerDisplay'), totalActiveSeconds);
+        // Activity time limit check
+        const limitSec = (typeof ACTIVE_TIME_LIMIT !== 'undefined') ? ACTIVE_TIME_LIMIT * 60 : 0;
+        if (limitSec > 0 && !activityLimitTriggered && totalActiveSeconds >= limitSec) {
+            activityLimitTriggered = true;
+            switchState('reset', false);
+            const descEl = document.getElementById('stateDescription');
+            if (descEl) { descEl.innerText = 'Activity limit reached'; }
+        }
     }
     if (currentState === 'rest') {
         if (stateSeconds > MAX_RECOVERY_PERIOD) switchState('reset', false);
@@ -864,54 +880,88 @@ function handleHeartRate(event) {
 
 // ─── Session summary ──────────────────────────────────────────────────────────
 function computeSessionSummary() {
-    // Rule 1: periods < MIN_PERIOD_SEC are excluded from everything (as if they didn't exist).
-    // Rule 2: the terminal period (state active when session was ended) contributes to total
-    //         time only — it is excluded from count, length, HR, lag, and peak calculations.
+    // Inclusion rules (applied separately to active and recovery):
+    //   Rule 0: periods < MIN_PERIOD_SEC are excluded from everything.
+    //   Rule 1: terminal period counts towards total time and towards max.
+    //   Rule 2: terminal period does NOT count towards min.
+    //   Rule 3: terminal period counts towards average ONLY if its duration >=
+    //           the minimum duration of the non-terminal periods. If there are no
+    //           non-terminal periods the terminal period is not averaged.
+    //   Rule 4: count = number of periods that enter the average calculation.
 
-    const allActive   = activePeriods.filter(p => p.duration >= MIN_PERIOD_SEC);
-    const allRecovery = recoveryPeriods.filter(p => p.duration >= MIN_PERIOD_SEC);
+    function periodStats(periods) {
+        const valid       = periods.filter(p => p.duration >= MIN_PERIOD_SEC);
+        const nonTerminal = valid.filter(p => !p.terminal);
+        const terminal    = valid.find(p => p.terminal);  // at most one
 
-    // Totals include the terminal period (if it met the minimum duration).
-    const totalActiveSec   = allActive.reduce((s, p) => s + p.duration, 0);
-    const totalRecoverySec = allRecovery.reduce((s, p) => s + p.duration, 0);
+        const total = valid.reduce((s, p) => s + p.duration, 0);
 
-    // Stats arrays exclude the terminal period.
-    const statsActive   = allActive.filter(p => !p.terminal);
-    const statsRecovery = allRecovery.filter(p => !p.terminal);
+        const ntDur = nonTerminal.map(p => p.duration);
+        const currentMin = ntDur.length ? Math.min(...ntDur) : Infinity;
 
-    const aDur = statsActive.map(p => p.duration);
-    const aHr  = statsActive.map(p => p.avgHr).filter(v => v > 0);
-    const rDur = statsRecovery.map(p => p.duration);
-    const rHr  = statsRecovery.map(p => p.avgHr).filter(v => v > 0);
-    const validR = statsRecovery.filter(p => p.maxHr > 0);
-    const lags   = validR.map(p => p.lagSec);
-    const peaks  = validR.map(p => p.maxHr);
+        // Determine whether terminal joins the average pool
+        const terminalInAvg = terminal && ntDur.length > 0 && terminal.duration >= currentMin;
+        const avgPool = terminalInAvg ? [...nonTerminal, terminal] : nonTerminal;
+        const maxPool = terminal       ? [...nonTerminal, terminal] : nonTerminal;
+
+        const dur = avgPool.map(p => p.duration);
+        const maxDur = maxPool.map(p => p.duration);
+
+        return {
+            total,
+            count:   avgPool.length,
+            longest: maxDur.length ? Math.max(...maxDur) : 0,
+            shortest: ntDur.length ? Math.min(...ntDur)  : 0,
+            avg:     dur.length   ? Math.round(arrAvg(dur)) : 0,
+            avgHr:   avgPool.map(p => p.avgHr).filter(v => v > 0),
+        };
+    }
+
+    function recoveryStats(periods) {
+        const base    = periodStats(periods);
+        const valid   = periods.filter(p => p.duration >= MIN_PERIOD_SEC);
+        const nonTerm = valid.filter(p => !p.terminal);
+        const terminal = valid.find(p => p.terminal);
+        const ntDur = nonTerm.map(p => p.duration);
+        const currentMin = ntDur.length ? Math.min(...ntDur) : Infinity;
+        const termInAvg = terminal && ntDur.length > 0 && terminal.duration >= currentMin;
+        const avgPool   = termInAvg ? [...nonTerm, terminal] : nonTerm;
+        const validR = avgPool.filter(p => p.maxHr > 0);
+        return {
+            ...base,
+            lags:  validR.map(p => p.lagSec),
+            peaks: validR.map(p => p.maxHr),
+        };
+    }
+
+    const aStats = periodStats(activePeriods);
+    const rStats = recoveryStats(recoveryPeriods);
 
     return {
         date: new Date().toISOString(),
         activityName: currentActivityName || '',
         activityId:   currentActivityId   || '',
         activitySettings: window.activitiesAPI ? window.activitiesAPI.getSettingsSnapshot() : {},
-        totalActiveSec,
-        pctActive: sessionSeconds > 0 ? Math.round(totalActiveSec / sessionSeconds * 100) : 0,
-        numActivePeriods: statsActive.length,
-        longestActiveSec:  aDur.length ? Math.max(...aDur) : 0,
-        avgActiveSec:      aDur.length ? Math.round(arrAvg(aDur)) : 0,
-        shortestActiveSec: aDur.length ? Math.min(...aDur) : 0,
-        avgHrActive: aHr.length ? arrAvg(aHr) : 0,
-        totalRecoverySec,
-        pctRecovery: sessionSeconds > 0 ? Math.round(totalRecoverySec / sessionSeconds * 100) : 0,
-        numRecoveryPeriods: statsRecovery.length,
-        longestRecoverySec:  rDur.length ? Math.max(...rDur) : 0,
-        avgRecoverySec:      rDur.length ? Math.round(arrAvg(rDur)) : 0,
-        shortestRecoverySec: rDur.length ? Math.min(...rDur) : 0,
-        avgHrRecovery: rHr.length ? arrAvg(rHr) : 0,
-        longestLagSec:  lags.length ? Math.max(...lags)  : 0,
-        avgLagSec:      lags.length ? Math.round(arrAvg(lags)) : 0,
-        shortestLagSec: lags.length ? Math.min(...lags)  : 0,
-        highestPeakHr:  peaks.length ? Math.max(...peaks) : 0,
-        avgPeakHr:      peaks.length ? arrAvg(peaks)      : 0,
-        lowestPeakHr:   peaks.length ? Math.min(...peaks) : 0,
+        totalActiveSec:   aStats.total,
+        pctActive: sessionSeconds > 0 ? Math.round(aStats.total / sessionSeconds * 100) : 0,
+        numActivePeriods:  aStats.count,
+        longestActiveSec:  aStats.longest,
+        avgActiveSec:      aStats.avg,
+        shortestActiveSec: aStats.shortest,
+        avgHrActive: aStats.avgHr.length ? arrAvg(aStats.avgHr) : 0,
+        totalRecoverySec:   rStats.total,
+        pctRecovery: sessionSeconds > 0 ? Math.round(rStats.total / sessionSeconds * 100) : 0,
+        numRecoveryPeriods:  rStats.count,
+        longestRecoverySec:  rStats.longest,
+        avgRecoverySec:      rStats.avg,
+        shortestRecoverySec: rStats.shortest,
+        avgHrRecovery: rStats.avgHr.length ? arrAvg(rStats.avgHr) : 0,
+        longestLagSec:  rStats.lags.length  ? Math.max(...rStats.lags)  : 0,
+        avgLagSec:      rStats.lags.length  ? Math.round(arrAvg(rStats.lags)) : 0,
+        shortestLagSec: rStats.lags.length  ? Math.min(...rStats.lags)  : 0,
+        highestPeakHr:  rStats.peaks.length ? Math.max(...rStats.peaks) : 0,
+        avgPeakHr:      rStats.peaks.length ? arrAvg(rStats.peaks)      : 0,
+        lowestPeakHr:   rStats.peaks.length ? Math.min(...rStats.peaks) : 0,
         sessionLengthSec: sessionSeconds,
         highestHr: sessionHrSamples.length ? Math.max(...sessionHrSamples) : 0,
         avgHr:     sessionHrSamples.length ? arrAvg(sessionHrSamples)      : 0,
@@ -1016,6 +1066,7 @@ function startSession() {
     isSessionRunning = true; sessionSeconds = 0; sessionStartTime = Date.now();
     stateSeconds = 0; totalActiveSeconds = 0; resetCount = 0; recoverySeconds = 0;
     activePeriods = []; recoveryPeriods = []; currentPeriodType = null; sessionHrSamples = [];
+    rfbSessionClockStart = 0; activityLimitTriggered = false;
     document.getElementById('homeBtn').style.display = 'none';
     setTimerDisplay(document.getElementById('sessionTimerDisplay'), 0);
     setTimerDisplay(document.getElementById('stateTimerDisplay'), 0);
