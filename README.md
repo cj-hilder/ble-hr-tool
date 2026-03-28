@@ -97,7 +97,7 @@ This may require you to completely stop and sit down.
 
 **Session termination warning:** If you are forced into Reset several times in a single session, the app displays a prominent warning advising you to end the session.
 
-**Resonance Frequency Breathing during reset** — if Resonance Frequency Breathing is enabled (see below), a breathing guide is displayed during the reset. See the dedicated section below.
+**Resonance Frequency Breathing during reset**: If Resonance Frequency Breathing is enabled (see below), a breathing guide is displayed during the reset. See the dedicated section below.
 
 ### ⚫ Pause
 
@@ -107,7 +107,7 @@ You are currently in the active state but want to rest voluntarily — not becau
 
 ## Resonance Frequency Breathing (RFB)
 
-Resonance Frequency Breathing is a biofeedback technique. At a particular breathing rate respiratory and cardiac rhythms enter resonance. This is typically around 6 breaths per minute, but varying between individuals in the range of 4.5–7 bpm. The heart rate rises during each inhale and falls during each exhale in a pattern called **Respiratory Sinus Arrhythmia (RSA)**. When breathing rate matches the body's resonance frequency, RSA amplitude is maximised.  RSA magnitude is a direct expression of vagal tone (the parasympathetic nervous system's capacity to regulate the heart).
+Resonance Frequency Breathing is a biofeedback technique. At a particular breathing rate respiratory and cardiac rhythms enter resonance. This is typically around 6 breaths per minute, but varying between individuals in the range of 4.5–7 bpm. The heart rate rises during each inhale and falls during each exhale in a pattern called **Respiratory Sinus Arrhythmia (RSA)**. When breathing rate matches the body's resonance frequency, RSA amplitude is maximised.  RSA amplitude is a direct expression of vagal tone (the parasympathetic nervous system's capacity to regulate the heart).
 
 For people with dysautonomia, vagal tone is typically suppressed, which is part of what produces the dysregulated HR patterns the app is designed to manage. Regular RFB practice at the resonance frequency, particularly during rest periods, has evidence of increasing vagal tone over time.
 
