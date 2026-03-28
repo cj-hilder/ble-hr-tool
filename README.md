@@ -1,4 +1,4 @@
-# Autonomic HR Pacer v1.1
+# Autonomic HR Pacer v1.2
 
 **[Launch the Live App Here](https://cj-hilder.github.io/ble-hr-tool/)**
 
@@ -76,6 +76,8 @@ Your heart rate is within your physiological exercise zone — above the bradyca
 
 If your heart rate drops *below* the bradycardia threshold during activity, the app forces a heart rate Reset. This catches the HR overshoot pattern — an unusually low reading during exertion can indicate that the ANS has already lost control.
 
+An optional **activity time limit** can be configured (see Settings). When your active time for the session reaches that limit, the app automatically triggers a heart rate reset as a reminder to end the session.
+
 ### 🟠 Rest or pull back
 
 Your heart rate has hit your active threshold. Stop or significantly reduce activity. The app now tracks two things independently:
@@ -87,17 +89,65 @@ Both are independent safeguards. The response lag catches the delayed-response p
 
 If your HR falls back below your active threshold quickly enough, you are returned to Continue activity.
 
-### 🔴 Reset to resting HR
+### 🔴 / 🔵 Reset to resting HR
 
 You have pushed too far and failed to recover in time, or you have manually triggered a reset. The app now waits for your HR to return to your resting HR band and stay there for 15 consecutive seconds before returning you to Continue activity.
 
-This may require you to completely stop and sit down. 
+This may require you to completely stop and sit down.
 
-**Session termination warning:** If you are forced into Reset several times in a single session, the app displays a prominent warning advising you to end the session. Repeated ANS failures within a session are a signal to stop, not to push through.
+**Session termination warning:** If you are forced into Reset several times in a single session, the app displays a prominent warning advising you to end the session.
+
+**Resonance Frequency Breathing during reset** — if Resonance Frequency Breathing is enabled (see below), a breathing guide is displayed during the reset. See the dedicated section below.
 
 ### ⚫ Pause
 
 You are currently in the active state but want to rest voluntarily — not because the app has detected a problem, but because you are choosing to rest. Pausing stops the activity timer without triggering a state change. When you are ready, tap Resume and continue the session.
+
+---
+
+## Resonance Frequency Breathing (RFB)
+
+Resonance Frequency Breathing is a biofeedback technique. At a particular breathing rate respiratory and cardiac rhythms enter resonance. This is typically around 6 breaths per minute, but varying between individuals in the range of 4.5–7 bpm. The heart rate rises during each inhale and falls during each exhale in a pattern called **Respiratory Sinus Arrhythmia (RSA)**. When breathing rate matches the body's resonance frequency, RSA amplitude is maximised  RSA magnitude is a direct expression of vagal tone — the parasympathetic nervous system's capacity to regulate the heart.
+
+For people with dysautonomia, vagal tone is typically suppressed, which is part of what produces the dysregulated HR patterns the app is designed to manage. Regular RFB practice at the resonance frequency, particularly during rest periods, has evidence of increasing vagal tone over time.
+
+The app integrates RFB directly into the Reset state, turning a mandatory rest period into a structured, guided recovery practice.
+
+### How it works
+
+When RFB is enabled in settings, entering the Reset state transforms the experience:
+
+- **The status dot turns blue** and **pulses in and out** as a breath pacer — expanding during inhale, contracting during exhale, with a subtle flash at each transition.
+- **A sine wave overlay** appears on the HR graph, showing the HR pattern your heart *should* produce if breathing is coupled to the breath pacer. This gives you a visual target for coherence.
+- **Sound guidance** — a rising filtered noise during each inhale, brightening in frequency as the inhale progresses, then falling silent during the exhale. Allows you to follow the breath without watching the screen.
+- **Vibration guidance** — an opening pulse at the start of each inhale, followed by a buzzing that accelerates in frequency through the inhale, and a closing pulse at the end. Provides a tactile breath guide.
+- **Once your HR has returned to your resting band for 15 seconds**, the app enters an extended RFB phase — shown as a countdown timer — before returning you to Continue activity. The default is 2 minutes. This is the core of the practice: staying in the resonance breathing state after the HR has settled, deepening the vagal recovery before returning to exertion.
+
+### Coherence score
+
+If you are using a **Polar H10** chest strap (or any sensor that exposes raw RR intervals via the Bluetooth Heart Rate Measurement characteristic), the app can calculate a **live coherence score** — a Pearson correlation between your actual beat-to-beat heart rate oscillations and the expected sine wave at your set breathing frequency.
+
+The score appears beneath the state description during the Reset state:
+
+- **Blue (≥70%)** — Good coherence. Your HR is meaningfully coupled to the breathing rhythm.
+- **Amber (40–70%)** — Moderate coherence.
+- **Red (<40%)** — Low coherence. Your HR oscillation is not yet coupling to the breath.
+
+The score requires approximately 1.5 breath cycles (about 15 seconds at 6 bpm) to compute, and appears as "…" until enough data is available. A flat coherence score early in practice — or even a flat HR line — is physiologically expected. RSA amplitude is suppressed when the ANS is depleted or sympathetically dominant, which is exactly the state you are recovering from. The visible oscillation grows as ANS function improves, both within individual sessions and across sessions over time. The breath pacer and coherence score are most meaningful as a longitudinal tool: tracking whether your RSA amplitude increases over weeks of practice is a meaningful recovery signal.
+
+Polar and most other sports watches (as opposed to the Polar H10 chest strap) report rolling-averaged HR rather than beat-to-beat RR intervals, which will produce a flat coherence score regardless of actual RSA. The H10 is strongly recommended for this feature.
+
+### Finding your personal resonance frequency
+
+The 6 bpm default is the most commonly reported resonance frequency and is a reliable starting point, but individual resonance frequency varies. If you have access to a device that shows beat-to-beat HR, you can find your personal resonance frequency by adjusting the breathing rate in small steps (0.5 bpm at a time) and observing which rate produces the largest HR oscillation amplitude. Your resonance frequency is likely to remain relatively stable once found.
+
+### RFB Settings
+
+- **Enable RFB** — Master toggle. When off, the Reset state behaves as a stop activity state (red dot, no breath pacer).
+- **Inhale / Exhale** — The duration of each phase in seconds. The resulting breathing rate in bpm is shown below these fields. The default 4s inhale and 6s exhale produces a 6 bpm cycle with a slight emphasis on the exhale, which tends to increase parasympathetic tone relative to a symmetric cycle.
+- **RFB duration** — How long to remain in the RFB phase after resting HR is achieved. Default is 2 minutes.
+- **Inhale sound guide** — Toggle the rising noise guide.
+- **Inhale vibration guide** — Toggle the tactile buzz guide.
 
 ---
 
@@ -117,6 +167,7 @@ The key parameters and their purpose:
 **Active thresholds**
 - *Upper threshold* — The ceiling for the Active state. If unsure, resting HR + 15 is a conservative starting point.
 - *Lower threshold* — HR must fall below this to transition from 'Rest or pull back' to 'Active'. Usually set just below the upper threshold.
+- *Activity time limit* — Total active time allowed per session, in minutes. When reached, the app transitions to the heart rate Reset state and the state description reads "Activity limit reached". The session does not end automatically — you may choose to continue or end voluntarily. Set to 0 to disable.
 
 **Recovery limits**
 - *Max recovery period* — The total time allowed in 'Rest or pull back' before a forced heart rate Reset.
@@ -126,17 +177,44 @@ The key parameters and their purpose:
 **Target zone**
 - *Target min / max* — A visual guide shown on the speedometer. Purely informational, does not affect state transitions.
 
+**Alerts**
+- *Vibration / Sound* — Intensity of the state-transition alerts (Off / Subtle / Intense).
+
+**Resonance Frequency Breathing**
+- See the dedicated RFB section above.
+
 ---
 
 ## ✨ Features
 
-- **Direct Bluetooth Low Energy (BLE) connection** — Connects directly to standard BLE heart rate monitors (like Polar straps or watches) via the browser.
+- **Direct Bluetooth Low Energy (BLE) connection** — Connects directly to standard BLE heart rate monitors (like Polar straps or watches) via the browser. Compatible with any device that implements the standard Heart Rate Measurement characteristic.
+- **Raw RR interval support** — For devices that expose beat-to-beat RR data (such as the Polar H10), the app uses instantaneous heart rate on the HR graph rather than the sensor's rolling average. This higher-resolution signal is required for the RFB coherence score.
 - **Sound and vibration alerts** — Configurable intensity on both, designed to be usable while active without watching the screen.
 - **Progressive Web App (PWA)** — Installable directly to an Android home screen for fullscreen, app-like behaviour.
 - **Multiple activity profiles** — Different threshold sets for different activities (e.g. walking, cycling, housework), switchable at session start.
+- **Activity time limit** — Optional per-session cap on total active time. When reached, the app transitions to the heart rate Reset state automatically.
+- **Resonance Frequency Breathing** — Integrated breath pacer, sound and vibration guides, coherence scoring, and extended RFB phase during the Reset state. See dedicated section above.
+- **Session HR recording and graph export** — Every session records 1Hz heart rate data alongside state transitions. Saved sessions can be exported as a landscape A4 PDF graph showing HR over time with colour-coded state background bands, axes, and a resting HR reference line.
 - **Session history and trend graphs** — Each session can be saved with notes. History graphs allow you to track recovery metrics over time.
 - **Response lag and HR overshoot tracking** — Per-session statistics on recovery lag, HR peak during rest, and active/recovery time ratios.
 - **Minimalist design** — Large, accessible UI with clear visualisation of live heart rate and state.
+
+---
+
+## Session Graph
+
+Each saved session includes a 1Hz recording of heart rate and state. From the Session History page, tap **"📈 View Session Graph (PDF)"** on any session to generate and download a landscape A4 PDF.
+
+The graph shows:
+- **Heart rate** as a continuous line over the full session duration
+- **State** as colour-coded background bands, matching the dot colours in the training view: green for active periods, orange for rest, red for reset (blue if RFB was enabled), and grey for pause
+- **Resting HR** as a dashed blue reference line (from the activity settings used in that session)
+- **Time axis** in mm:ss with auto-scaled gridlines
+- **HR axis** in bpm with auto-scaled gridlines
+- **Session metadata** in the header: date, time, activity type, duration, and average HR
+- **Legend** showing only the states that actually occurred in the session
+
+Older sessions saved before this feature was introduced will not have the recording and the button will not appear.
 
 ---
 
@@ -155,12 +233,16 @@ Because this app uses the **Web Bluetooth API**, it requires a compatible browse
 4. Put your heart rate monitor into pairing/broadcasting mode (e.g. on a Polar watch, select a workout and tap the gear icon to enable "Share HR with other devices").
 5. Tap **Connect to HR monitor** and select your device from the browser popup.
 
+### Recommended Hardware
+
+Any BLE heart rate monitor that implements the standard Heart Rate Measurement characteristic will work for basic pacing. For the **RFB coherence score** and higher-resolution HR graphing, a device that exposes raw RR intervals is required. The **Polar H10** chest strap is strongly recommended — it is the most widely used research-grade consumer device for this purpose and reliably exposes RR data via the standard BLE characteristic without requiring a proprietary app or API.
+
 ### Common Bluetooth Troubleshooting
 
 Bluetooth LE can be finicky, especially on Android. If the app connects but freezes without showing your heart rate, your phone and watch are likely in a "half-paired" state.
 
 To fix this:
-1. Close the watch or HR monitor's  companion app on your phone (e.g. Polar Flow).
+1. Close the watch or HR monitor's companion app on your phone (e.g. Polar Flow).
 2. **Crucial step:** Go into your watch or HR monitor's own settings menu and delete/unpair your phone from there.
 3. Try connecting again.
 
