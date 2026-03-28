@@ -107,11 +107,14 @@ You are currently in the active state but want to rest voluntarily — not becau
 
 ## Resonance Frequency Breathing (RFB)
 
-Resonance Frequency Breathing is a biofeedback technique. At a particular breathing rate respiratory and cardiac rhythms enter resonance. This is typically around 6 breaths per minute, but varying between individuals in the range of 4.5–7 bpm. The heart rate rises during each inhale and falls during each exhale in a pattern called **Respiratory Sinus Arrhythmia (RSA)**. When breathing rate matches the body's resonance frequency, RSA amplitude is maximised  RSA magnitude is a direct expression of vagal tone — the parasympathetic nervous system's capacity to regulate the heart.
+Resonance Frequency Breathing is a biofeedback technique. At a particular breathing rate respiratory and cardiac rhythms enter resonance. This is typically around 6 breaths per minute, but varying between individuals in the range of 4.5–7 bpm. The heart rate rises during each inhale and falls during each exhale in a pattern called **Respiratory Sinus Arrhythmia (RSA)**. When breathing rate matches the body's resonance frequency, RSA amplitude is maximised.  RSA magnitude is a direct expression of vagal tone (the parasympathetic nervous system's capacity to regulate the heart).
 
 For people with dysautonomia, vagal tone is typically suppressed, which is part of what produces the dysregulated HR patterns the app is designed to manage. Regular RFB practice at the resonance frequency, particularly during rest periods, has evidence of increasing vagal tone over time.
 
-The app integrates RFB directly into the Reset state, turning a mandatory rest period into a structured, guided recovery practice.
+The app integrates RFB directly into the Reset state, turning a  rest period into a structured, guided recovery practice.
+
+**Note** If you have been exercising at a level that causes you to breathe heavily, wait until
+your breathing has settled down before attempting to follow the breathing guide, otherwise you will be depriving your system of oxygen by breathing too slowly. 
 
 ### How it works
 
@@ -133,7 +136,7 @@ The score appears beneath the state description during the Reset state:
 - **Amber (40–70%)** — Moderate coherence.
 - **Red (<40%)** — Low coherence. Your HR oscillation is not yet coupling to the breath.
 
-The score requires approximately 1.5 breath cycles (about 15 seconds at 6 bpm) to compute, and appears as "…" until enough data is available. A flat coherence score early in practice — or even a flat HR line — is physiologically expected. RSA amplitude is suppressed when the ANS is depleted or sympathetically dominant, which is exactly the state you are recovering from. The visible oscillation grows as ANS function improves, both within individual sessions and across sessions over time. The breath pacer and coherence score are most meaningful as a longitudinal tool: tracking whether your RSA amplitude increases over weeks of practice is a meaningful recovery signal.
+The score requires approximately 1.5 breath cycles (about 15 seconds at 6 bpm) to compute, and appears as "…" until enough data is available. A flat coherence score early in practice — or even a flat HR line — is physiologically expected. RSA amplitude is suppressed when the ANS is depleted or sympathetically dominant. The visible oscillation grows as ANS function improves, both within individual sessions and across sessions over time. The breath pacer and coherence score are most meaningful as a longitudinal tool: tracking whether your RSA amplitude increases over weeks of practice is a meaningful recovery signal.
 
 Polar and most other sports watches (as opposed to the Polar H10 chest strap) report rolling-averaged HR rather than beat-to-beat RR intervals, which will produce a flat coherence score regardless of actual RSA. The H10 is strongly recommended for this feature.
 
