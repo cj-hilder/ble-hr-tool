@@ -17,21 +17,277 @@ const hrHistory = [];
 const HR_HISTORY_MS = 90000;
 
 // --- Beat-to-beat RR history (from H10 or compatible sensor) ---
-const rrHistory = [];   // { hr: instantaneous bpm, state, ts }
+const rrHistory = [];   // { hr: instantaneous bpm, state, ts } — used for graph display
 let hasRrData = false;  // true once valid RR intervals have been received
 
+// ─── HRV Pipeline (HRVProcessor + ASIProcessor) ───────────────────────────────
+// Spectral coherence: interpolates RR to 4 Hz, Hanning-windowed FFT,
+// peak power ratio in the 0.04–0.15 Hz LF band (covers 4.5–7 bpm breathing).
+class HRVProcessor {
+    constructor(options = {}) {
+        this.sampleRate    = options.sampleRate    || 4;    // Hz after interpolation
+        this.windowSeconds = options.windowSeconds || 120;  // rolling window
+        this.buffer        = [];   // raw RR intervals ms
+        this.timestamps    = [];
+        this.lastCoherence = 0;
+        this.emaAlpha      = 0.1;
+    }
+    addRR(rrInterval, timestamp) {
+        if (!this._isValidRR(rrInterval)) return;
+        this.buffer.push(rrInterval);
+        this.timestamps.push(timestamp);
+        this._trimBuffer();
+    }
+    computeCoherence() {
+        if (this.buffer.length < 10) return null;
+        const cleaned      = this._removeArtifacts(this.buffer);
+        const interpolated = this._interpolate(cleaned, this.timestamps);
+        if (!interpolated) return null;
+        const windowed  = this._applyHanning(interpolated);
+        const spectrum  = this._fft(windowed);
+        const freqs     = this._frequencyAxis(spectrum.length);
+        const { peakFreq, peakBandPower, totalPower } = this._computeBandMetrics(freqs, spectrum);
+        if (totalPower === 0) return null;
+        const coherenceRaw = peakBandPower / (totalPower - peakBandPower);
+        const coherence    = this._ema(coherenceRaw);
+        return { coherence, peakFreq, breathingRate: peakFreq * 60 };
+    }
+    _isValidRR(rr)    { return rr > 300 && rr < 2000; }
+    _trimBuffer() {
+        const cutoff = Date.now() - this.windowSeconds * 1000;
+        while (this.timestamps.length && this.timestamps[0] < cutoff) {
+            this.timestamps.shift(); this.buffer.shift();
+        }
+    }
+    _removeArtifacts(rrs) {
+        const out = [];
+        for (let i = 0; i < rrs.length; i++) {
+            const prev = rrs[i - 1] || rrs[i];
+            if (Math.abs(rrs[i] - prev) / prev < 0.2) out.push(rrs[i]);
+        }
+        return out;
+    }
+    _interpolate(rrs, timestamps) {
+        if (rrs.length < 4) return null;
+        const start = timestamps[0], end = timestamps[timestamps.length - 1];
+        const step = 1000 / this.sampleRate;
+        const result = []; let j = 0;
+        for (let t = start; t <= end; t += step) {
+            while (j < timestamps.length - 1 && timestamps[j + 1] < t) j++;
+            const t1 = timestamps[j], t2 = timestamps[j + 1];
+            const r1 = rrs[j],       r2 = rrs[j + 1];
+            if (!t2) break;
+            result.push(r1 + ((t - t1) / (t2 - t1)) * (r2 - r1));
+        }
+        return result;
+    }
+    _applyHanning(data) {
+        const N = data.length;
+        return data.map((x, i) => x * (0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (N - 1))));
+    }
+    _fft(signal) {
+        const N = signal.length, re = signal.slice(), im = new Array(N).fill(0);
+        for (let k = 0; k < N; k++) {
+            let sumRe = 0, sumIm = 0;
+            for (let n = 0; n < N; n++) {
+                const angle = (2 * Math.PI * k * n) / N;
+                sumRe += signal[n] * Math.cos(angle);
+                sumIm -= signal[n] * Math.sin(angle);
+            }
+            re[k] = sumRe; im[k] = sumIm;
+        }
+        return re.map((r, i) => Math.sqrt(r * r + im[i] * im[i]));
+    }
+    _frequencyAxis(N) {
+        const freqs = [];
+        for (let i = 0; i < N; i++) freqs.push((i * this.sampleRate) / N);
+        return freqs;
+    }
+    _computeBandMetrics(freqs, spectrum) {
+        let totalPower = 0, peakPower = 0, peakFreq = 0;
+        for (let i = 0; i < freqs.length; i++) {
+            const f = freqs[i], p = spectrum[i] ** 2;
+            if (f >= 0.04 && f <= 0.15 && p > peakPower) { peakPower = p; peakFreq = f; }
+            totalPower += p;
+        }
+        let peakBandPower = 0;
+        const bandWidth = 0.015;
+        for (let i = 0; i < freqs.length; i++) {
+            if (Math.abs(freqs[i] - peakFreq) <= bandWidth) peakBandPower += spectrum[i] ** 2;
+        }
+        return { peakFreq, peakBandPower, totalPower };
+    }
+    _ema(value) {
+        this.lastCoherence = this.emaAlpha * value + (1 - this.emaAlpha) * this.lastCoherence;
+        return this.lastCoherence;
+    }
+}
+
+// Autonomic Stability Index: RMSSD + spectral entropy + HR slope + spectral peak sharpness.
+class ASIProcessor {
+    constructor(options = {}) {
+        this.sampleRate    = options.sampleRate    || 4;
+        this.windowSeconds = options.windowSeconds || 60;
+        this.rrBuffer = []; this.tsBuffer = []; this.hrBuffer = [];
+        this.lastASI  = 0;
+        this.emaAlpha = 0.2;
+    }
+    addSample(rr, hr, timestamp) {
+        if (!this._validRR(rr)) return;
+        this.rrBuffer.push(rr); this.hrBuffer.push(hr); this.tsBuffer.push(timestamp);
+        this._trim();
+    }
+    computeASI() {
+        if (this.rrBuffer.length < 10) return null;
+        const rrClean = this._artifactReject(this.rrBuffer);
+        const rmssd   = this._computeRMSSD(rrClean);
+        const interp  = this._interpolate(rrClean, this.tsBuffer);
+        if (!interp) return null;
+        const windowed      = this._hanning(interp);
+        const spectrum      = this._fft(windowed);
+        const freqs         = this._freqAxis(spectrum.length);
+        const entropy       = this._spectralEntropy(spectrum);
+        const peakSharpness = this._peakSharpness(freqs, spectrum);
+        const slope         = this._hrSlopeSmoothed();
+
+        // Normalise each component to 0–1, with a 0.05 floor so no single
+        // component can collapse the geometric mean to zero on a noisy tick.
+        const floor = 0.05;
+        const rmssdNorm  = Math.max(floor, this._normalize(rmssd,         10, 80));
+        const entropyNorm = Math.max(floor, 1 - this._normalize(entropy,   1,  5));
+        const sharpNorm  = Math.max(floor, this._normalize(peakSharpness,  0,  5));
+
+        // Slope norm: flat HR (slope=0) → 0.75, falling → up to 1.0,
+        // rising → progressively lower, floor at 0.05.
+        // 0.15 scale: +5 bpm/s maps to 0.75 - 0.75 = 0.0 → clamped to floor.
+        const slopeNorm  = Math.max(floor, Math.min(1.0, 0.75 - slope * 0.15));
+
+        // Geometric mean — all four components are jointly necessary.
+        const asiRaw = Math.pow(rmssdNorm * entropyNorm * sharpNorm * slopeNorm, 0.25);
+        return { asi: this._ema(asiRaw), rmssd, entropy, slope, peakSharpness };
+    }
+    _computeRMSSD(rr) {
+        let sum = 0;
+        for (let i = 0; i < rr.length - 1; i++) { const d = rr[i+1] - rr[i]; sum += d * d; }
+        return Math.sqrt(sum / (rr.length - 1));
+    }
+    _spectralEntropy(spectrum) {
+        const power = spectrum.map(x => x * x);
+        const total = power.reduce((a, b) => a + b, 0);
+        if (!total) return 0;
+        return power.reduce((s, p) => { const q = p / total; return q > 0 ? s - q * Math.log(q) : s; }, 0);
+    }
+    _peakSharpness(freqs, spectrum) {
+        let peak = 0, peakIdx = 0;
+        for (let i = 0; i < spectrum.length; i++) if (spectrum[i] > peak) { peak = spectrum[i]; peakIdx = i; }
+        let surrounding = 0, count = 0;
+        for (let i = Math.max(0, peakIdx - 3); i <= Math.min(spectrum.length - 1, peakIdx + 3); i++) {
+            if (i !== peakIdx) { surrounding += spectrum[i]; count++; }
+        }
+        return count ? peak / (surrounding / count) : 0;
+    }
+    _hrSlopeSmoothed() {
+        // Linear regression over the last 10 seconds of HR samples.
+        // Returns slope in bpm/second; negative = falling (good), positive = rising (bad).
+        const windowMs = 10000;
+        const cutoff   = Date.now() - windowMs;
+        // Collect samples within the window
+        const ts = [], hr = [];
+        for (let i = this.tsBuffer.length - 1; i >= 0; i--) {
+            if (this.tsBuffer[i] < cutoff) break;
+            ts.unshift(this.tsBuffer[i]);
+            hr.unshift(this.hrBuffer[i]);
+        }
+        if (ts.length < 3) return 0;
+        // Normalise timestamps to seconds from first sample to keep numbers small
+        const t0 = ts[0];
+        const n  = ts.length;
+        let sumT = 0, sumHr = 0, sumT2 = 0, sumTHr = 0;
+        for (let i = 0; i < n; i++) {
+            const t = (ts[i] - t0) / 1000;
+            sumT  += t;  sumHr  += hr[i];
+            sumT2 += t * t;  sumTHr += t * hr[i];
+        }
+        const denom = n * sumT2 - sumT * sumT;
+        return denom === 0 ? 0 : (n * sumTHr - sumT * sumHr) / denom;
+    }
+    _normalize(val, min, max) { return Math.max(0, Math.min(1, (val - min) / (max - min))); }
+    _ema(v) { this.lastASI = this.emaAlpha * v + (1 - this.emaAlpha) * this.lastASI; return this.lastASI; }
+    _validRR(rr)       { return rr > 300 && rr < 2000; }
+    _artifactReject(rr) {
+        const out = [];
+        for (let i = 0; i < rr.length; i++) {
+            const prev = rr[i-1] || rr[i];
+            if (Math.abs(rr[i] - prev) / prev < 0.2) out.push(rr[i]);
+        }
+        return out;
+    }
+    _interpolate(rr, ts) {
+        if (rr.length < 4) return null;
+        const start = ts[0], end = ts[ts.length - 1], step = 1000 / this.sampleRate;
+        const res = []; let j = 0;
+        for (let t = start; t <= end; t += step) {
+            while (j < ts.length - 1 && ts[j+1] < t) j++;
+            const t2 = ts[j+1];
+            if (!t2) break;
+            res.push(rr[j] + ((t - ts[j]) / (t2 - ts[j])) * (rr[j+1] - rr[j]));
+        }
+        return res;
+    }
+    _hanning(data) {
+        const N = data.length;
+        return data.map((x, i) => x * (0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (N - 1))));
+    }
+    _fft(signal) {
+        const N = signal.length, re = signal.slice(), im = new Array(N).fill(0);
+        for (let k = 0; k < N; k++) {
+            let sumRe = 0, sumIm = 0;
+            for (let n = 0; n < N; n++) {
+                const angle = (2 * Math.PI * k * n) / N;
+                sumRe += signal[n] * Math.cos(angle);
+                sumIm -= signal[n] * Math.sin(angle);
+            }
+            re[k] = sumRe; im[k] = sumIm;
+        }
+        return re.map((r, i) => Math.sqrt(r * r + im[i] * im[i]));
+    }
+    _freqAxis(N) {
+        const freqs = [];
+        for (let i = 0; i < N; i++) freqs.push((i * this.sampleRate) / N);
+        return freqs;
+    }
+    _trim() {
+        const cutoff = Date.now() - this.windowSeconds * 1000;
+        while (this.tsBuffer.length && this.tsBuffer[0] < cutoff) {
+            this.tsBuffer.shift(); this.rrBuffer.shift(); this.hrBuffer.shift();
+        }
+    }
+}
+
+const hrvProcessor = new HRVProcessor({ sampleRate: 4, windowSeconds: 120 });
+const asiProcessor = new ASIProcessor({ sampleRate: 4, windowSeconds: 60  });
+
 function recordRrHistory(rrValuesMs, notifTs) {
-    // rrValuesMs: array of RR durations in ms, oldest first.
-    // The last RR value ends at notifTs; work backwards to assign timestamps.
+    // Assign timestamps: the last RR interval ends at notifTs; work backwards.
+    const pairs = [];
     let ts = notifTs;
     for (let i = rrValuesMs.length - 1; i >= 0; i--) {
-        const instantHr = Math.round(60000 / rrValuesMs[i]);
-        if (instantHr >= 24 && instantHr <= 240) {
-            rrHistory.push({ hr: instantHr, state: currentState, ts });
-        }
+        pairs.push({ rr: rrValuesMs[i], ts });
         ts -= rrValuesMs[i];
     }
-    // Sort by ts in case of any ordering artefact, then trim to window
+    pairs.reverse(); // oldest first
+
+    for (const { rr, ts: t } of pairs) {
+        // Feed raw RR + timestamp to both HRV processors
+        hrvProcessor.addRR(rr, t);
+        asiProcessor.addSample(rr, latestHR, t);
+        // Build instantaneous-HR display history for the graph
+        const instantHr = Math.round(60000 / rr);
+        if (instantHr >= 24 && instantHr <= 240) {
+            rrHistory.push({ hr: instantHr, state: currentState, ts: t });
+        }
+    }
+
     rrHistory.sort((a, b) => a.ts - b.ts);
     const cutoff = notifTs - HR_HISTORY_MS;
     while (rrHistory.length > 0 && rrHistory[0].ts < cutoff) rrHistory.shift();
@@ -441,65 +697,62 @@ function triggerNotification() {
     } catch (e) { console.log('Audio notification failed:', e); }
 }
 
-// ─── Coherence Score ──────────────────────────────────────────────────────────
-// Pearson correlation between actual beat-to-beat HR and the expected RFB sine.
-// Requires RR data and an active rfbWallStartTime. Returns 0–1 or null.
+// ─── Coherence & ASI display ──────────────────────────────────────────────────
+// computeCoherence normalises HRVProcessor's spectral ratio (0→∞) to 0–1.
+// A ratio of 3 means ~75% of LF power sits in the peak band — very high coherence
+// — so we clamp at 3 for a meaningful 0–100% display scale.
 function computeCoherence() {
-    if (!hasRrData || rrHistory.length < 8) return null;
-    if (!rfbWallStartTime || rfbWallStartTime === 0) return null;
-    const breathPeriodMs = rfbBreathPeriodMs();
-    const inhaleFrac     = rfbGetInhaleFrac();
-    // Need at least 1.5 breath cycles of data to give a meaningful score
-    const minWindowMs = breathPeriodMs * 1.5;
-    const windowMs = Math.max(30000, minWindowMs);
-    const cutoff = Date.now() - windowMs;
-    const samples = rrHistory.filter(s => s.ts >= cutoff);
-    if (samples.length < 8) return null;
+    if (!hasRrData) return null;
+    const result = hrvProcessor.computeCoherence();
+    if (result === null) return null;
+    return Math.min(1, result.coherence / 3);
+}
 
-    const actuals  = samples.map(s => s.hr);
-    const expected = samples.map(s => {
-        const elapsed = s.ts - rfbWallStartTime;
-        const phase = ((elapsed % breathPeriodMs) + breathPeriodMs) % breathPeriodMs / breathPeriodMs;
-        return rfbAsymSine(phase, inhaleFrac);
-    });
-
-    // Pearson r
-    const meanA = actuals.reduce((a, b) => a + b, 0) / actuals.length;
-    const meanE = expected.reduce((a, b) => a + b, 0) / expected.length;
-    let num = 0, denomA = 0, denomE = 0;
-    for (let i = 0; i < actuals.length; i++) {
-        const da = actuals[i] - meanA, de = expected[i] - meanE;
-        num += da * de; denomA += da * da; denomE += de * de;
-    }
-    if (denomA < 1e-9 || denomE < 1e-9) return null;
-    const r = num / Math.sqrt(denomA * denomE);
-    return Math.max(0, Math.min(1, r));
+function computeASI() {
+    if (!hasRrData) return null;
+    const result = asiProcessor.computeASI();
+    if (result === null) return null;
+    return result.asi; // already 0–1
 }
 
 function updateCoherenceDisplay() {
-    const el = document.getElementById('coherenceDisplay');
-    const valEl = document.getElementById('coherenceValue');
-    if (!el || !valEl) return;
+    const el       = document.getElementById('coherenceDisplay');
+    const coherEl  = document.getElementById('coherenceRow');
+    const coherVal = document.getElementById('coherenceValue');
+    const asiVal   = document.getElementById('asiValue');
+    if (!el) return;
+
     const rfbOn = (typeof RFB_ENABLED !== 'undefined') && RFB_ENABLED;
-    if (currentState !== 'reset' || !rfbOn || !hasRrData) {
-        el.style.display = 'none'; return;
-    }
-    const c = computeCoherence();
-    if (c === null) {
-        // Not enough data yet — show a waiting state
-        el.style.display = 'flex';
-        valEl.textContent = '…';
-        valEl.style.color = '#444';
-        return;
-    }
-    const pct = Math.round(c * 100);
-    let color;
-    if      (pct >= 70) color = '#4af';          // good — blue (matching RFB theme)
-    else if (pct >= 40) color = '#ffc107';        // fair — amber
-    else                color = '#dc3545';        // low  — red
+    const inRfb = currentState === 'reset' && rfbOn;
+
+    if (!hasRrData) { el.style.display = 'none'; return; }
+
     el.style.display = 'flex';
-    valEl.textContent = pct + '%';
-    valEl.style.color = color;
+
+    // Coherence row — only during reset + RFB
+    if (coherEl) coherEl.style.display = inRfb ? 'flex' : 'none';
+    if (inRfb && coherVal) {
+        const c = computeCoherence();
+        if (c === null) {
+            coherVal.textContent = '…'; coherVal.style.color = '#444';
+        } else {
+            const pct = Math.round(c * 100);
+            coherVal.textContent = pct + '%';
+            coherVal.style.color = pct >= 70 ? '#4af' : pct >= 40 ? '#ffc107' : '#dc3545';
+        }
+    }
+
+    // ASI row — always when RR data is available
+    if (asiVal) {
+        const a = computeASI();
+        if (a === null) {
+            asiVal.textContent = '…'; asiVal.style.color = '#444';
+        } else {
+            const pct = Math.round(a * 100);
+            asiVal.textContent = pct + '%';
+            asiVal.style.color = pct >= 70 ? '#4af' : pct >= 40 ? '#ffc107' : '#dc3545';
+        }
+    }
 }
 
 // ─── RFB Inhale Sound & Vibration ─────────────────────────────────────────────
