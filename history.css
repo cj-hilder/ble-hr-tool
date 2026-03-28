@@ -201,6 +201,14 @@ header .session-count { margin-left: auto; font-size: 13px; color: #555; white-s
 }
 .session-delete-btn:active { background: #2b0f0f; }
 
+.session-graph-btn {
+    display: block; width: 100%; margin-top: 8px;
+    padding: 10px; background: #0d1e2e; border: 1px solid #1a3a50;
+    border-radius: 8px; color: #4af; font-size: 13px; font-weight: 600;
+    cursor: pointer; text-align: center;
+}
+.session-graph-btn:active { background: #122b40; }
+
 #noResults { display: none; text-align: center; padding: 32px 20px; color: #444; font-size: 15px; }
 
 /* ── Error modal (import validation failures) ── */

@@ -206,6 +206,7 @@ let recoverySeconds = 0, totalActiveSeconds = 0, resetCount = 0;
 let activeToRestCount = 0, activeToResetCount = 0, restToActiveCount = 0, resetToActiveCount = 0;
 let maxHrInRest = 0, timeOfMaxHrInRest = 0, isRecoveryState = false;
 let activityLimitTriggered = false;
+let sessionHrRecording = [];   // 1Hz HR log: {t, hr, state} — attached to summary on save
 
 // ─── Activity tracking ────────────────────────────────────────────────────────
 let currentActivityId   = null;
@@ -804,6 +805,10 @@ function updateTimers(increment) {
 function handleTick() {
     const trueSessionSeconds = Math.floor((Date.now() - sessionStartTime) / 1000);
     updateTimers(trueSessionSeconds - sessionSeconds);
+    // 1Hz HR recording — only when connected and HR is available
+    if (!isReconnecting && latestHR > 0) {
+        sessionHrRecording.push({ t: sessionSeconds, hr: latestHR, state: currentState });
+    }
     saveSession();
 }
 
@@ -966,6 +971,7 @@ function computeSessionSummary() {
         highestHr: sessionHrSamples.length ? Math.max(...sessionHrSamples) : 0,
         avgHr:     sessionHrSamples.length ? arrAvg(sessionHrSamples)      : 0,
         lowestHr:  sessionHrSamples.length ? Math.min(...sessionHrSamples) : 0,
+        hrRecording: sessionHrRecording.slice(), // 1Hz time-series; attached on save, dropped on discard
     };
 }
 
@@ -1066,7 +1072,7 @@ function startSession() {
     isSessionRunning = true; sessionSeconds = 0; sessionStartTime = Date.now();
     stateSeconds = 0; totalActiveSeconds = 0; resetCount = 0; recoverySeconds = 0;
     activePeriods = []; recoveryPeriods = []; currentPeriodType = null; sessionHrSamples = [];
-    rfbSessionClockStart = 0; activityLimitTriggered = false;
+    rfbSessionClockStart = 0; activityLimitTriggered = false; sessionHrRecording = [];
     document.getElementById('homeBtn').style.display = 'none';
     setTimerDisplay(document.getElementById('sessionTimerDisplay'), 0);
     setTimerDisplay(document.getElementById('stateTimerDisplay'), 0);

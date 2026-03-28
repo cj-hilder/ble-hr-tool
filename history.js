@@ -336,6 +336,9 @@ document.addEventListener('click', function (e) {
         } catch (err) { showToast('Failed to delete session', 'error'); }
     } else if (action === 'toggle-card' && !isNaN(idx)) {
         document.getElementById(`card-${idx}`).classList.toggle('open');
+    } else if (action === 'view-graph' && !isNaN(idx)) {
+        e.stopPropagation();
+        generateSessionPDF(allHistory[idx]);
     }
 });
 
@@ -443,6 +446,9 @@ function buildSessionCard(s, realIndex) {
 
             ${settingsHtml}
 
+            ${s.hrRecording && s.hrRecording.length > 0
+                ? `<button class="session-graph-btn" data-action="view-graph" data-index="${realIndex}">📈 View Session Graph (PDF)</button>`
+                : ''}
             <button class="session-delete-btn" data-action="delete-session" data-index="${realIndex}">Delete this session</button>
         </div>
     </div>`;
@@ -533,6 +539,194 @@ function renderPage() {
     empty.style.display  = 'none';
     charts.style.display = 'block';
     applyFilter();
+}
+
+// ── Session Graph PDF ─────────────────────────────────────────────────────────
+function generateSessionPDF(session) {
+    if (typeof window.jspdf === 'undefined') {
+        showToast('PDF library not loaded — try refreshing', 'error'); return;
+    }
+    const rec = session.hrRecording;
+    if (!rec || rec.length < 2) {
+        showToast('No HR recording data for this session', 'error'); return;
+    }
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+
+    // ── Page layout constants ─────────────────────────────────────────────────
+    const PW = 297, PH = 210;
+    const ML = 24, MR = 18, MT = 30, MB = 32;
+    const PX = ML, PY = MT, PW2 = PW - ML - MR, PH2 = PH - MT - MB;
+
+    // ── Data range ────────────────────────────────────────────────────────────
+    const maxT   = Math.max(rec[rec.length - 1].t, session.sessionLengthSec || 1);
+    const hrVals = rec.map(r => r.hr).filter(h => h > 0);
+    if (hrVals.length === 0) { showToast('No valid HR data to chart', 'error'); return; }
+
+    const settingsMaxHR = (session.activitySettings && session.activitySettings.MAX_HR) || 200;
+    const rawMin = Math.min(...hrVals), rawMax = Math.max(...hrVals);
+    const yMin = Math.max(0,  Math.floor((rawMin - 10) / 10) * 10);
+    const yMax = Math.min(settingsMaxHR, Math.ceil( (rawMax + 10) / 10) * 10);
+    const yRange = yMax - yMin || 1;
+
+    // ── Coordinate helpers ────────────────────────────────────────────────────
+    function tToX(t)   { return PX + (t / maxT) * PW2; }
+    function hrToY(hr) { return PY + PH2 - ((hr - yMin) / yRange) * PH2; }
+
+    // ── State colours ─────────────────────────────────────────────────────────
+    // Background bands: state colour blended at 22% opacity onto white
+    const STATE_BG = {
+        active:  [207, 237, 214], // #28a745
+        rest:    [255, 227, 207], // #fd7e14
+        reset:   [247, 212, 215], // #dc3545
+        pause:   [228, 228, 228], // #888888
+        stopped: [215, 215, 215],
+    };
+    const STATE_STROKE = {
+        active: [40, 167, 69], rest: [253, 126, 20],
+        reset:  [220, 53, 69], pause: [136, 136, 136], stopped: [80, 80, 80],
+    };
+    const STATE_LABEL = { active: 'Active', rest: 'Rest', reset: 'Reset', pause: 'Pause' };
+
+    // ── White page background ─────────────────────────────────────────────────
+    doc.setFillColor(255, 255, 255);
+    doc.rect(0, 0, PW, PH, 'F');
+
+    // ── State background bands ────────────────────────────────────────────────
+    // Merge consecutive same-state samples into rectangles
+    const bands = [];
+    let bState = rec[0].state, bStart = rec[0].t;
+    for (let i = 1; i <= rec.length; i++) {
+        const cur = rec[i] ? rec[i].state : null;
+        if (cur !== bState) {
+            bands.push({ state: bState, t: bStart, endT: rec[i - 1].t + 1 });
+            if (rec[i]) { bState = cur; bStart = rec[i].t; }
+        }
+    }
+    for (const b of bands) {
+        const x1 = Math.max(PX, tToX(b.t));
+        const x2 = Math.min(PX + PW2, tToX(b.endT));
+        if (x2 <= x1) continue;
+        const bg = STATE_BG[b.state] || STATE_BG.stopped;
+        doc.setFillColor(bg[0], bg[1], bg[2]);
+        doc.rect(x1, PY, x2 - x1, PH2, 'F');
+    }
+
+    // ── Y-axis grid lines and labels ──────────────────────────────────────────
+    const yStep = yRange <= 60 ? 10 : 20;
+    doc.setFont('helvetica', 'normal');
+    for (let hr = Math.ceil(yMin / yStep) * yStep; hr <= yMax; hr += yStep) {
+        const y = hrToY(hr);
+        if (y < PY - 0.5 || y > PY + PH2 + 0.5) continue;
+        doc.setDrawColor(210, 210, 210); doc.setLineWidth(0.15);
+        doc.line(PX, y, PX + PW2, y);
+        doc.setFontSize(7); doc.setTextColor(140, 140, 140);
+        doc.text(String(hr), PX - 2, y + 1.5, { align: 'right' });
+    }
+
+    // ── X-axis grid lines and labels ──────────────────────────────────────────
+    const minutesTotal = maxT / 60;
+    const xStepMin = minutesTotal <= 10 ? 1 : minutesTotal <= 30 ? 5 :
+                     minutesTotal <= 60 ? 10 : minutesTotal <= 120 ? 15 : 30;
+    for (let m = 0; m <= minutesTotal + 0.01; m += xStepMin) {
+        const x = tToX(m * 60);
+        if (x < PX - 0.5 || x > PX + PW2 + 0.5) continue;
+        doc.setDrawColor(210, 210, 210); doc.setLineWidth(0.15);
+        doc.line(x, PY, x, PY + PH2);
+        const mm = Math.floor(m), ss = Math.round((m % 1) * 60);
+        doc.setFontSize(7); doc.setTextColor(140, 140, 140);
+        doc.text(`${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}`,
+                 x, PY + PH2 + 5, { align: 'center' });
+    }
+
+    // ── Plot border ───────────────────────────────────────────────────────────
+    doc.setDrawColor(80, 80, 80); doc.setLineWidth(0.25);
+    doc.rect(PX, PY, PW2, PH2, 'S');
+
+    // ── Resting HR reference line (dashed, blue) ──────────────────────────────
+    const restingHR = session.activitySettings && session.activitySettings.RESTING_HR;
+    if (restingHR && restingHR >= yMin && restingHR <= yMax) {
+        const ry = hrToY(restingHR);
+        doc.setDrawColor(100, 149, 237); doc.setLineWidth(0.3);
+        doc.setLineDashPattern([2, 2], 0);
+        doc.line(PX, ry, PX + PW2, ry);
+        doc.setLineDashPattern([], 0);
+        doc.setFontSize(6.5); doc.setTextColor(100, 149, 237);
+        doc.text('Resting HR', PX + PW2 + 1.5, ry + 1.5);
+    }
+
+    // ── HR line ───────────────────────────────────────────────────────────────
+    const pts = rec.filter(r => r.hr > 0);
+    if (pts.length >= 2) {
+        doc.setDrawColor(20, 20, 20); doc.setLineWidth(0.45);
+        const segs = [];
+        for (let i = 1; i < pts.length; i++) {
+            segs.push([tToX(pts[i].t) - tToX(pts[i-1].t),
+                       hrToY(pts[i].hr) - hrToY(pts[i-1].hr)]);
+        }
+        doc.lines(segs, tToX(pts[0].t), hrToY(pts[0].hr), [1, 1], 'S');
+    }
+
+    // ── Axis labels ───────────────────────────────────────────────────────────
+    doc.setTextColor(80, 80, 80); doc.setFontSize(8);
+    doc.text('HR (bpm)', PX - 16, PY + PH2 / 2, { angle: 90, align: 'center' });
+    doc.text('Time (mm:ss)', PX + PW2 / 2, PY + PH2 + 11, { align: 'center' });
+
+    // ── Title ─────────────────────────────────────────────────────────────────
+    const dateStr = session.date
+        ? new Date(session.date).toLocaleString(undefined, {
+              weekday: 'short', year: 'numeric', month: 'short', day: 'numeric',
+              hour: '2-digit', minute: '2-digit' })
+        : 'Unknown date';
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(20, 20, 20);
+    doc.text('HR Session Graph', PX, 10);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(90, 90, 90);
+    const meta = [
+        dateStr,
+        session.activityName ? `Activity: ${session.activityName}` : null,
+        session.sessionLengthSec ? `Duration: ${formatTime(session.sessionLengthSec)}` : null,
+        session.avgHr ? `Avg HR: ${session.avgHr} bpm` : null,
+    ].filter(Boolean).join('   ·   ');
+    doc.text(meta, PX, 18);
+
+    // ── Legend ────────────────────────────────────────────────────────────────
+    const usedStates = [...new Set(rec.map(r => r.state))].filter(s => STATE_LABEL[s]);
+    let lx = PX;
+    const ly = PY + PH2 + 21;
+    doc.setFontSize(8);
+    for (const state of usedStates) {
+        const bg = STATE_BG[state] || STATE_BG.stopped;
+        const st = STATE_STROKE[state] || [80, 80, 80];
+        doc.setFillColor(bg[0], bg[1], bg[2]);
+        doc.setDrawColor(st[0], st[1], st[2]);
+        doc.setLineWidth(0.3);
+        doc.rect(lx, ly - 3.5, 5, 4.5, 'FD');
+        doc.setTextColor(50, 50, 50);
+        doc.text(STATE_LABEL[state], lx + 6.5, ly);
+        lx += 30;
+    }
+    // HR line entry
+    doc.setDrawColor(20, 20, 20); doc.setLineWidth(0.45);
+    doc.line(lx, ly - 1.5, lx + 5, ly - 1.5);
+    doc.setTextColor(50, 50, 50);
+    doc.text('Heart rate', lx + 6.5, ly);
+    // Resting HR entry (if shown)
+    if (restingHR && restingHR >= yMin && restingHR <= yMax) {
+        lx += 30;
+        doc.setDrawColor(100, 149, 237); doc.setLineWidth(0.3);
+        doc.setLineDashPattern([2, 2], 0);
+        doc.line(lx, ly - 1.5, lx + 5, ly - 1.5);
+        doc.setLineDashPattern([], 0);
+        doc.setTextColor(100, 149, 237);
+        doc.text('Resting HR', lx + 6.5, ly);
+    }
+
+    // ── Save ──────────────────────────────────────────────────────────────────
+    const fileDate = session.date
+        ? new Date(session.date).toISOString().slice(0, 16).replace('T', '_').replace(':', '-')
+        : 'session';
+    doc.save(`hr-session-${fileDate}.pdf`);
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
