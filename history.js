@@ -446,7 +446,7 @@ function buildSessionCard(s, realIndex) {
 
             ${settingsHtml}
 
-            ${s.hrRecording && s.hrRecording.length > 0
+            ${hasHrRecording(s)
                 ? `<button class="session-graph-btn" data-action="view-graph" data-index="${realIndex}">📈 View Session Graph (PDF)</button>`
                 : ''}
             <button class="session-delete-btn" data-action="delete-session" data-index="${realIndex}">Delete this session</button>
@@ -541,12 +541,49 @@ function renderPage() {
     applyFilter();
 }
 
+// ── HR Recording helpers ──────────────────────────────────────────────────────
+// Inverse of packHrRecording in app.js.
+// Accepts either the packed {fmt:'p1', b64, len} object or a legacy plain array.
+function unpackHrRecording(hrRecording) {
+    if (!hrRecording) return [];
+    // Legacy format: plain array of {t, hr, state}
+    if (Array.isArray(hrRecording)) return hrRecording;
+    if (hrRecording.fmt !== 'p1' || !hrRecording.b64) return [];
+
+    const STATE_NAMES = ['active', 'rest', 'reset', 'pause', 'stopped'];
+    const binary = atob(hrRecording.b64);
+    const bytes  = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+    const result = [];
+    const numPairs = Math.floor(bytes.length / 3);
+    for (let p = 0; p < numPairs; p++) {
+        const base  = p * 3;
+        const b0 = bytes[base], b1 = bytes[base + 1], b2 = bytes[base + 2];
+        const hr0 = (b0 << 1) | (b1 >> 7);
+        const st0 = (b1 >> 4) & 7;
+        const hr1 = ((b1 & 0xF) << 5) | (b2 >> 3);
+        const st1 = b2 & 7;
+        const t0  = p * 2, t1 = p * 2 + 1;
+        if (hr0 > 0 && t0 < hrRecording.len) result.push({ t: t0, hr: hr0, state: STATE_NAMES[st0] || 'active' });
+        if (hr1 > 0 && t1 < hrRecording.len) result.push({ t: t1, hr: hr1, state: STATE_NAMES[st1] || 'active' });
+    }
+    return result;
+}
+
+function hasHrRecording(session) {
+    const r = session.hrRecording;
+    if (!r) return false;
+    if (Array.isArray(r)) return r.length > 0;
+    return r.fmt === 'p1' && !!r.b64;
+}
+
 // ── Session Graph PDF ─────────────────────────────────────────────────────────
 function generateSessionPDF(session) {
     if (typeof window.jspdf === 'undefined') {
         showToast('PDF library not loaded — try refreshing', 'error'); return;
     }
-    const rec = session.hrRecording;
+    const rec = unpackHrRecording(session.hrRecording);
     if (!rec || rec.length < 2) {
         showToast('No HR recording data for this session', 'error'); return;
     }

@@ -371,6 +371,26 @@ body.connected #trainingUI {
 #summaryNotes::placeholder { color: #555; }
 #summaryNotes:focus { outline: none; border-color: #555; }
 
+#summaryError {
+    display: none;
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    line-height: 1.5;
+}
+#summaryError.summary-warning {
+    display: block;
+    background: #1c1800;
+    border: 1px solid #4a3a00;
+    color: #ffc107;
+}
+#summaryError.summary-error {
+    display: block;
+    background: #1e0808;
+    border: 1px solid #4a1515;
+    color: #f08080;
+}
+
 #summaryActions {
     display: flex;
     gap: 10px;

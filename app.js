@@ -200,6 +200,7 @@ function rfbScaleFactor(phase, inhaleFrac) {
 const SESSION_KEY       = 'hrPacerSession';
 const HISTORY_KEY       = 'hrPacerHistory';
 const LAST_ACTIVITY_KEY = 'hrPacerLastActivity';
+const HR_RECORDING_MAX_SAMPLES = 10800; // 3 hours at 1 Hz — hard cap to protect memory
 
 let sessionStartTime = 0, sessionSeconds = 0, stateSeconds = 0;
 let recoverySeconds = 0, totalActiveSeconds = 0, resetCount = 0;
@@ -805,8 +806,8 @@ function updateTimers(increment) {
 function handleTick() {
     const trueSessionSeconds = Math.floor((Date.now() - sessionStartTime) / 1000);
     updateTimers(trueSessionSeconds - sessionSeconds);
-    // 1Hz HR recording — only when connected and HR is available
-    if (!isReconnecting && latestHR > 0) {
+    // 1Hz HR recording — only when connected and HR is available; hard-capped at 3 hours
+    if (!isReconnecting && latestHR > 0 && sessionHrRecording.length < HR_RECORDING_MAX_SAMPLES) {
         sessionHrRecording.push({ t: sessionSeconds, hr: latestHR, state: currentState });
     }
     saveSession();
@@ -975,6 +976,8 @@ function computeSessionSummary() {
     };
 }
 
+let summarySaveState = null; // tracks state of the summary modal save flow
+
 function showSummaryModal(summary) {
     const set = (id, val) => { const el = document.getElementById(id); if (el) el.innerText = val; };
     const fmtT = s => s > 0 ? formatTime(s) : '--';
@@ -1004,17 +1007,88 @@ function showSummaryModal(summary) {
     set('s-avgHr',         fmtN(summary.avgHr));
     set('s-lowestHr',      fmtN(summary.lowestHr));
     document.getElementById('summaryNotes').value = '';
+    const errEl = document.getElementById('summaryError');
+    if (errEl) { errEl.className = ''; }
+    const saveBtn = document.getElementById('summarySaveBtn');
+    if (saveBtn) saveBtn.textContent = 'Save session';
+    summarySaveState = null;
     document.getElementById('summaryModal').classList.add('visible');
+}
+
+function isQuotaError(e) {
+    return e && (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED' ||
+                 e.code === 22 || e.code === 1014);
+}
+
+// Pack 1Hz HR recording into a compact binary format for localStorage.
+// Scheme: 12 bits per sample (9-bit HR + 3-bit state), 2 samples per 3 bytes, Base64 encoded.
+// Dense array indexed by second; missing seconds stored as HR=0 (sentinel).
+function packHrRecording(samples, sessionLengthSec) {
+    const STATE_CODE = { active: 0, rest: 1, reset: 2, pause: 3, stopped: 4 };
+    const len = Math.max(sessionLengthSec + 1, samples.length > 0 ? samples[samples.length - 1].t + 1 : 1);
+
+    // Build dense slot array [hr, stateCode] per second, 0/0 = no data
+    const slots = new Array(len).fill(null).map(() => [0, 0]);
+    for (const s of samples) {
+        if (s.t >= 0 && s.t < len && s.hr > 0) {
+            slots[s.t] = [Math.min(511, Math.max(1, Math.round(s.hr))), STATE_CODE[s.state] ?? 0];
+        }
+    }
+
+    // Pack pairs of 12-bit samples into 3 bytes
+    // Byte layout: [HR0:8][HR0:1|state0:3|HR1:4][HR1:5|state1:3]
+    const paddedLen = slots.length % 2 === 0 ? slots.length : slots.length + 1; // even count
+    const bytes = new Uint8Array((paddedLen / 2) * 3);
+    for (let i = 0; i < paddedLen; i += 2) {
+        const [hr0, st0] = slots[i] || [0, 0];
+        const [hr1, st1] = slots[i + 1] || [0, 0];
+        const base = (i / 2) * 3;
+        bytes[base]     = (hr0 >> 1) & 0xFF;
+        bytes[base + 1] = ((hr0 & 1) << 7) | ((st0 & 7) << 4) | ((hr1 >> 5) & 0xF);
+        bytes[base + 2] = ((hr1 & 0x1F) << 3) | (st1 & 7);
+    }
+
+    // Base64 encode
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    return { fmt: 'p1', b64: btoa(binary), len: slots.length };
 }
 
 function saveSessionToHistory(summary, notes) {
     try {
         const raw = localStorage.getItem(HISTORY_KEY);
         const history = raw ? JSON.parse(raw) : [];
-        history.push({ ...summary, notes });
-        localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+        const toSave = { ...summary, notes };
+
+        // Pack the HR recording before writing
+        if (Array.isArray(toSave.hrRecording) && toSave.hrRecording.length > 0) {
+            toSave.hrRecording = packHrRecording(toSave.hrRecording, summary.sessionLengthSec || 0);
+        }
+        history.push(toSave);
+
+        try {
+            localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+        } catch (e1) {
+            if (!isQuotaError(e1)) throw e1;
+            // Retry without recording
+            history[history.length - 1].hrRecording = null;
+            try {
+                localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+                if (summary.activityId) localStorage.setItem(LAST_ACTIVITY_KEY, summary.activityId);
+                return 'ok_without_recording';
+            } catch (e2) {
+                if (!isQuotaError(e2)) throw e2;
+                history.pop(); // remove the failed entry
+                return 'failed';
+            }
+        }
+
         if (summary.activityId) localStorage.setItem(LAST_ACTIVITY_KEY, summary.activityId);
-    } catch (e) { console.error('Failed to save session history', e); }
+        return 'ok';
+    } catch (e) {
+        console.error('Failed to save session history', e);
+        return 'failed';
+    }
 }
 
 function finishSession() {
@@ -1212,11 +1286,51 @@ document.getElementById('modalCancelBtn').addEventListener('click', () => {
 });
 
 document.getElementById('summarySaveBtn').addEventListener('click', () => {
+    const errEl  = document.getElementById('summaryError');
+    const saveBtn = document.getElementById('summarySaveBtn');
+
+    // If already saved (warning shown) or acknowledged failure, just close
+    if (summarySaveState === 'done') {
+        if (errEl) errEl.className = '';
+        summarySaveState = null;
+        document.getElementById('summaryModal').classList.remove('visible');
+        teardownSession();
+        return;
+    }
+
     const notes = document.getElementById('summaryNotes').value.trim();
-    if (pendingSummary) saveSessionToHistory(pendingSummary, notes);
-    pendingSummary = null;
-    document.getElementById('summaryModal').classList.remove('visible');
-    teardownSession();
+    if (!pendingSummary) {
+        document.getElementById('summaryModal').classList.remove('visible');
+        teardownSession();
+        return;
+    }
+
+    const result = saveSessionToHistory(pendingSummary, notes);
+
+    if (result === 'ok') {
+        pendingSummary = null;
+        if (errEl) errEl.className = '';
+        document.getElementById('summaryModal').classList.remove('visible');
+        teardownSession();
+
+    } else if (result === 'ok_without_recording') {
+        // Saved, but HR graph recording was dropped to fit in storage
+        pendingSummary = null;
+        if (errEl) {
+            errEl.className = 'summary-warning';
+            errEl.textContent = '⚠️ Session saved, but the HR graph recording was dropped — storage is almost full. Export your history and delete old sessions to free space.';
+        }
+        if (saveBtn) saveBtn.textContent = 'Close';
+        summarySaveState = 'done';
+
+    } else {
+        // Complete failure — keep modal open so user can navigate to history
+        if (errEl) {
+            errEl.className = 'summary-error';
+            errEl.textContent = '❌ Storage full — session not saved. Go to History, export your data and delete old sessions, then return here and try again.';
+        }
+        // pendingSummary remains set so they can retry
+    }
 });
 
 document.getElementById('summaryDiscardBtn').addEventListener('click', () => {
