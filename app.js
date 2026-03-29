@@ -500,11 +500,16 @@ function rfbGetInhaleFrac() {
     const i = rfbGetInhaleSec(), e = rfbGetExhaleSec();
     return i / (i + e);
 }
-// Asymmetric sine for the HR graph overlay: +1 at mid-inhale, −1 at mid-exhale, 0 at transitions.
+// Asymmetric sine for the HR graph overlay, consistent with RSA physiology:
+// vagal tone is withdrawn during inhalation (HR rises) and restored during
+// exhalation (HR falls). HR is at minimum at inhale start (phase=0), peaks at
+// exhale start (phase=inhaleFrac), and troughs again at the next inhale start
+// (phase=1). This aligns with the dot animation: dot smallest at phase=0,
+// dot largest at phase=inhaleFrac.
 function rfbAsymSine(phase, inhaleFrac) {
-    if (inhaleFrac <= 0 || inhaleFrac >= 1) return Math.sin(phase * 2 * Math.PI);
-    if (phase < inhaleFrac) return Math.sin((phase / inhaleFrac) * Math.PI);
-    return -Math.sin(((phase - inhaleFrac) / (1 - inhaleFrac)) * Math.PI);
+    if (inhaleFrac <= 0 || inhaleFrac >= 1) return -Math.cos(phase * 2 * Math.PI);
+    if (phase < inhaleFrac) return -Math.cos((phase / inhaleFrac) * Math.PI);  // -1 → +1
+    return Math.cos(((phase - inhaleFrac) / (1 - inhaleFrac)) * Math.PI);     // +1 → -1
 }
 // Dot scale factor: 0 at inhale START (phase=0), peaks at 1 at inhale END (phase=inhaleFrac),
 // falls back to 0 at exhale END (phase=1). This makes the dot minimum at every inhale start —
@@ -1048,12 +1053,13 @@ function switchState(newState, isManual) {
         document.getElementById('lagDisplay').innerText = '--';
     }
 
-    // Stop RFB animation and clear RFB phase whenever leaving reset
+    // Stop RFB animation and clear RFB phase whenever leaving reset.
+    // Hide only the coherence row — the ASI row remains visible in all states.
     if (newState !== 'reset') {
         stopRfbAnimation();
         rfbPhase = false; rfbSecondsRemaining = 0;
-        const cEl = document.getElementById('coherenceDisplay');
-        if (cEl) cEl.style.display = 'none';
+        const coherEl = document.getElementById('coherenceRow');
+        if (coherEl) coherEl.style.display = 'none';
     }
 
     const rfbOn = (typeof RFB_ENABLED !== 'undefined') && RFB_ENABLED;
@@ -1166,6 +1172,7 @@ function handleHeartRate(event) {
     }
 
     recordHrHistory(currentHeartRate);
+    updateCoherenceDisplay(); // updates ASI in all states; coherence row self-hides outside RFB
 
     if (isSessionRunning) {
         if (currentPeriodType !== null) currentPeriodHrSamples.push(currentHeartRate);
