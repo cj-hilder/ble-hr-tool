@@ -27,10 +27,11 @@ class HRVProcessor {
     constructor(options = {}) {
         this.sampleRate    = options.sampleRate    || 4;    // Hz after interpolation
         this.windowSeconds = options.windowSeconds || 120;  // rolling window
-        this.buffer        = [];   // raw RR intervals ms
-        this.timestamps    = [];
-        this.lastCoherence = 0;
-        this.emaAlpha      = 0.1;
+        this.buffer            = [];   // raw RR intervals ms
+        this.timestamps        = [];
+        this.lastCoherence     = 0;
+        this.emaTau            = 8;    // seconds — time constant for coherence smoothing
+        this.lastCoherenceTime = 0;    // ms epoch of last _ema call
     }
     addRR(rrInterval, timestamp) {
         if (!this._isValidRR(rrInterval)) return;
@@ -40,16 +41,21 @@ class HRVProcessor {
     }
     computeCoherence() {
         if (this.buffer.length < 10) return null;
-        const cleaned      = this._removeArtifacts(this.buffer);
-        const interpolated = this._interpolate(cleaned, this.timestamps);
+        const { rrs: cleaned, timestamps: cleanedTs } = this._removeArtifacts(this.buffer, this.timestamps);
+        const interpolated = this._interpolate(cleaned, cleanedTs);
         if (!interpolated) return null;
-        const windowed  = this._applyHanning(interpolated);
+        // Subtract mean before windowing — eliminates DC component that would
+        // otherwise dominate totalPower and suppress the coherence ratio.
+        const mean     = interpolated.reduce((s, x) => s + x, 0) / interpolated.length;
+        const detrended = interpolated.map(x => x - mean);
+        const windowed  = this._applyHanning(detrended);
         const spectrum  = this._fft(windowed);
         const freqs     = this._frequencyAxis(spectrum.length);
         const { peakFreq, peakBandPower, totalPower } = this._computeBandMetrics(freqs, spectrum);
         if (totalPower === 0) return null;
         const coherenceRaw = peakBandPower / (totalPower - peakBandPower);
-        const coherence    = this._ema(coherenceRaw);
+        const now      = this.timestamps.length ? this.timestamps[this.timestamps.length - 1] : Date.now();
+        const coherence = this._ema(coherenceRaw, now);
         return { coherence, peakFreq, breathingRate: peakFreq * 60 };
     }
     _isValidRR(rr)    { return rr > 300 && rr < 2000; }
@@ -59,13 +65,16 @@ class HRVProcessor {
             this.timestamps.shift(); this.buffer.shift();
         }
     }
-    _removeArtifacts(rrs) {
-        const out = [];
+    _removeArtifacts(rrs, timestamps) {
+        const outRrs = [], outTs = [];
         for (let i = 0; i < rrs.length; i++) {
             const prev = rrs[i - 1] || rrs[i];
-            if (Math.abs(rrs[i] - prev) / prev < 0.2) out.push(rrs[i]);
+            if (Math.abs(rrs[i] - prev) / prev < 0.2) {
+                outRrs.push(rrs[i]);
+                outTs.push(timestamps[i]);
+            }
         }
-        return out;
+        return { rrs: outRrs, timestamps: outTs };
     }
     _interpolate(rrs, timestamps) {
         if (rrs.length < 4) return null;
@@ -117,13 +126,18 @@ class HRVProcessor {
         }
         return { peakFreq, peakBandPower, totalPower };
     }
-    _ema(value) {
-        this.lastCoherence = this.emaAlpha * value + (1 - this.emaAlpha) * this.lastCoherence;
+    _ema(value, now) {
+        // Time-based EMA: α = dt / (τ + dt) so smoothing is independent of call rate.
+        // On first call dt defaults to τ, giving α = 0.5 for fast initial lock-on.
+        const dt    = this.lastCoherenceTime ? (now - this.lastCoherenceTime) / 1000 : this.emaTau;
+        const alpha = dt / (this.emaTau + dt);
+        this.lastCoherence     = alpha * value + (1 - alpha) * this.lastCoherence;
+        this.lastCoherenceTime = now;
         return this.lastCoherence;
     }
 }
 
-// Autonomic Stability Index: RMSSD + spectral entropy + HR slope + spectral peak sharpness.
+// Autonomic Stability Index: RMSSD + out-of-band spectral fraction + HR slope.
 class ASIProcessor {
     constructor(options = {}) {
         this.sampleRate    = options.sampleRate    || 4;
@@ -143,18 +157,21 @@ class ASIProcessor {
         // RMSSD uses artifact-cleaned RR: ectopics would artificially inflate
         // successive-difference values in a non-physiological way.
         // Spectral path uses the raw buffer: abrupt RR changes and ectopics are
-        // genuine dysfunction signals and should contribute to entropy/sharpness.
+        // genuine dysfunction signals and should contribute to out-of-band power.
         // Using raw buffers also guarantees RR and timestamp arrays are the same
         // length, avoiding the mismatch that artifact rejection would introduce.
         const rrClean = this._artifactReject(this.rrBuffer);
         const rmssd   = this._computeRMSSD(rrClean);
         const interp  = this._interpolate(this.rrBuffer, this.tsBuffer);
         if (!interp) return null;
-        const windowed      = this._hanning(interp);
+        // Subtract mean before windowing — eliminates DC component that would
+        // otherwise dominate totalPower and suppress spectral metrics.
+        const mean      = interp.reduce((s, x) => s + x, 0) / interp.length;
+        const detrended = interp.map(x => x - mean);
+        const windowed      = this._hanning(detrended);
         const spectrum      = this._fft(windowed);
         const freqs         = this._freqAxis(spectrum.length);
-        const entropy       = this._spectralEntropy(spectrum);
-        const peakSharpness = this._peakSharpness(freqs, spectrum);
+        const outOfBand     = this._outOfBandFraction(freqs, spectrum);
         const slope         = this._hrSlopeSmoothed();
 
         // Normalise each component to 0–1, with a 0.05 floor so no single
@@ -173,9 +190,12 @@ class ASIProcessor {
         }
         const rmssdLow  = 10 - 7  * pHRR;   // 10 → 3 ms across full HRR range
         const rmssdHigh = 80 - 65 * pHRR;   // 80 → 15 ms across full HRR range
-        const rmssdNorm  = Math.max(floor, this._normalize(rmssd, rmssdLow, rmssdHigh));
-        const entropyNorm = Math.max(floor, 1 - this._normalize(entropy,   1,  5));
-        const sharpNorm  = Math.max(floor, this._normalize(peakSharpness,  0,  5));
+        const rmssdNorm = Math.max(floor, this._normalize(rmssd, rmssdLow, rmssdHigh));
+
+        // Out-of-band fraction: power outside the HRV band (0.04–0.4 Hz) / total power.
+        // Low fraction = organised HRV (healthy); high fraction = spectral disorganisation.
+        // Normalised so fraction=0 → 1.0, fraction≥0.5 → floor.
+        const outOfBandNorm = Math.max(floor, 1 - this._normalize(outOfBand, 0, 0.5));
 
         // Slope norm: no penalty within physiologically normal rates of change in
         // either direction; progressive penalty only when |slope| exceeds healthy
@@ -195,30 +215,30 @@ class ASIProcessor {
             slopeNorm = 1.0;
         }
 
-        // Geometric mean — all four components are jointly necessary.
-        const asiRaw = Math.pow(rmssdNorm * entropyNorm * sharpNorm * slopeNorm, 0.25);
+        // Weighted geometric mean: outOfBand carries double weight (it replaces the
+        // two former spectral metrics), rmssd and slope carry single weight each.
+        // (rmssd^1 × outOfBand^2 × slope^1) ^ (1/4)
+        const asiRaw = Math.pow(rmssdNorm * outOfBandNorm * outOfBandNorm * slopeNorm, 0.25);
         const now = this.tsBuffer.length ? this.tsBuffer[this.tsBuffer.length - 1] : Date.now();
-        return { asi: this._ema(asiRaw, now), rmssd, entropy, slope, peakSharpness };
+        return { asi: this._ema(asiRaw, now), rmssd, outOfBand, slope };
     }
     _computeRMSSD(rr) {
         let sum = 0;
         for (let i = 0; i < rr.length - 1; i++) { const d = rr[i+1] - rr[i]; sum += d * d; }
         return Math.sqrt(sum / (rr.length - 1));
     }
-    _spectralEntropy(spectrum) {
-        const power = spectrum.map(x => x * x);
-        const total = power.reduce((a, b) => a + b, 0);
-        if (!total) return 0;
-        return power.reduce((s, p) => { const q = p / total; return q > 0 ? s - q * Math.log(q) : s; }, 0);
-    }
-    _peakSharpness(freqs, spectrum) {
-        let peak = 0, peakIdx = 0;
-        for (let i = 0; i < spectrum.length; i++) if (spectrum[i] > peak) { peak = spectrum[i]; peakIdx = i; }
-        let surrounding = 0, count = 0;
-        for (let i = Math.max(0, peakIdx - 3); i <= Math.min(spectrum.length - 1, peakIdx + 3); i++) {
-            if (i !== peakIdx) { surrounding += spectrum[i]; count++; }
+    _outOfBandFraction(freqs, spectrum) {
+        // Power outside the HRV band (0.04–0.4 Hz) as a fraction of total power.
+        // Sub-VLF (<0.04 Hz): slow sympathetic drift and erratic HR trends.
+        // HF noise (>0.4 Hz): movement artifact, ectopic-driven broadband noise.
+        // Both represent autonomic disorganisation in the context of this tool.
+        let inBand = 0, total = 0;
+        for (let i = 0; i < freqs.length; i++) {
+            const p = spectrum[i] ** 2;
+            total += p;
+            if (freqs[i] >= 0.04 && freqs[i] <= 0.4) inBand += p;
         }
-        return count ? peak / (surrounding / count) : 0;
+        return total > 0 ? 1 - (inBand / total) : 0;
     }
     _hrSlopeSmoothed() {
         // Linear regression over the last 10 seconds of HR samples.
