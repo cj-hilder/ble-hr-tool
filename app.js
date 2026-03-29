@@ -129,19 +129,26 @@ class ASIProcessor {
         this.sampleRate    = options.sampleRate    || 4;
         this.windowSeconds = options.windowSeconds || 60;
         this.rrBuffer = []; this.tsBuffer = []; this.hrBuffer = [];
-        this.lastASI  = 0;
-        this.emaAlpha = 0.2;
+        this.lastASI     = 0;
+        this.emaTau      = 10;  // seconds — time constant for ASI smoothing
+        this.lastASITime = 0;   // ms epoch of last _ema call
     }
     addSample(rr, hr, timestamp) {
         if (!this._validRR(rr)) return;
         this.rrBuffer.push(rr); this.hrBuffer.push(hr); this.tsBuffer.push(timestamp);
         this._trim();
     }
-    computeASI() {
+    computeASI({ restingHR, maxHR, currentHR } = {}) {
         if (this.rrBuffer.length < 10) return null;
+        // RMSSD uses artifact-cleaned RR: ectopics would artificially inflate
+        // successive-difference values in a non-physiological way.
+        // Spectral path uses the raw buffer: abrupt RR changes and ectopics are
+        // genuine dysfunction signals and should contribute to entropy/sharpness.
+        // Using raw buffers also guarantees RR and timestamp arrays are the same
+        // length, avoiding the mismatch that artifact rejection would introduce.
         const rrClean = this._artifactReject(this.rrBuffer);
         const rmssd   = this._computeRMSSD(rrClean);
-        const interp  = this._interpolate(rrClean, this.tsBuffer);
+        const interp  = this._interpolate(this.rrBuffer, this.tsBuffer);
         if (!interp) return null;
         const windowed      = this._hanning(interp);
         const spectrum      = this._fft(windowed);
@@ -153,18 +160,45 @@ class ASIProcessor {
         // Normalise each component to 0–1, with a 0.05 floor so no single
         // component can collapse the geometric mean to zero on a noisy tick.
         const floor = 0.05;
-        const rmssdNorm  = Math.max(floor, this._normalize(rmssd,         10, 80));
+
+        // RMSSD normalization bounds scale with exercise intensity (%HRR).
+        // At rest (0% HRR): low=10 ms, high=80 ms.
+        // At max  (100% HRR): low=3 ms,  high=15 ms.
+        // Linear interpolation between these anchors means the score reflects
+        // dysfunction relative to expected RMSSD at the current workload, not
+        // the absolute suppression that occurs normally during exercise.
+        let pHRR = 0;
+        if (restingHR && maxHR && currentHR && maxHR > restingHR) {
+            pHRR = Math.max(0, Math.min(1, (currentHR - restingHR) / (maxHR - restingHR)));
+        }
+        const rmssdLow  = 10 - 7  * pHRR;   // 10 → 3 ms across full HRR range
+        const rmssdHigh = 80 - 65 * pHRR;   // 80 → 15 ms across full HRR range
+        const rmssdNorm  = Math.max(floor, this._normalize(rmssd, rmssdLow, rmssdHigh));
         const entropyNorm = Math.max(floor, 1 - this._normalize(entropy,   1,  5));
         const sharpNorm  = Math.max(floor, this._normalize(peakSharpness,  0,  5));
 
-        // Slope norm: flat HR (slope=0) → 0.75, falling → up to 1.0,
-        // rising → progressively lower, floor at 0.05.
-        // 0.15 scale: +5 bpm/s maps to 0.75 - 0.75 = 0.0 → clamped to floor.
-        const slopeNorm  = Math.max(floor, Math.min(1.0, 0.75 - slope * 0.15));
+        // Slope norm: no penalty within physiologically normal rates of change in
+        // either direction; progressive penalty only when |slope| exceeds healthy
+        // bounds. Thresholds in bpm/s from the 10-second linear regression.
+        //   Rise ≤ 1.0 bpm/s  — healthy warm-up, no penalty
+        //   Fall ≤ 1.5 bpm/s  — healthy recovery, no penalty
+        //   Rise > 4.0 bpm/s  — full penalty (sympathetic surge)
+        //   Fall > 4.0 bpm/s  — full penalty (possible vasovagal instability)
+        const SLOPE_NORM_RISE = 1.0, SLOPE_MAX_RISE = 4.0;
+        const SLOPE_NORM_FALL = 1.5, SLOPE_MAX_FALL = 4.0;
+        let slopeNorm;
+        if (slope > SLOPE_NORM_RISE) {
+            slopeNorm = Math.max(floor, 1.0 - this._normalize(slope,  SLOPE_NORM_RISE, SLOPE_MAX_RISE));
+        } else if (slope < -SLOPE_NORM_FALL) {
+            slopeNorm = Math.max(floor, 1.0 - this._normalize(-slope, SLOPE_NORM_FALL, SLOPE_MAX_FALL));
+        } else {
+            slopeNorm = 1.0;
+        }
 
         // Geometric mean — all four components are jointly necessary.
         const asiRaw = Math.pow(rmssdNorm * entropyNorm * sharpNorm * slopeNorm, 0.25);
-        return { asi: this._ema(asiRaw), rmssd, entropy, slope, peakSharpness };
+        const now = this.tsBuffer.length ? this.tsBuffer[this.tsBuffer.length - 1] : Date.now();
+        return { asi: this._ema(asiRaw, now), rmssd, entropy, slope, peakSharpness };
     }
     _computeRMSSD(rr) {
         let sum = 0;
@@ -212,7 +246,15 @@ class ASIProcessor {
         return denom === 0 ? 0 : (n * sumTHr - sumT * sumHr) / denom;
     }
     _normalize(val, min, max) { return Math.max(0, Math.min(1, (val - min) / (max - min))); }
-    _ema(v) { this.lastASI = this.emaAlpha * v + (1 - this.emaAlpha) * this.lastASI; return this.lastASI; }
+    _ema(v, now) {
+        // Time-based EMA: α = dt / (τ + dt) so smoothing is independent of call rate.
+        // On first call dt is treated as τ, giving α = 0.5 (fast initial lock-on).
+        const dt = this.lastASITime ? (now - this.lastASITime) / 1000 : this.emaTau;
+        const alpha = dt / (this.emaTau + dt);
+        this.lastASI     = alpha * v + (1 - alpha) * this.lastASI;
+        this.lastASITime = now;
+        return this.lastASI;
+    }
     _validRR(rr)       { return rr > 300 && rr < 2000; }
     _artifactReject(rr) {
         const out = [];
@@ -710,12 +752,20 @@ function computeCoherence() {
 
 function computeASI() {
     if (!hasRrData) return null;
-    const result = asiProcessor.computeASI();
+    const result = asiProcessor.computeASI({
+        restingHR:  (typeof RESTING_HR !== 'undefined') ? RESTING_HR  : undefined,
+        maxHR:      (typeof MAX_HR     !== 'undefined') ? MAX_HR      : undefined,
+        currentHR:  latestHR || undefined,
+    });
     if (result === null) return null;
     return result.asi; // already 0–1
 }
 
+let _lastCoherenceUpdateTs = 0;
 function updateCoherenceDisplay() {
+    const now = Date.now();
+    if (now - _lastCoherenceUpdateTs < 1000) return;
+    _lastCoherenceUpdateTs = now;
     const el       = document.getElementById('coherenceDisplay');
     const coherEl  = document.getElementById('coherenceRow');
     const coherVal = document.getElementById('coherenceValue');

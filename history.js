@@ -727,6 +727,16 @@ function generateSessionPDF(session) {
     ].filter(Boolean).join('   ·   ');
     doc.text(meta, PX, 18);
 
+    // ── Session notes (if present) ────────────────────────────────────────────
+    const notes = session.notes ? session.notes.trim() : '';
+    if (notes) {
+        doc.setFont('helvetica', 'italic'); doc.setFontSize(7.5); doc.setTextColor(100, 100, 100);
+        const noteLines = doc.splitTextToSize(`Notes: ${notes}`, PW2);
+        // Render up to 2 lines in the gap between meta and plot (y=18 to y=30)
+        noteLines.slice(0, 2).forEach((line, i) => doc.text(line, PX, 24 + i * 4));
+        doc.setFont('helvetica', 'normal');
+    }
+
     // ── Legend ────────────────────────────────────────────────────────────────
     const usedStates = [...new Set(rec.map(r => r.state))].filter(s => STATE_LABEL[s]);
     let lx = PX;
