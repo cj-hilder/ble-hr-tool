@@ -111,6 +111,22 @@ function doExport() {
         if (val !== null) data.store[key] = val; // store raw JSON strings
     }
 
+    // Unpack hrRecording in each session so the export is readable by other
+    // software — replace packed {fmt:'p1', b64, len} objects with plain
+    // [{t, hr, state}] arrays. Works on a deep copy; localStorage is unchanged.
+    if (data.store[HISTORY_KEY]) {
+        try {
+            const sessions = JSON.parse(data.store[HISTORY_KEY]);
+            const unpacked = sessions.map(s => {
+                if (!hasHrRecording(s)) return s;
+                return { ...s, hrRecording: unpackHrRecording(s.hrRecording) };
+            });
+            data.store[HISTORY_KEY] = JSON.stringify(unpacked);
+        } catch (e) {
+            console.warn('doExport: could not unpack hrRecording data', e);
+        }
+    }
+
     const json    = JSON.stringify(data, null, 2);
     const blob    = new Blob([json], { type: 'application/json' });
     const url     = URL.createObjectURL(blob);
