@@ -19,7 +19,6 @@ const HR_HISTORY_MS = 90000;
 // --- Beat-to-beat RR history (from H10 or compatible sensor) ---
 const rrHistory = [];   // { hr: instantaneous bpm, state, ts } — used for graph display
 let hasRrData = false;  // true once valid RR intervals have been received
-let lastRrTimestamp = 0; // Continuous internal clock to prevent Bluetooth packet jitter
 
 // ─── HRV Pipeline (HRVProcessor + ASIProcessor) ───────────────────────────────
 // Spectral coherence: interpolates RR to 4 Hz, Hanning-windowed FFT,
@@ -152,6 +151,7 @@ class ASIProcessor {
         this.lastASI     = 0;
         this.emaTau      = 10;  // seconds — time constant for ASI smoothing
         this.lastASITime = 0;   // ms epoch of last _ema call
+        this.oobBuffer   = []; // { value, ts } — 30s moving mean for outOfBand smoothing
     }
     addSample(rr, hr, timestamp) {
         if (!this._validRR(rr)) return;
@@ -167,7 +167,8 @@ class ASIProcessor {
         // Using raw buffers also guarantees RR and timestamp arrays are the same
         // length, avoiding the mismatch that artifact rejection would introduce.
         const { rr: rrClean, ts: tsClean } = this._artifactReject(this.rrBuffer, this.tsBuffer);
-        const rmssd   = this._computeRMSSD(rrClean, tsClean);
+        const rmssdResult = this._computeRMSSD(rrClean, tsClean);
+        const rmssd       = rmssdResult.value;
         const interp  = this._interpolate(this.rrBuffer, this.tsBuffer);
         if (!interp) return null;
         // Subtract mean before windowing — eliminates DC component that would
@@ -177,7 +178,13 @@ class ASIProcessor {
         const windowed      = this._hanning(detrended);
         const spectrum      = this._fft(windowed);
         const freqs         = this._freqAxis(spectrum.length);
-        const outOfBand     = this._outOfBandFraction(freqs, spectrum);
+        const outOfBandRaw  = this._outOfBandFraction(freqs, spectrum);
+        // 30-second moving mean — OOB is noisy tick-to-tick; smooth before normalizing.
+        const nowTs = this.tsBuffer.length ? this.tsBuffer[this.tsBuffer.length - 1] : Date.now();
+        this.oobBuffer.push({ value: outOfBandRaw, ts: nowTs });
+        const oobCutoff = nowTs - 30000;
+        while (this.oobBuffer.length && this.oobBuffer[0].ts < oobCutoff) this.oobBuffer.shift();
+        const outOfBand = this.oobBuffer.reduce((s, x) => s + x.value, 0) / this.oobBuffer.length;
         const slope         = this._hrSlopeSmoothed();
 
         // Normalise each component to 0–1, with a 0.05 floor so no single
@@ -229,7 +236,8 @@ class ASIProcessor {
         // (rmssd^1 × outOfBand^2 × slope^1) ^ (1/4)
         const asiRaw = Math.pow(rmssdNorm * outOfBandNorm * outOfBandNorm * slopeNorm, 0.25);
         const now = this.tsBuffer.length ? this.tsBuffer[this.tsBuffer.length - 1] : Date.now();
-        return { asi: this._ema(asiRaw, now), rmssd, outOfBand, slope };
+        return { asi: this._ema(asiRaw, now), rmssd, outOfBand, outOfBandRaw, slope,
+                 rmssdCount: rmssdResult.count, rmssdBufLen: rmssdResult.bufLen };
     }
     _computeRMSSD(rr, ts) {
         // Only compute successive differences between beats that were genuinely
@@ -238,12 +246,12 @@ class ASIProcessor {
         // non-adjacent beats and halving the result.
         let sum = 0, count = 0;
         for (let i = 0; i < rr.length - 1; i++) {
-            const expectedGapMs = rr[i+1]; // FIXED: Compare against duration of second beat
+            const expectedGapMs = rr[i];
             const actualGapMs   = ts[i+1] - ts[i];
             if (Math.abs(actualGapMs - expectedGapMs) / expectedGapMs > 0.25) continue;
             const d = rr[i+1] - rr[i]; sum += d * d; count++;
         }
-        return count > 0 ? Math.sqrt(sum / count) : 0;
+        return { value: count > 0 ? Math.sqrt(sum / count) : 0, count, bufLen: rr.length };
     }
     _outOfBandFraction(freqs, spectrum) {
         // Power outside the HRV band (0.04–0.4 Hz) as a fraction of total power.
@@ -349,11 +357,16 @@ class ASIProcessor {
 
 const hrvProcessor = new HRVProcessor({ sampleRate: 4, windowSeconds: 120 });
 const asiProcessor = new ASIProcessor({ sampleRate: 4, windowSeconds: 60  });
+
+let lastRrTimestamp = 0; // Continuous internal clock — prevents packet jitter gaps
+
 function recordRrHistory(rrValuesMs, notifTs) {
     const pairs = [];
     const totalRrMs = rrValuesMs.reduce((sum, val) => sum + val, 0);
 
-    // FIXED: Build a continuous internal clock to avoid packet jitter gaps
+    // Build a continuous forward-running clock so beats across packet boundaries
+    // have genuinely sequential timestamps. The old backward reconstruction from
+    // notifTs caused cross-packet gaps that halved RMSSD pair counts.
     if (lastRrTimestamp > 0 && (notifTs - lastRrTimestamp) < totalRrMs + 3000) {
         let ts = lastRrTimestamp;
         for (let i = 0; i < rrValuesMs.length; i++) {
@@ -362,18 +375,21 @@ function recordRrHistory(rrValuesMs, notifTs) {
         }
         lastRrTimestamp = ts;
     } else {
+        // First packet or gap too large — seed from notifTs backwards as before.
         let ts = notifTs;
         for (let i = rrValuesMs.length - 1; i >= 0; i--) {
             pairs.push({ rr: rrValuesMs[i], ts });
             ts -= rrValuesMs[i];
         }
-        pairs.reverse(); // oldest first
+        pairs.reverse();
         lastRrTimestamp = notifTs;
     }
 
     for (const { rr, ts: t } of pairs) {
+        // Feed raw RR + timestamp to both HRV processors
         hrvProcessor.addRR(rr, t);
         asiProcessor.addSample(rr, latestHR, t);
+        // Build instantaneous-HR display history for the graph
         const instantHr = Math.round(60000 / rr);
         if (instantHr >= 24 && instantHr <= 240) {
             rrHistory.push({ hr: instantHr, state: currentState, ts: t });
@@ -381,11 +397,12 @@ function recordRrHistory(rrValuesMs, notifTs) {
     }
 
     rrHistory.sort((a, b) => a.ts - b.ts);
-    const cutoff = Date.now() - HR_HISTORY_MS;
+    const cutoff = notifTs - HR_HISTORY_MS;
     while (rrHistory.length > 0 && rrHistory[0].ts < cutoff) rrHistory.shift();
     hasRrData = true;
 }
 
+// Returns the best available HR history: beat-to-beat if fresh, else averaged.
 function getActiveHrHistory() {
     if (hasRrData && rrHistory.length >= 2 && (Date.now() - rrHistory[rrHistory.length - 1].ts) < 5000) {
         return rrHistory;
@@ -416,8 +433,10 @@ function drawHrGraph() {
     function toX(ts) { return ((ts - windowStart) / HR_HISTORY_MS) * W; }
     function toY(hr)  { return H - (hr / MAX_HR) * H; }
 
+    // ── HR line (beat-to-beat if available, averaged as fallback) ─────────────
     if (activeHistory.length >= 2) {
         ctx.globalAlpha = 0.7;
+        // Beat-to-beat data is drawn thinner since it has natural jaggedness
         ctx.lineWidth = hasRrData && activeHistory === rrHistory ? 1.5 : 3;
         ctx.lineJoin = 'round'; ctx.lineCap = 'round';
         ctx.strokeStyle = activeHistory[0].state === 'active' ? 'black' : 'white';
@@ -443,11 +462,12 @@ function drawHrGraph() {
         ctx.stroke();
     }
 
+    // ── RFB breathing guide overlay ───────────────────────────────────────────
     const rfbResting = (typeof RESTING_HR !== 'undefined') ? RESTING_HR : 65;
     if (currentState === 'reset' && (typeof RFB_ENABLED !== 'undefined') && RFB_ENABLED && rfbWallStartTime > 0) {
         const breathPeriodMs = rfbBreathPeriodMs();
         const inhaleFrac     = rfbGetInhaleFrac();
-        const amplitude = 8;
+        const amplitude = 8; // ±8 bpm visual range
         ctx.globalAlpha = 0.85;
         ctx.strokeStyle = '#000000';
         ctx.lineWidth = 1;
@@ -492,6 +512,8 @@ function updateSpeedometer(hr) {
     arc.setAttribute('d', _arcPath(_hrToSvgDeg(zoneMin), _hrToSvgDeg(zoneMax)));
     arc.setAttribute('stroke-width', (hr >= zoneMin && hr <= zoneMax) ? '1' : '4');
 }
+
+// ─── State variables ─────────────────────────────────────────────────────────
 let bluetoothDevice;
 let isSessionRunning = false, isReconnecting = false, isManualDisconnect = false;
 let reconnectAttempts = 0;
@@ -499,58 +521,78 @@ const MAX_RECONNECT_ATTEMPTS = 10;
 let currentState = 'stopped';
 let sessionInterval, wakeLock = null, heartbeatTimeout;
 
+// ─── RFB (Resonance Frequency Breathing) ─────────────────────────────────────
 let rfbPhase = false;
 let rfbSecondsRemaining = 0;
-let rfbWallStartTime = 0;
-let rfbSessionClockStart = 0;
+let rfbWallStartTime = 0;      // phase anchor: set once per session, never reset between RFB periods
+let rfbSessionClockStart = 0;  // Date.now() of the very first RFB entry this session (0 = not yet started)
 let rfbAnimFrame = null;
 let rfbScheduleTimer = null;
 let rfbAudioNodes = null;
 
+// Breath timing helpers — read live globals so changes take effect immediately.
 function rfbBreathPeriodMs() {
     const i = (typeof RFB_INHALE_SEC !== 'undefined' && RFB_INHALE_SEC > 0) ? RFB_INHALE_SEC : 5;
     const e = (typeof RFB_EXHALE_SEC !== 'undefined' && RFB_EXHALE_SEC > 0) ? RFB_EXHALE_SEC : 5;
     return (i + e) * 1000;
 }
-function rfbGetInhaleSec() { return (typeof RFB_INHALE_SEC !== 'undefined' && RFB_INHALE_SEC > 0) ? RFB_INHALE_SEC : 5; }
-function rfbGetExhaleSec() { return (typeof RFB_EXHALE_SEC !== 'undefined' && RFB_EXHALE_SEC > 0) ? RFB_EXHALE_SEC : 5; }
-function rfbGetInhaleFrac() { const i = rfbGetInhaleSec(), e = rfbGetExhaleSec(); return i / (i + e); }
-
+function rfbGetInhaleSec() {
+    return (typeof RFB_INHALE_SEC !== 'undefined' && RFB_INHALE_SEC > 0) ? RFB_INHALE_SEC : 5;
+}
+function rfbGetExhaleSec() {
+    return (typeof RFB_EXHALE_SEC !== 'undefined' && RFB_EXHALE_SEC > 0) ? RFB_EXHALE_SEC : 5;
+}
+function rfbGetInhaleFrac() {
+    const i = rfbGetInhaleSec(), e = rfbGetExhaleSec();
+    return i / (i + e);
+}
+// Asymmetric sine for the HR graph overlay, consistent with RSA physiology:
+// vagal tone is withdrawn during inhalation (HR rises) and restored during
+// exhalation (HR falls). HR is at minimum at inhale start (phase=0), peaks at
+// exhale start (phase=inhaleFrac), and troughs again at the next inhale start
+// (phase=1). This aligns with the dot animation: dot smallest at phase=0,
+// dot largest at phase=inhaleFrac.
 function rfbAsymSine(phase, inhaleFrac) {
     if (inhaleFrac <= 0 || inhaleFrac >= 1) return -Math.cos(phase * 2 * Math.PI);
-    if (phase < inhaleFrac) return -Math.cos((phase / inhaleFrac) * Math.PI);
-    return Math.cos(((phase - inhaleFrac) / (1 - inhaleFrac)) * Math.PI);
+    if (phase < inhaleFrac) return -Math.cos((phase / inhaleFrac) * Math.PI);  // -1 → +1
+    return Math.cos(((phase - inhaleFrac) / (1 - inhaleFrac)) * Math.PI);     // +1 → -1
 }
+// Dot scale factor: 0 at inhale START (phase=0), peaks at 1 at inhale END (phase=inhaleFrac),
+// falls back to 0 at exhale END (phase=1). This makes the dot minimum at every inhale start —
+// exactly when sound/vibration begin — giving a clear, unambiguous sync cue.
 function rfbScaleFactor(phase, inhaleFrac) {
     if (inhaleFrac <= 0 || inhaleFrac >= 1) return (Math.sin(phase * 2 * Math.PI - Math.PI / 2) + 1) / 2;
-    if (phase < inhaleFrac) return Math.sin((phase / inhaleFrac) * Math.PI / 2);
-    return Math.cos(((phase - inhaleFrac) / (1 - inhaleFrac)) * Math.PI / 2);
+    if (phase < inhaleFrac) return Math.sin((phase / inhaleFrac) * Math.PI / 2);          // 0 → 1
+    return Math.cos(((phase - inhaleFrac) / (1 - inhaleFrac)) * Math.PI / 2);             // 1 → 0
 }
 
 const SESSION_KEY       = 'hrPacerSession';
 const HISTORY_KEY       = 'hrPacerHistory';
 const LAST_ACTIVITY_KEY = 'hrPacerLastActivity';
-const HR_RECORDING_MAX_SAMPLES = 10800;
+const HR_RECORDING_MAX_SAMPLES = 10800; // 3 hours at 1 Hz — hard cap to protect memory
 
 let sessionStartTime = 0, sessionSeconds = 0, stateSeconds = 0;
 let recoverySeconds = 0, totalActiveSeconds = 0, resetCount = 0;
 let activeToRestCount = 0, activeToResetCount = 0, restToActiveCount = 0, resetToActiveCount = 0;
 let maxHrInRest = 0, timeOfMaxHrInRest = 0, isRecoveryState = false;
 let activityLimitTriggered = false;
-let sessionHrRecording = [];
+let sessionHrRecording = [];   // 1Hz HR log: {t, hr, state} — attached to summary on save
 
+// ─── Activity tracking ────────────────────────────────────────────────────────
 let currentActivityId   = null;
 let currentActivityName = null;
 
+// ─── Period Tracking ──────────────────────────────────────────────────────────
 let activePeriods   = [];
 let recoveryPeriods = [];
-let currentPeriodType  = null;
-const MIN_PERIOD_SEC = 5;
+let currentPeriodType  = null;  // 'active' | 'recovery' | null
+const MIN_PERIOD_SEC = 5;  // periods shorter than this are excluded from all calculations
 let currentPeriodStart = 0;
 let currentPeriodHrSamples = [];
 let sessionHrSamples = [];
 let pendingSummary = null;
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 const logElement = document.getElementById('log');
 function log(message, isError = false) {
     logElement.innerHTML = message;
@@ -569,16 +611,24 @@ function setTimerDisplay(el, seconds) {
     el.innerText = formatTime(seconds);
     el.classList.toggle('long-time', seconds >= 3600);
 }
-function arrAvg(arr) { return arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : 0; }
+function arrAvg(arr) {
+    return arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : 0;
+}
 
-function openActivePeriod() { currentPeriodType = 'active'; currentPeriodStart = sessionSeconds; currentPeriodHrSamples = []; }
+// ─── Period helpers ───────────────────────────────────────────────────────────
+function openActivePeriod() {
+    currentPeriodType = 'active'; currentPeriodStart = sessionSeconds; currentPeriodHrSamples = [];
+}
 function closeActivePeriod(isTerminal = false) {
     if (currentPeriodType !== 'active') return;
     activePeriods.push({ startSec: currentPeriodStart, endSec: sessionSeconds,
-        duration: Math.max(0, sessionSeconds - currentPeriodStart), avgHr: arrAvg(currentPeriodHrSamples), terminal: isTerminal });
+        duration: Math.max(0, sessionSeconds - currentPeriodStart), avgHr: arrAvg(currentPeriodHrSamples),
+        terminal: isTerminal });
     currentPeriodType = null; currentPeriodHrSamples = [];
 }
-function openRecoveryPeriod() { currentPeriodType = 'recovery'; currentPeriodStart = sessionSeconds; currentPeriodHrSamples = []; }
+function openRecoveryPeriod() {
+    currentPeriodType = 'recovery'; currentPeriodStart = sessionSeconds; currentPeriodHrSamples = [];
+}
 function closeRecoveryPeriod(isTerminal = false) {
     if (currentPeriodType !== 'recovery') return;
     recoveryPeriods.push({ startSec: currentPeriodStart, endSec: sessionSeconds,
@@ -587,15 +637,19 @@ function closeRecoveryPeriod(isTerminal = false) {
     currentPeriodType = null; currentPeriodHrSamples = [];
 }
 
+// ─── Activity display ──────────────────────────────────────────────────────────
 function updateActivityDisplay() {
     const el = document.getElementById('activityDisplay');
     if (!el) return;
     if (isSessionRunning && currentActivityName) {
-        el.textContent = currentActivityName; el.style.display = 'block';
+        el.textContent = currentActivityName;
+        el.style.display = 'block';
     } else {
         el.style.display = 'none';
     }
 }
+
+// ─── Session persistence ──────────────────────────────────────────────────────
 function saveSession() {
     if (!isSessionRunning) return;
     try {
@@ -609,7 +663,8 @@ function saveSession() {
             sessionHrSum: sessionHrSamples.reduce((a,b)=>a+b, 0),
             sessionHrCount: sessionHrSamples.length,
             currentActivityId, currentActivityName,
-            rfbPhase, rfbSecondsRemaining, rfbSessionClockStart, activityLimitTriggered,
+            rfbPhase, rfbSecondsRemaining, rfbSessionClockStart,
+            activityLimitTriggered,
         }));
     } catch (e) {}
 }
@@ -626,11 +681,17 @@ function restoreSession() {
         timeOfMaxHrInRest = s.timeOfMaxHrInRest; currentState = s.currentState;
         activePeriods = s.activePeriods || []; recoveryPeriods = s.recoveryPeriods || [];
         currentPeriodType = s.currentPeriodType || null; currentPeriodStart = s.currentPeriodStart || 0;
-        currentPeriodHrSamples = []; currentActivityId = s.currentActivityId || null;
-        currentActivityName = s.currentActivityName || null; rfbPhase = s.rfbPhase || false;
-        rfbSecondsRemaining = s.rfbSecondsRemaining || 0; rfbSessionClockStart = s.rfbSessionClockStart || 0;
+        currentPeriodHrSamples = [];
+        currentActivityId   = s.currentActivityId   || null;
+        currentActivityName = s.currentActivityName || null;
+        rfbPhase            = s.rfbPhase            || false;
+        rfbSecondsRemaining = s.rfbSecondsRemaining || 0;
+        rfbSessionClockStart = s.rfbSessionClockStart || 0;
         activityLimitTriggered = s.activityLimitTriggered || false;
-        if (currentActivityId && window.activitiesAPI) window.activitiesAPI.applySettings(currentActivityId);
+        // Apply the restored activity's settings
+        if (currentActivityId && window.activitiesAPI) {
+            window.activitiesAPI.applySettings(currentActivityId);
+        }
         const cnt = s.sessionHrCount || 0;
         if (cnt > 0) {
             const avg = Math.round(s.sessionHrSum / cnt);
@@ -640,7 +701,6 @@ function restoreSession() {
         isSessionRunning = true; return true;
     } catch (e) { return false; }
 }
-
 function restoreSessionUI() {
     setTimerDisplay(document.getElementById('stateTimerDisplay'),       stateSeconds);
     setTimerDisplay(document.getElementById('sessionTimerDisplay'),     sessionSeconds);
@@ -653,7 +713,8 @@ function restoreSessionUI() {
         document.getElementById('lagDisplay').innerText = '--';
     }
     document.getElementById('stateIndicator').className = `state-dot ${currentState}`;
-    updateSpeedometer(0); updateActivityDisplay();
+    updateSpeedometer(0);
+    updateActivityDisplay();
     const descEl = document.getElementById('stateDescription');
     const manualResetBtn = document.getElementById('manualResetBtn');
     const toggleBtn = document.getElementById('toggleSessionBtn');
@@ -674,9 +735,13 @@ function restoreSessionUI() {
         manualResetBtn.classList.toggle('rfb', !!rfbOn);
         toggleBtn.innerText = 'Pause session'; toggleBtn.classList.remove('paused');
         if (rfbOn) {
-            document.getElementById('stateIndicator').className = 'state-dot reset-rfb'; descEl.style.color = '#1a7fff';
-            if (rfbPhase) descEl.innerText = `RFB — ${formatTime(Math.ceil(rfbSecondsRemaining))} remaining`;
-            else descEl.innerText = resetCount >= NUM_RESETS_B4_WARN ? '⚠️ Finish this session ASAP' : 'Reset to resting HR';
+            document.getElementById('stateIndicator').className = 'state-dot reset-rfb';
+            descEl.style.color = '#1a7fff';
+            if (rfbPhase) {
+                descEl.innerText = `RFB — ${formatTime(Math.ceil(rfbSecondsRemaining))} remaining`;
+            } else {
+                descEl.innerText = resetCount >= NUM_RESETS_B4_WARN ? '⚠️ Finish this session ASAP' : 'Reset to resting HR';
+            }
             startRfbAnimation();
         } else {
             descEl.innerText = resetCount >= NUM_RESETS_B4_WARN ? '⚠️ Finish this session ASAP' : 'Reset to resting HR';
@@ -691,7 +756,8 @@ function restoreSessionUI() {
 }
 
 async function requestWakeLock() {
-    try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch (err) {}
+    try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); }
+    catch (err) { console.log('Wake Lock Error:', err); }
 }
 
 function resetTimeout() {
@@ -708,33 +774,48 @@ function triggerNotification() {
     const vibLevel  = (typeof ALERT_VIBRATION !== 'undefined') ? ALERT_VIBRATION : 1;
     const soundLevel = (typeof ALERT_SOUND    !== 'undefined') ? ALERT_SOUND     : 1;
 
+    // Vibration
     if ('vibrate' in navigator) {
         if      (vibLevel === 1) navigator.vibrate([300, 100, 300]);
         else if (vibLevel === 2) navigator.vibrate([150, 60, 150, 60, 150, 60, 400]);
     }
 
+    // Sound
     if (soundLevel === 0) return;
     try {
         if (!audioCtx) { const AC = window.AudioContext || window.webkitAudioContext; audioCtx = new AC(); }
         if (audioCtx.state === 'suspended') audioCtx.resume();
+
         if (soundLevel === 1) {
+            // Subtle: single soft sine tone
             const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
             osc.type = 'sine'; osc.frequency.setValueAtTime(500, audioCtx.currentTime);
             gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
             gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
-            osc.connect(gain); gain.connect(audioCtx.destination); osc.start(); osc.stop(audioCtx.currentTime + 0.5);
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.5);
         } else if (soundLevel === 2) {
+            // Intense: two sharp high-pitched beeps at full volume
             [0, 0.22].forEach(offset => {
                 const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
-                osc.type = 'square'; osc.frequency.setValueAtTime(1100, audioCtx.currentTime + offset);
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(1100, audioCtx.currentTime + offset);
                 gain.gain.setValueAtTime(1.0, audioCtx.currentTime + offset);
                 gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + offset + 0.18);
                 osc.connect(gain); gain.connect(audioCtx.destination);
-                osc.start(audioCtx.currentTime + offset); osc.stop(audioCtx.currentTime + offset + 0.18);
+                osc.start(audioCtx.currentTime + offset);
+                osc.stop(audioCtx.currentTime + offset + 0.18);
             });
         }
-    } catch (e) {}
+    } catch (e) { console.log('Audio notification failed:', e); }
 }
+
+// ─── Coherence & ASI display ──────────────────────────────────────────────────
+// computeCoherence returns { value, validRate } or null (insufficient data).
+// HeartMath peak/total formula yields 0–1 directly — no further normalisation needed.
+// validRate is false when the spectral peak falls outside the RFB range (0.07–0.12 Hz),
+// indicating the algorithm has not locked onto a real breathing oscillation.
+// Display thresholds recalibrated for peak/total: ≥0.50 = high, ≥0.30 = moderate.
 function computeCoherence() {
     if (!hasRrData) return null;
     const result = hrvProcessor.computeCoherence();
@@ -750,7 +831,7 @@ function computeASI() {
         currentHR:  latestHR || undefined,
     });
     if (result === null) return null;
-    return result; 
+    return result; // { asi, rmssd, outOfBand, slope }
 }
 
 let _lastCoherenceUpdateTs = 0;
@@ -766,22 +847,33 @@ function updateCoherenceDisplay() {
 
     const rfbOn = (typeof RFB_ENABLED !== 'undefined') && RFB_ENABLED;
     const inRfb = currentState === 'reset' && rfbOn;
+
     if (!hasRrData) { el.style.display = 'none'; return; }
 
     el.style.display = 'flex';
+
+    // Derive state text colour so metrics blend with the surrounding UI.
     const stateColor = currentState === 'active' ? '#28a745'
                      : currentState === 'rest'   ? '#fd7e14'
                      : currentState === 'reset'  ? (rfbOn ? '#1a7fff' : '#dc3545')
-                     : currentState === 'pause'  ? '#888888' : '#aaaaaa';
+                     : currentState === 'pause'  ? '#888888'
+                     : '#aaaaaa';
 
-    function starsHtml(level) { return '★'.repeat(level) + '☆'.repeat(3 - level); }
+    // Stars: level maps to N filled + (3-N) outline stars. No stars when no data.
+    function starsHtml(level) {
+        return '★'.repeat(level) + '☆'.repeat(3 - level);
+    }
 
+    // Coherence row — only during reset + RFB
     if (coherEl) coherEl.style.display = inRfb ? 'flex' : 'none';
     if (inRfb && coherVal) {
         const c = computeCoherence();
-        if (c === null) coherVal.textContent = '…';
-        else if (!c.validRate) coherVal.textContent = '–';
-        else {
+        if (c === null) {
+            coherVal.textContent = '…';
+        } else if (!c.validRate) {
+            // Peak outside 0.07–0.12 Hz — not a real breathing oscillation yet
+            coherVal.textContent = '–';
+        } else {
             const pct   = Math.round(c.value * 100);
             const level = pct >= 50 ? 3 : pct >= 30 ? 2 : 1;
             coherVal.textContent = `${pct}% ${starsHtml(level)}`;
@@ -789,32 +881,40 @@ function updateCoherenceDisplay() {
         coherVal.style.color = stateColor;
     }
 
+    // ASI row — always when RR data is available
     if (asiVal) {
         const result = computeASI();
-        if (result === null) asiVal.textContent = '…';
-        else {
+        if (result === null) {
+            asiVal.textContent = '…';
+        } else {
             const pct   = Math.round(result.asi * 100);
             const level = pct >= 70 ? 3 : pct >= 40 ? 2 : 1;
             asiVal.textContent = `${pct}% ${starsHtml(level)}`;
+            // DEBUG — raw components for calibration; remove once ranges are tuned
             let dbg = document.getElementById('asiDebug');
             if (!dbg) {
-                dbg = document.createElement('div'); dbg.id = 'asiDebug';
+                dbg = document.createElement('div');
+                dbg.id = 'asiDebug';
                 dbg.style.cssText = 'font-size:10px;opacity:0.6;text-align:center;width:100%;margin-top:2px;font-family:monospace;';
                 asiVal.parentElement.insertAdjacentElement('afterend', dbg);
             }
-            dbg.textContent = `rmssd:${result.rmssd.toFixed(1)}ms  oob:${(result.outOfBand * 100).toFixed(1)}%  slope:${result.slope.toFixed(2)}bpm/s`;
+            dbg.textContent = `rmssd:${result.rmssd.toFixed(1)}ms(n=${result.rmssdCount}/${result.rmssdBufLen})  oob:${(result.outOfBandRaw * 100).toFixed(1)}%→${(result.outOfBand * 100).toFixed(1)}%avg  slope:${result.slope.toFixed(2)}bpm/s`;
             dbg.style.color = stateColor;
         }
         asiVal.style.color = stateColor;
     }
 }
 
+// ─── RFB Inhale Sound & Vibration ─────────────────────────────────────────────
 function buildInhaleVibration(inhaleSec) {
+    // Pattern: opening pulse → accelerating buzz → closing pulse
+    // Total duration fits within inhaleSec.
     const totalMs    = Math.round(inhaleSec * 1000);
     const openPulse  = 120, openGap = 40, closePulse = 120;
     const buzzMs     = totalMs - openPulse - openGap - closePulse;
     const pattern    = [openPulse, openGap];
     if (buzzMs > 0) {
+        // Buzz cycles: period linearly interpolates from 200 ms → 60 ms (increasing frequency)
         const startPeriod = 200, endPeriod = 60;
         let elapsed = 0;
         while (elapsed < buzzMs - closePulse - 20) {
@@ -822,10 +922,12 @@ function buildInhaleVibration(inhaleSec) {
             const period = startPeriod + (endPeriod - startPeriod) * t;
             const on     = Math.max(15, Math.round(period * 0.55));
             const off    = Math.max(10, Math.round(period * 0.45));
-            pattern.push(on, off); elapsed += on + off;
+            pattern.push(on, off);
+            elapsed += on + off;
         }
     }
-    pattern.push(closePulse); return pattern;
+    pattern.push(closePulse);
+    return pattern;
 }
 
 function startInhaleSound(inhaleSec) {
@@ -834,30 +936,57 @@ function startInhaleSound(inhaleSec) {
     try {
         if (!audioCtx) { const AC = window.AudioContext || window.webkitAudioContext; audioCtx = new AC(); }
         if (audioCtx.state === 'suspended') audioCtx.resume();
-        const t  = audioCtx.currentTime, dur = Math.max(0.3, inhaleSec);
-        const bufLen = audioCtx.sampleRate * 2, buf = audioCtx.createBuffer(1, bufLen, audioCtx.sampleRate);
+        const t  = audioCtx.currentTime;
+        const dur = Math.max(0.3, inhaleSec);
+
+        // White noise source (looped buffer)
+        const bufLen = audioCtx.sampleRate * 2;
+        const buf    = audioCtx.createBuffer(1, bufLen, audioCtx.sampleRate);
         const data   = buf.getChannelData(0);
+        // Pink-ish: apply a simple first-order filter while filling buffer
         let b0 = 0;
         for (let i = 0; i < bufLen; i++) {
             const white = Math.random() * 2 - 1;
-            b0 = 0.99765 * b0 + white * 0.0990460; data[i] = b0 * 3.5;
+            b0 = 0.99765 * b0 + white * 0.0990460;
+            data[i] = b0 * 3.5;   // crude pink approximation
         }
-        const source = audioCtx.createBufferSource(); source.buffer = buf; source.loop = true;
-        const bpf = audioCtx.createBiquadFilter(); bpf.type = 'bandpass'; bpf.Q.value = 1.4;
-        bpf.frequency.setValueAtTime(180, t); bpf.frequency.exponentialRampToValueAtTime(1600, t + dur);
-        const shelf = audioCtx.createBiquadFilter(); shelf.type = 'highshelf'; shelf.frequency.value = 1200;
-        shelf.gain.setValueAtTime(0, t); shelf.gain.linearRampToValueAtTime(6, t + dur);
-        const gainNode = audioCtx.createGain(); gainNode.gain.setValueAtTime(0.001, t);
+        const source = audioCtx.createBufferSource();
+        source.buffer = buf; source.loop = true;
+
+        // Bandpass filter — center frequency sweeps 180 Hz → 1600 Hz over inhale
+        const bpf = audioCtx.createBiquadFilter();
+        bpf.type = 'bandpass'; bpf.Q.value = 1.4;
+        bpf.frequency.setValueAtTime(180, t);
+        bpf.frequency.exponentialRampToValueAtTime(1600, t + dur);
+
+        // High-shelf subtle brightness boost at top of inhale
+        const shelf = audioCtx.createBiquadFilter();
+        shelf.type = 'highshelf'; shelf.frequency.value = 1200;
+        shelf.gain.setValueAtTime(0, t);
+        shelf.gain.linearRampToValueAtTime(6, t + dur);
+
+        // Gain envelope: fast attack, hold, fast release
+        const gainNode = audioCtx.createGain();
+        gainNode.gain.setValueAtTime(0.001, t);
         gainNode.gain.exponentialRampToValueAtTime(0.38, t + Math.min(0.18, dur * 0.12));
         gainNode.gain.setValueAtTime(0.38, t + dur - Math.min(0.15, dur * 0.1));
         gainNode.gain.exponentialRampToValueAtTime(0.001, t + dur);
-        source.connect(bpf); bpf.connect(shelf); shelf.connect(gainNode); gainNode.connect(audioCtx.destination);
-        source.start(t); source.stop(t + dur); rfbAudioNodes = { source };
-    } catch (e) {}
+
+        source.connect(bpf);
+        bpf.connect(shelf);
+        shelf.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        source.start(t);
+        source.stop(t + dur);
+        rfbAudioNodes = { source };
+    } catch (e) { console.log('RFB inhale sound error:', e); }
 }
 
 function stopInhaleSound() {
-    if (rfbAudioNodes) { try { rfbAudioNodes.source.stop(); } catch (e) {} rfbAudioNodes = null; }
+    if (rfbAudioNodes) {
+        try { rfbAudioNodes.source.stop(); } catch (e) {}
+        rfbAudioNodes = null;
+    }
 }
 
 function startInhaleVibration(inhaleSec) {
@@ -865,54 +994,84 @@ function startInhaleVibration(inhaleSec) {
     if ('vibrate' in navigator) navigator.vibrate(buildInhaleVibration(inhaleSec));
 }
 
+// ─── RFB Timeout Scheduler ────────────────────────────────────────────────────
+// Sound and vibration are scheduled using absolute time (rfbWallStartTime) so they
+// stay locked to the same phase as the graph overlay and dot animation regardless
+// of rAF jitter or tab backgrounding.
 function rfbScheduleNextCycle() {
     clearTimeout(rfbScheduleTimer); rfbScheduleTimer = null;
     if (currentState !== 'reset' || !(typeof RFB_ENABLED !== 'undefined' && RFB_ENABLED)) return;
 
-    const iSec = rfbGetInhaleSec(), eSec = rfbGetExhaleSec();
-    const totalMs = (iSec + eSec) * 1000, inhaleMs = iSec * 1000;
-    const elapsed = Date.now() - rfbWallStartTime;
-    const cycleIdx = Math.floor(elapsed / totalMs), cyclePos = elapsed - cycleIdx * totalMs;
+    const iSec     = rfbGetInhaleSec();
+    const eSec     = rfbGetExhaleSec();
+    const totalMs  = (iSec + eSec) * 1000;
+    const inhaleMs = iSec * 1000;
+    const elapsed  = Date.now() - rfbWallStartTime;
+    const cycleIdx = Math.floor(elapsed / totalMs);
+    const cyclePos = elapsed - cycleIdx * totalMs;   // ms into current cycle
 
     if (cyclePos < inhaleMs) {
+        // Mid-inhale on first call (RFB just entered): fire sound for remaining inhale,
+        // then schedule the next full inhale at the top of the next cycle.
         const remainingSec = (inhaleMs - cyclePos) / 1000;
-        if (remainingSec > 0.25) { startInhaleSound(remainingSec); startInhaleVibration(iSec); }
+        if (remainingSec > 0.25) {
+            startInhaleSound(remainingSec);
+            startInhaleVibration(iSec);   // always use full pattern — it self-terminates
+        }
         const msToNextInhale = totalMs - cyclePos;
         rfbScheduleTimer = setTimeout(rfbScheduleNextCycle, msToNextInhale);
     } else {
+        // In exhale: wait for next inhale start.
         const msToNextInhale = totalMs - cyclePos;
         rfbScheduleTimer = setTimeout(() => {
             if (currentState !== 'reset' || !(typeof RFB_ENABLED !== 'undefined' && RFB_ENABLED)) return;
             const dur = rfbGetInhaleSec();
-            startInhaleSound(dur); startInhaleVibration(dur);
+            startInhaleSound(dur);
+            startInhaleVibration(dur);
+            // After this inhale ends, re-enter scheduler (will find us mid-exhale → schedule next)
             rfbScheduleTimer = setTimeout(rfbScheduleNextCycle, dur * 1000);
         }, msToNextInhale);
     }
 }
 
+// ─── RFB Breathing Animation ──────────────────────────────────────────────────
 function startRfbAnimation() {
     stopRfbAnimation();
+    // Use the session-persistent clock: set once on first RFB entry, never reset between periods.
+    // This keeps the breath phase continuous across multiple RFB states in a session.
     if (rfbSessionClockStart === 0) rfbSessionClockStart = Date.now();
     rfbWallStartTime = rfbSessionClockStart;
     rfbScheduleNextCycle();
 
     function animate() {
-        if (currentState !== 'reset' || !(typeof RFB_ENABLED !== 'undefined' && RFB_ENABLED)) { stopRfbAnimation(); return; }
+        if (currentState !== 'reset' || !(typeof RFB_ENABLED !== 'undefined' && RFB_ENABLED)) {
+            stopRfbAnimation(); return;
+        }
         const indicator = document.getElementById('stateIndicator');
         if (!indicator) { rfbAnimFrame = requestAnimationFrame(animate); return; }
 
-        const breathPeriodMs = rfbBreathPeriodMs(), inhaleFrac = rfbGetInhaleFrac();
+        const breathPeriodMs = rfbBreathPeriodMs();
+        const inhaleFrac     = rfbGetInhaleFrac();
         const elapsed = Date.now() - rfbWallStartTime;
         const phase   = ((elapsed % breathPeriodMs) + breathPeriodMs) % breathPeriodMs / breathPeriodMs;
-        const sf    = rfbScaleFactor(phase, inhaleFrac);
-        const scale = 1.0 + sf * 0.35;
+
+        // ── Dot scale: min at inhale start, max at exhale start, min at cycle end ──
+        // rfbScaleFactor returns 0 at phase=0 (inhale start) and 1 at phase=inhaleFrac
+        // (exhale start) — so sound/vibration, dot minimum, and graph zero-crossing
+        // all coincide at phase=0.
+        const sf    = rfbScaleFactor(phase, inhaleFrac);  // 0..1
+        const scale = 1.0 + sf * 0.35;                   // 1.0..1.35
+
+        // ── Flash at inhale start (dot smallest) and exhale start (dot largest) ──
         const flashZone = 0.022;
-        const nearTrans = phase < flashZone || phase > (1 - flashZone) || Math.abs(phase - inhaleFrac) < flashZone;
+        const nearTrans = phase < flashZone || phase > (1 - flashZone) ||
+                          Math.abs(phase - inhaleFrac) < flashZone;
         const brightness = nearTrans ? 1.8 : 1.0;
 
         indicator.style.transform = `scale(${scale.toFixed(3)})`;
         indicator.style.filter    = `brightness(${brightness})`;
-        drawHrGraph(); updateCoherenceDisplay();
+        drawHrGraph();
+        updateCoherenceDisplay();
         rfbAnimFrame = requestAnimationFrame(animate);
     }
     rfbAnimFrame = requestAnimationFrame(animate);
@@ -926,6 +1085,8 @@ function stopRfbAnimation() {
     stopInhaleSound();
     if ('vibrate' in navigator) navigator.vibrate(0);
 }
+
+// ─── Core state machine ───────────────────────────────────────────────────────
 function switchState(newState, isManual) {
     if (currentState === newState && newState !== 'stopped') return;
     const prevState = currentState;
@@ -954,7 +1115,8 @@ function switchState(newState, isManual) {
         if (prevState === 'rest') isRecoveryState = true;
     }
 
-    currentState = newState; stateSeconds = 0;
+    currentState = newState;
+    stateSeconds = 0;
     setTimerDisplay(document.getElementById('stateTimerDisplay'), 0);
     if (isSessionRunning) saveSession();
 
@@ -962,11 +1124,15 @@ function switchState(newState, isManual) {
 
     if (newState === 'rest') {
         maxHrInRest = 0; timeOfMaxHrInRest = 0; isRecoveryState = true; recoverySeconds = 0;
-        document.getElementById('maxHrDisplay').innerText = '--'; document.getElementById('lagDisplay').innerText = '--';
+        document.getElementById('maxHrDisplay').innerText = '--';
+        document.getElementById('lagDisplay').innerText = '--';
     }
 
+    // Stop RFB animation and clear RFB phase whenever leaving reset.
+    // Hide only the coherence row — the ASI row remains visible in all states.
     if (newState !== 'reset') {
-        stopRfbAnimation(); rfbPhase = false; rfbSecondsRemaining = 0;
+        stopRfbAnimation();
+        rfbPhase = false; rfbSecondsRemaining = 0;
         const coherEl = document.getElementById('coherenceRow');
         if (coherEl) coherEl.style.display = 'none';
     }
@@ -982,14 +1148,17 @@ function switchState(newState, isManual) {
     const toggleBtn = document.getElementById('toggleSessionBtn');
     if (newState === 'active') {
         descEl.innerText = 'Continue activity'; descEl.style.color = '#28a745';
-        manualResetBtn.innerHTML = '&#8634;'; manualResetBtn.style.display = 'flex'; manualResetBtn.classList.toggle('rfb', !!rfbOn);
+        manualResetBtn.innerHTML = '&#8634;'; manualResetBtn.style.display = 'flex';
+        manualResetBtn.classList.toggle('rfb', !!rfbOn);
         toggleBtn.innerText = 'Pause session'; toggleBtn.classList.remove('paused');
     } else if (newState === 'rest') {
         descEl.innerText = 'Rest or pull back'; descEl.style.color = '#fd7e14';
-        manualResetBtn.innerHTML = '&#8634;'; manualResetBtn.style.display = 'flex'; manualResetBtn.classList.toggle('rfb', !!rfbOn);
+        manualResetBtn.innerHTML = '&#8634;'; manualResetBtn.style.display = 'flex';
+        manualResetBtn.classList.toggle('rfb', !!rfbOn);
         toggleBtn.innerText = 'Pause session'; toggleBtn.classList.remove('paused');
     } else if (newState === 'reset') {
-        manualResetBtn.innerHTML = '&#9654;'; manualResetBtn.style.display = 'flex'; manualResetBtn.classList.toggle('rfb', !!rfbOn);
+        manualResetBtn.innerHTML = '&#9654;'; manualResetBtn.style.display = 'flex';
+        manualResetBtn.classList.toggle('rfb', !!rfbOn);
         toggleBtn.innerText = 'Pause session'; toggleBtn.classList.remove('paused');
         descEl.innerText = resetCount >= NUM_RESETS_B4_WARN ? '⚠️ Finish this session ASAP' : 'Reset to resting HR';
         descEl.style.color = rfbOn ? '#1a7fff' : '#dc3545';
@@ -1007,24 +1176,31 @@ function updateTimers(increment) {
     if (currentState === 'active') {
         totalActiveSeconds += increment;
         setTimerDisplay(document.getElementById('totalActiveTimerDisplay'), totalActiveSeconds);
+        // Activity time limit check
         const limitSec = (typeof ACTIVE_TIME_LIMIT !== 'undefined') ? ACTIVE_TIME_LIMIT * 60 : 0;
         if (limitSec > 0 && !activityLimitTriggered && totalActiveSeconds >= limitSec) {
-            activityLimitTriggered = true; switchState('reset', false);
+            activityLimitTriggered = true;
+            switchState('reset', false);
             const descEl = document.getElementById('stateDescription');
-            if (descEl) descEl.innerText = 'Activity limit reached';
+            if (descEl) { descEl.innerText = 'Activity limit reached'; }
         }
     }
     if (currentState === 'rest') {
         if (stateSeconds > MAX_RECOVERY_PERIOD) switchState('reset', false);
         else if (timeOfMaxHrInRest > MAX_RESPONSE_LAG) switchState('reset', false);
     }
+    // RFB hold-period countdown (entered after resting HR is achieved for 15 s)
     if (currentState === 'reset' && rfbPhase) {
         rfbSecondsRemaining -= increment;
         if (rfbSecondsRemaining <= 0) {
-            rfbPhase = false; switchState('active', false);
+            rfbPhase = false;
+            switchState('active', false);
         } else {
             const descEl = document.getElementById('stateDescription');
-            if (descEl) { descEl.innerText = `RFB — ${formatTime(Math.ceil(rfbSecondsRemaining))} remaining`; descEl.style.color = '#1a7fff'; }
+            if (descEl) {
+                descEl.innerText = `RFB — ${formatTime(Math.ceil(rfbSecondsRemaining))} remaining`;
+                descEl.style.color = '#1a7fff';
+            }
         }
     }
     setTimerDisplay(document.getElementById('sessionTimerDisplay'), sessionSeconds);
@@ -1034,6 +1210,7 @@ function updateTimers(increment) {
 function handleTick() {
     const trueSessionSeconds = Math.floor((Date.now() - sessionStartTime) / 1000);
     updateTimers(trueSessionSeconds - sessionSeconds);
+    // 1Hz HR recording — only when connected and HR is available; hard-capped at 3 hours
     if (!isReconnecting && latestHR > 0 && sessionHrRecording.length < HR_RECORDING_MAX_SAMPLES) {
         sessionHrRecording.push({ t: sessionSeconds, hr: latestHR, state: currentState });
     }
@@ -1042,34 +1219,46 @@ function handleTick() {
 
 function handleHeartRate(event) {
     if (isReconnecting) return;
-    const dv = event.target.value, flags = dv.getUint8(0), is16bit = flags & 0x01;
+    const dv = event.target.value;
+    const flags   = dv.getUint8(0);
+    const is16bit = flags & 0x01;
     const currentHeartRate = is16bit ? dv.getUint16(1, true) : dv.getUint8(1);
     document.getElementById('heartRateDisplay').innerText = currentHeartRate;
-    resetTimeout(); if (currentHeartRate === 0) return; updateSpeedometer(currentHeartRate);
+    resetTimeout();
+    if (currentHeartRate === 0) return;
+    updateSpeedometer(currentHeartRate);
 
-    const rrPresent = (flags >> 4) & 0x01, energyPresent = (flags >> 3) & 0x01;
+    // ── Parse RR intervals (bit 4 of flags; H10 and compatible sensors) ───────
+    // Per BT Heart Rate spec: flags bit3 = Energy Expended present (skip 2 bytes),
+    // flags bit4 = RR intervals present. Each RR is uint16 LE in units of 1/1024 s.
+    const rrPresent      = (flags >> 4) & 0x01;
+    const energyPresent  = (flags >> 3) & 0x01;
     if (rrPresent) {
-        let rrOffset = is16bit ? 3 : 2;
-        if (energyPresent) rrOffset += 2;
+        let rrOffset = is16bit ? 3 : 2;          // skip flags + HR bytes
+        if (energyPresent) rrOffset += 2;        // skip Energy Expended uint16
         const rrValuesMs = [];
         while (rrOffset + 1 < dv.byteLength) {
-            const raw  = dv.getUint16(rrOffset, true), ms = (raw / 1024) * 1000;
-            if (ms > 250 && ms < 2500) rrValuesMs.push(ms);
+            const raw  = dv.getUint16(rrOffset, true);  // 1/1024 s units
+            const ms   = (raw / 1024) * 1000;
+            if (ms > 250 && ms < 2500) rrValuesMs.push(ms); // 24–240 bpm sanity gate
             rrOffset += 2;
         }
         if (rrValuesMs.length > 0) recordRrHistory(rrValuesMs, Date.now());
     }
 
-    recordHrHistory(currentHeartRate); updateCoherenceDisplay();
+    recordHrHistory(currentHeartRate);
+    updateCoherenceDisplay(); // updates ASI in all states; coherence row self-hides outside RFB
 
     if (isSessionRunning) {
         if (currentPeriodType !== null) currentPeriodHrSamples.push(currentHeartRate);
         sessionHrSamples.push(currentHeartRate);
 
-        if (isRecoveryState && currentHeartRate >= maxHrInRest) {
-            maxHrInRest = currentHeartRate; timeOfMaxHrInRest = recoverySeconds;
-            document.getElementById('maxHrDisplay').innerText = maxHrInRest;
-            setTimerDisplay(document.getElementById('lagDisplay'), timeOfMaxHrInRest);
+        if (isRecoveryState) {
+            if (currentHeartRate >= maxHrInRest) {
+                maxHrInRest = currentHeartRate; timeOfMaxHrInRest = recoverySeconds;
+                document.getElementById('maxHrDisplay').innerText = maxHrInRest;
+                setTimerDisplay(document.getElementById('lagDisplay'), timeOfMaxHrInRest);
+            }
         }
 
         if (currentState === 'active') {
@@ -1087,119 +1276,206 @@ function handleHeartRate(event) {
             if (resetToActiveCount >= 15) {
                 const rfbOn = (typeof RFB_ENABLED !== 'undefined') && RFB_ENABLED;
                 const rfbDurMin = (typeof RFB_DURATION !== 'undefined') ? RFB_DURATION : 2.0;
-                if (rfbOn && !rfbPhase && rfbDurMin > 0) { rfbPhase = true; rfbSecondsRemaining = rfbDurMin * 60; }
-                else if (!rfbOn) switchState('active', false);
+                if (rfbOn && !rfbPhase && rfbDurMin > 0) {
+                    // Enter RFB hold period — don't switch to active yet
+                    rfbPhase = true;
+                    rfbSecondsRemaining = rfbDurMin * 60;
+                } else if (!rfbOn) {
+                    switchState('active', false);
+                }
+                // If rfbPhase already true, updateTimers handles the countdown
             }
         }
     }
 }
+
+// ─── Session summary ──────────────────────────────────────────────────────────
 function computeSessionSummary() {
+    // Inclusion rules (applied separately to active and recovery):
+    //   Rule 0: periods < MIN_PERIOD_SEC are excluded from everything.
+    //   Rule 1: terminal period counts towards total time and towards max.
+    //   Rule 2: terminal period does NOT count towards min.
+    //   Rule 3: terminal period counts towards average ONLY if its duration >=
+    //           the minimum duration of the non-terminal periods. If there are no
+    //           non-terminal periods the terminal period is not averaged.
+    //   Rule 4: count = number of periods that enter the average calculation.
+
     function periodStats(periods) {
         const valid       = periods.filter(p => p.duration >= MIN_PERIOD_SEC);
         const nonTerminal = valid.filter(p => !p.terminal);
-        const terminal    = valid.find(p => p.terminal);
+        const terminal    = valid.find(p => p.terminal);  // at most one
+
         const total = valid.reduce((s, p) => s + p.duration, 0);
+
         const ntDur = nonTerminal.map(p => p.duration);
         const currentMin = ntDur.length ? Math.min(...ntDur) : Infinity;
+
+        // Determine whether terminal joins the average pool
         const terminalInAvg = terminal && ntDur.length > 0 && terminal.duration >= currentMin;
         const avgPool = terminalInAvg ? [...nonTerminal, terminal] : nonTerminal;
         const maxPool = terminal       ? [...nonTerminal, terminal] : nonTerminal;
-        const dur = avgPool.map(p => p.duration), maxDur = maxPool.map(p => p.duration);
+
+        const dur = avgPool.map(p => p.duration);
+        const maxDur = maxPool.map(p => p.duration);
+
         return {
-            total, count: avgPool.length,
-            longest: maxDur.length ? Math.max(...maxDur) : 0, shortest: ntDur.length ? Math.min(...ntDur) : 0,
-            avg: dur.length ? Math.round(arrAvg(dur)) : 0, avgHr: avgPool.map(p => p.avgHr).filter(v => v > 0),
+            total,
+            count:   avgPool.length,
+            longest: maxDur.length ? Math.max(...maxDur) : 0,
+            shortest: ntDur.length ? Math.min(...ntDur)  : 0,
+            avg:     dur.length   ? Math.round(arrAvg(dur)) : 0,
+            avgHr:   avgPool.map(p => p.avgHr).filter(v => v > 0),
         };
     }
 
     function recoveryStats(periods) {
-        const base = periodStats(periods);
-        const valid = periods.filter(p => p.duration >= MIN_PERIOD_SEC);
-        const nonTerm = valid.filter(p => !p.terminal), terminal = valid.find(p => p.terminal);
+        const base    = periodStats(periods);
+        const valid   = periods.filter(p => p.duration >= MIN_PERIOD_SEC);
+        const nonTerm = valid.filter(p => !p.terminal);
+        const terminal = valid.find(p => p.terminal);
         const ntDur = nonTerm.map(p => p.duration);
         const currentMin = ntDur.length ? Math.min(...ntDur) : Infinity;
         const termInAvg = terminal && ntDur.length > 0 && terminal.duration >= currentMin;
-        const avgPool = termInAvg ? [...nonTerm, terminal] : nonTerm;
+        const avgPool   = termInAvg ? [...nonTerm, terminal] : nonTerm;
         const validR = avgPool.filter(p => p.maxHr > 0);
-        return { ...base, lags: validR.map(p => p.lagSec), peaks: validR.map(p => p.maxHr) };
+        return {
+            ...base,
+            lags:  validR.map(p => p.lagSec),
+            peaks: validR.map(p => p.maxHr),
+        };
     }
 
-    const aStats = periodStats(activePeriods), rStats = recoveryStats(recoveryPeriods);
+    const aStats = periodStats(activePeriods);
+    const rStats = recoveryStats(recoveryPeriods);
 
     return {
-        date: new Date().toISOString(), activityName: currentActivityName || '', activityId: currentActivityId || '',
+        date: new Date().toISOString(),
+        activityName: currentActivityName || '',
+        activityId:   currentActivityId   || '',
         activitySettings: window.activitiesAPI ? window.activitiesAPI.getSettingsSnapshot() : {},
-        totalActiveSec: aStats.total, pctActive: sessionSeconds > 0 ? Math.round(aStats.total / sessionSeconds * 100) : 0,
-        numActivePeriods: aStats.count, longestActiveSec: aStats.longest, avgActiveSec: aStats.avg, shortestActiveSec: aStats.shortest,
+        totalActiveSec:   aStats.total,
+        pctActive: sessionSeconds > 0 ? Math.round(aStats.total / sessionSeconds * 100) : 0,
+        numActivePeriods:  aStats.count,
+        longestActiveSec:  aStats.longest,
+        avgActiveSec:      aStats.avg,
+        shortestActiveSec: aStats.shortest,
         avgHrActive: aStats.avgHr.length ? arrAvg(aStats.avgHr) : 0,
-        totalRecoverySec: rStats.total, pctRecovery: sessionSeconds > 0 ? Math.round(rStats.total / sessionSeconds * 100) : 0,
-        numRecoveryPeriods: rStats.count, longestRecoverySec: rStats.longest, avgRecoverySec: rStats.avg, shortestRecoverySec: rStats.shortest,
+        totalRecoverySec:   rStats.total,
+        pctRecovery: sessionSeconds > 0 ? Math.round(rStats.total / sessionSeconds * 100) : 0,
+        numRecoveryPeriods:  rStats.count,
+        longestRecoverySec:  rStats.longest,
+        avgRecoverySec:      rStats.avg,
+        shortestRecoverySec: rStats.shortest,
         avgHrRecovery: rStats.avgHr.length ? arrAvg(rStats.avgHr) : 0,
-        longestLagSec: rStats.lags.length ? Math.max(...rStats.lags) : 0, avgLagSec: rStats.lags.length ? Math.round(arrAvg(rStats.lags)) : 0,
-        shortestLagSec: rStats.lags.length ? Math.min(...rStats.lags) : 0, highestPeakHr: rStats.peaks.length ? Math.max(...rStats.peaks) : 0,
-        avgPeakHr: rStats.peaks.length ? arrAvg(rStats.peaks) : 0, lowestPeakHr: rStats.peaks.length ? Math.min(...rStats.peaks) : 0,
-        sessionLengthSec: sessionSeconds, highestHr: sessionHrSamples.length ? Math.max(...sessionHrSamples) : 0,
-        avgHr: sessionHrSamples.length ? arrAvg(sessionHrSamples) : 0, lowestHr: sessionHrSamples.length ? Math.min(...sessionHrSamples) : 0,
-        hrRecording: sessionHrRecording.slice(),
+        longestLagSec:  rStats.lags.length  ? Math.max(...rStats.lags)  : 0,
+        avgLagSec:      rStats.lags.length  ? Math.round(arrAvg(rStats.lags)) : 0,
+        shortestLagSec: rStats.lags.length  ? Math.min(...rStats.lags)  : 0,
+        highestPeakHr:  rStats.peaks.length ? Math.max(...rStats.peaks) : 0,
+        avgPeakHr:      rStats.peaks.length ? arrAvg(rStats.peaks)      : 0,
+        lowestPeakHr:   rStats.peaks.length ? Math.min(...rStats.peaks) : 0,
+        sessionLengthSec: sessionSeconds,
+        highestHr: sessionHrSamples.length ? Math.max(...sessionHrSamples) : 0,
+        avgHr:     sessionHrSamples.length ? arrAvg(sessionHrSamples)      : 0,
+        lowestHr:  sessionHrSamples.length ? Math.min(...sessionHrSamples) : 0,
+        hrRecording: sessionHrRecording.slice(), // 1Hz time-series; attached on save, dropped on discard
     };
 }
-let summarySaveState = null;
+
+let summarySaveState = null; // tracks state of the summary modal save flow
+
 function showSummaryModal(summary) {
     const set = (id, val) => { const el = document.getElementById(id); if (el) el.innerText = val; };
-    const fmtT = s => s > 0 ? formatTime(s) : '--', fmtN = n => n > 0 ? n : '--';
-    set('s-totalActive', fmtT(summary.totalActiveSec)); set('s-pctActive', summary.numActivePeriods > 0 ? summary.pctActive + '%' : '--');
-    set('s-numActive', fmtN(summary.numActivePeriods)); set('s-longestActive', fmtT(summary.longestActiveSec));
-    set('s-avgActive', fmtT(summary.avgActiveSec)); set('s-shortestActive', fmtT(summary.shortestActiveSec));
-    set('s-avgHrActive', fmtN(summary.avgHrActive)); set('s-totalRecovery', fmtT(summary.totalRecoverySec));
-    set('s-pctRecovery', summary.numRecoveryPeriods > 0 ? summary.pctRecovery + '%' : '--');
-    set('s-numRecovery', fmtN(summary.numRecoveryPeriods)); set('s-longestRecovery', fmtT(summary.longestRecoverySec));
-    set('s-avgRecovery', fmtT(summary.avgRecoverySec)); set('s-shortestRecovery', fmtT(summary.shortestRecoverySec));
-    set('s-avgHrRecovery', fmtN(summary.avgHrRecovery)); set('s-longestLag', fmtT(summary.longestLagSec));
-    set('s-avgLag', fmtT(summary.avgLagSec)); set('s-shortestLag', fmtT(summary.shortestLagSec));
-    set('s-highestPeak', fmtN(summary.highestPeakHr)); set('s-avgPeak', fmtN(summary.avgPeakHr));
-    set('s-lowestPeak', fmtN(summary.lowestPeakHr)); set('s-sessionLength', fmtT(summary.sessionLengthSec));
-    set('s-highestHr', fmtN(summary.highestHr)); set('s-avgHr', fmtN(summary.avgHr)); set('s-lowestHr', fmtN(summary.lowestHr));
+    const fmtT = s => s > 0 ? formatTime(s) : '--';
+    const fmtN = n => n > 0 ? n : '--';
+    set('s-totalActive',    fmtT(summary.totalActiveSec));
+    set('s-pctActive',      summary.numActivePeriods > 0 ? summary.pctActive + '%' : '--');
+    set('s-numActive',      fmtN(summary.numActivePeriods));
+    set('s-longestActive',  fmtT(summary.longestActiveSec));
+    set('s-avgActive',      fmtT(summary.avgActiveSec));
+    set('s-shortestActive', fmtT(summary.shortestActiveSec));
+    set('s-avgHrActive',    fmtN(summary.avgHrActive));
+    set('s-totalRecovery',    fmtT(summary.totalRecoverySec));
+    set('s-pctRecovery',      summary.numRecoveryPeriods > 0 ? summary.pctRecovery + '%' : '--');
+    set('s-numRecovery',      fmtN(summary.numRecoveryPeriods));
+    set('s-longestRecovery',  fmtT(summary.longestRecoverySec));
+    set('s-avgRecovery',      fmtT(summary.avgRecoverySec));
+    set('s-shortestRecovery', fmtT(summary.shortestRecoverySec));
+    set('s-avgHrRecovery',    fmtN(summary.avgHrRecovery));
+    set('s-longestLag',  fmtT(summary.longestLagSec));
+    set('s-avgLag',      fmtT(summary.avgLagSec));
+    set('s-shortestLag', fmtT(summary.shortestLagSec));
+    set('s-highestPeak', fmtN(summary.highestPeakHr));
+    set('s-avgPeak',     fmtN(summary.avgPeakHr));
+    set('s-lowestPeak',  fmtN(summary.lowestPeakHr));
+    set('s-sessionLength', fmtT(summary.sessionLengthSec));
+    set('s-highestHr',     fmtN(summary.highestHr));
+    set('s-avgHr',         fmtN(summary.avgHr));
+    set('s-lowestHr',      fmtN(summary.lowestHr));
     document.getElementById('summaryNotes').value = '';
-    const errEl = document.getElementById('summaryError'); if (errEl) errEl.className = '';
-    const saveBtn = document.getElementById('summarySaveBtn'); if (saveBtn) saveBtn.textContent = 'Save session';
-    summarySaveState = null; document.getElementById('summaryModal').classList.add('visible');
+    const errEl = document.getElementById('summaryError');
+    if (errEl) { errEl.className = ''; }
+    const saveBtn = document.getElementById('summarySaveBtn');
+    if (saveBtn) saveBtn.textContent = 'Save session';
+    summarySaveState = null;
+    document.getElementById('summaryModal').classList.add('visible');
 }
 
 function isQuotaError(e) {
-    return e && (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED' || e.code === 22 || e.code === 1014);
+    return e && (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED' ||
+                 e.code === 22 || e.code === 1014);
 }
+
+// Pack 1Hz HR recording into a compact binary format for localStorage.
+// Scheme: 12 bits per sample (9-bit HR + 3-bit state), 2 samples per 3 bytes, Base64 encoded.
+// Dense array indexed by second; missing seconds stored as HR=0 (sentinel).
 function packHrRecording(samples, sessionLengthSec) {
     const STATE_CODE = { active: 0, rest: 1, reset: 2, pause: 3, stopped: 4 };
     const len = Math.max(sessionLengthSec + 1, samples.length > 0 ? samples[samples.length - 1].t + 1 : 1);
+
+    // Build dense slot array [hr, stateCode] per second, 0/0 = no data
     const slots = new Array(len).fill(null).map(() => [0, 0]);
     for (const s of samples) {
-        if (s.t >= 0 && s.t < len && s.hr > 0) slots[s.t] = [Math.min(511, Math.max(1, Math.round(s.hr))), STATE_CODE[s.state] ?? 0];
+        if (s.t >= 0 && s.t < len && s.hr > 0) {
+            slots[s.t] = [Math.min(511, Math.max(1, Math.round(s.hr))), STATE_CODE[s.state] ?? 0];
+        }
     }
-    const paddedLen = slots.length % 2 === 0 ? slots.length : slots.length + 1;
+
+    // Pack pairs of 12-bit samples into 3 bytes
+    // Byte layout: [HR0:8][HR0:1|state0:3|HR1:4][HR1:5|state1:3]
+    const paddedLen = slots.length % 2 === 0 ? slots.length : slots.length + 1; // even count
     const bytes = new Uint8Array((paddedLen / 2) * 3);
     for (let i = 0; i < paddedLen; i += 2) {
-        const [hr0, st0] = slots[i] || [0, 0], [hr1, st1] = slots[i + 1] || [0, 0];
+        const [hr0, st0] = slots[i] || [0, 0];
+        const [hr1, st1] = slots[i + 1] || [0, 0];
         const base = (i / 2) * 3;
-        bytes[base] = (hr0 >> 1) & 0xFF;
+        bytes[base]     = (hr0 >> 1) & 0xFF;
         bytes[base + 1] = ((hr0 & 1) << 7) | ((st0 & 7) << 4) | ((hr1 >> 5) & 0xF);
         bytes[base + 2] = ((hr1 & 0x1F) << 3) | (st1 & 7);
     }
-    let binary = ''; for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+
+    // Base64 encode
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
     return { fmt: 'p1', b64: btoa(binary), len: slots.length };
 }
 
 function saveSessionToHistory(summary, notes) {
     try {
-        const raw = localStorage.getItem(HISTORY_KEY), history = raw ? JSON.parse(raw) : [];
+        const raw = localStorage.getItem(HISTORY_KEY);
+        const history = raw ? JSON.parse(raw) : [];
         const toSave = { ...summary, notes };
+
+        // Pack the HR recording before writing
         if (Array.isArray(toSave.hrRecording) && toSave.hrRecording.length > 0) {
             toSave.hrRecording = packHrRecording(toSave.hrRecording, summary.sessionLengthSec || 0);
         }
         history.push(toSave);
+
         try {
             localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
         } catch (e1) {
             if (!isQuotaError(e1)) throw e1;
+            // Retry without recording
             history[history.length - 1].hrRecording = null;
             try {
                 localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
@@ -1207,42 +1483,68 @@ function saveSessionToHistory(summary, notes) {
                 return 'ok_without_recording';
             } catch (e2) {
                 if (!isQuotaError(e2)) throw e2;
-                history.pop(); return 'failed';
+                history.pop(); // remove the failed entry
+                return 'failed';
             }
         }
+
         if (summary.activityId) localStorage.setItem(LAST_ACTIVITY_KEY, summary.activityId);
         return 'ok';
-    } catch (e) { console.error('Failed to save', e); return 'failed'; }
+    } catch (e) {
+        console.error('Failed to save session history', e);
+        return 'failed';
+    }
 }
+
 function finishSession() {
     if (currentPeriodType === 'active') closeActivePeriod(true);
     else if (currentPeriodType === 'recovery') closeRecoveryPeriod(true);
-    clearInterval(sessionInterval); isSessionRunning = false;
-    pendingSummary = computeSessionSummary(); showSummaryModal(pendingSummary);
+    clearInterval(sessionInterval);
+    isSessionRunning = false;
+    pendingSummary = computeSessionSummary();
+    showSummaryModal(pendingSummary);
 }
 
 function teardownSession() {
     const toggleBtn = document.getElementById('toggleSessionBtn');
     toggleBtn.innerText = 'Start Session'; toggleBtn.classList.remove('running', 'paused');
     document.getElementById('manualResetBtn').style.display = 'none';
-    clearSession(); document.getElementById('homeBtn').style.display = 'flex';
-    currentActivityId = null; currentActivityName = null; updateActivityDisplay();
-    switchState('stopped', true); if (wakeLock !== null) wakeLock.release().then(() => { wakeLock = null; });
+    clearSession();
+    document.getElementById('homeBtn').style.display = 'flex';
+    currentActivityId = null; currentActivityName = null;
+    updateActivityDisplay();
+    switchState('stopped', true);
+    if (wakeLock !== null) wakeLock.release().then(() => { wakeLock = null; });
 }
 
+// ─── Activity selection modal ─────────────────────────────────────────────────
 function showActivitySelectModal() {
     const acts = window.activitiesAPI ? window.activitiesAPI.getAll() : [];
     const modal = document.getElementById('activitySelectModal');
-    const select = document.getElementById('activitySelectDropdown'), desc = document.getElementById('activitySelectDesc');
-    select.innerHTML = acts.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
+    const select = document.getElementById('activitySelectDropdown');
+    const desc   = document.getElementById('activitySelectDesc');
+
+    select.innerHTML = acts.map(a =>
+        `<option value="${a.id}">${a.name}</option>`
+    ).join('');
+
+    // Pre-select: prefer last-used activity (from previous session), fall back to current
     const lastActId = localStorage.getItem(LAST_ACTIVITY_KEY);
-    if (lastActId && acts.find(a => a.id === lastActId)) select.value = lastActId;
-    else if (currentActivityId && acts.find(a => a.id === currentActivityId)) select.value = currentActivityId;
+    if (lastActId && acts.find(a => a.id === lastActId)) {
+        select.value = lastActId;
+    } else if (currentActivityId && acts.find(a => a.id === currentActivityId)) {
+        select.value = currentActivityId;
+    }
+
     function updateDesc() {
         const act = acts.find(a => a.id === select.value);
-        desc.textContent = act && act.description ? act.description : ''; desc.style.display = desc.textContent ? 'block' : 'none';
+        desc.textContent = act && act.description ? act.description : '';
+        desc.style.display = desc.textContent ? 'block' : 'none';
     }
-    select.onchange = updateDesc; updateDesc(); modal.classList.add('visible');
+    select.onchange = updateDesc;
+    updateDesc();
+
+    modal.classList.add('visible');
 }
 
 function startSession() {
@@ -1254,11 +1556,15 @@ function startSession() {
     setTimerDisplay(document.getElementById('sessionTimerDisplay'), 0);
     setTimerDisplay(document.getElementById('stateTimerDisplay'), 0);
     setTimerDisplay(document.getElementById('totalActiveTimerDisplay'), 0);
-    document.getElementById('maxHrDisplay').innerText = '--'; document.getElementById('lagDisplay').innerText = '--';
+    document.getElementById('maxHrDisplay').innerText = '--';
+    document.getElementById('lagDisplay').innerText = '--';
     document.getElementById('toggleSessionBtn').classList.add('running');
-    updateActivityDisplay(); switchState('active', true); sessionInterval = setInterval(handleTick, 1000);
+    updateActivityDisplay();
+    switchState('active', true);
+    sessionInterval = setInterval(handleTick, 1000);
 }
 
+// ─── Disconnect / Reconnect ───────────────────────────────────────────────────
 function handleDisconnect() {
     if (isManualDisconnect) { isManualDisconnect = false; return; }
     clearTimeout(heartbeatTimeout);
@@ -1287,90 +1593,163 @@ async function attemptReconnect() {
         document.getElementById('stateIndicator').classList.remove('reconnecting');
         document.getElementById('toggleSessionBtn').innerText = 'Start Session';
         document.getElementById('toggleSessionBtn').classList.remove('running');
-        document.getElementById('manualResetBtn').style.display = 'none'; document.body.classList.remove('connected');
-        log('❌ Could not reconnect after 10 attempts. Session ended.', true); switchState('stopped', true);
-        if (wakeLock !== null) wakeLock.release().then(() => { wakeLock = null; }); return;
+        document.getElementById('manualResetBtn').style.display = 'none';
+        document.body.classList.remove('connected');
+        log('❌ Could not reconnect after 10 attempts. Session ended.', true);
+        switchState('stopped', true);
+        if (wakeLock !== null) wakeLock.release().then(() => { wakeLock = null; });
+        return;
     }
     try {
         const server = await bluetoothDevice.gatt.connect();
         const service = await server.getPrimaryService('heart_rate');
         const characteristic = await service.getCharacteristic('heart_rate_measurement');
         await characteristic.startNotifications();
-        characteristic.addEventListener('characteristicvaluechanged', handleHeartRate); onReconnectSuccess();
+        characteristic.addEventListener('characteristicvaluechanged', handleHeartRate);
+        onReconnectSuccess();
     } catch (err) { setTimeout(attemptReconnect, 3000); }
 }
 
 function onReconnectSuccess() {
     isReconnecting = false; reconnectAttempts = 0;
     document.getElementById('stateIndicator').classList.remove('reconnecting');
-    const descEl = document.getElementById('stateDescription'), manualResetBtn = document.getElementById('manualResetBtn');
+    const descEl = document.getElementById('stateDescription');
+    const manualResetBtn = document.getElementById('manualResetBtn');
     const rfbOn = (typeof RFB_ENABLED !== 'undefined') && RFB_ENABLED;
-    if (currentState === 'active') { descEl.innerText = 'Continue activity'; descEl.style.color = '#28a745'; manualResetBtn.classList.toggle('rfb', !!rfbOn); }
-    else if (currentState === 'rest') { descEl.innerText = 'Rest or pull back'; descEl.style.color = '#fd7e14'; manualResetBtn.classList.toggle('rfb', !!rfbOn); }
-    else if (currentState === 'reset') {
+    if (currentState === 'active') {
+        descEl.innerText = 'Continue activity'; descEl.style.color = '#28a745';
+        manualResetBtn.classList.toggle('rfb', !!rfbOn);
+    } else if (currentState === 'rest') {
+        descEl.innerText = 'Rest or pull back'; descEl.style.color = '#fd7e14';
+        manualResetBtn.classList.toggle('rfb', !!rfbOn);
+    } else if (currentState === 'reset') {
         manualResetBtn.classList.toggle('rfb', !!rfbOn);
         if (rfbOn) {
-            document.getElementById('stateIndicator').className = 'state-dot reset-rfb'; descEl.style.color = '#1a7fff';
-            if (rfbPhase) descEl.innerText = `RFB — ${formatTime(Math.ceil(rfbSecondsRemaining))} remaining`;
-            else descEl.innerText = resetCount >= NUM_RESETS_B4_WARN ? '⚠️ Finish this session ASAP' : 'Reset to resting HR';
+            document.getElementById('stateIndicator').className = 'state-dot reset-rfb';
+            descEl.style.color = '#1a7fff';
+            if (rfbPhase) {
+                descEl.innerText = `RFB — ${formatTime(Math.ceil(rfbSecondsRemaining))} remaining`;
+            } else {
+                descEl.innerText = resetCount >= NUM_RESETS_B4_WARN ? '⚠️ Finish this session ASAP' : 'Reset to resting HR';
+            }
             startRfbAnimation();
         } else {
-            descEl.innerText = resetCount >= NUM_RESETS_B4_WARN ? '⚠️ Finish this session ASAP' : 'Reset to resting HR'; descEl.style.color = '#dc3545';
+            descEl.innerText = resetCount >= NUM_RESETS_B4_WARN ? '⚠️ Finish this session ASAP' : 'Reset to resting HR';
+            descEl.style.color = '#dc3545';
         }
-    } else if (currentState === 'pause') { descEl.innerText = 'Pause activity'; descEl.style.color = '#888888'; manualResetBtn.classList.toggle('rfb', !!rfbOn); }
+    } else if (currentState === 'pause') {
+        descEl.innerText = 'Pause activity'; descEl.style.color = '#888888';
+        manualResetBtn.classList.toggle('rfb', !!rfbOn);
+    }
 }
-
 document.getElementById('manualResetBtn').addEventListener('click', () => {
     if (!isSessionRunning) return;
-    if (currentState === 'reset') { rfbPhase = false; rfbSecondsRemaining = 0; switchState('active', true); }
-    else if (currentState === 'active' || currentState === 'rest') switchState('reset', true);
+    if (currentState === 'reset') {
+        rfbPhase = false; rfbSecondsRemaining = 0;
+        switchState('active', true);
+    } else if (currentState === 'active' || currentState === 'rest') switchState('reset', true);
 });
 
 document.getElementById('toggleSessionBtn').addEventListener('click', () => {
-    if (!isSessionRunning) { showActivitySelectModal(); return; }
+    if (!isSessionRunning) {
+        showActivitySelectModal();
+        return;
+    }
     if (currentState === 'pause') { switchState('active', true); return; }
     document.getElementById('sessionModal').classList.add('visible');
 });
 
+// Activity select modal buttons
 document.getElementById('activitySelectStartBtn').addEventListener('click', () => {
-    const select = document.getElementById('activitySelectDropdown'), actId = select.value;
-    const acts = window.activitiesAPI ? window.activitiesAPI.getAll() : [], act = acts.find(a => a.id === actId);
+    const select = document.getElementById('activitySelectDropdown');
+    const actId  = select.value;
+    const acts   = window.activitiesAPI ? window.activitiesAPI.getAll() : [];
+    const act    = acts.find(a => a.id === actId);
     document.getElementById('activitySelectModal').classList.remove('visible');
     if (window.activitiesAPI) window.activitiesAPI.applySettings(actId);
-    currentActivityId = actId; currentActivityName = act ? act.name : ''; startSession();
+    currentActivityId   = actId;
+    currentActivityName = act ? act.name : '';
+    startSession();
 });
 
-document.getElementById('activitySelectCancelBtn').addEventListener('click', () => document.getElementById('activitySelectModal').classList.remove('visible'));
-document.getElementById('modalPauseBtn').addEventListener('click', () => { document.getElementById('sessionModal').classList.remove('visible'); switchState('pause', true); });
-document.getElementById('modalEndBtn').addEventListener('click', () => { document.getElementById('sessionModal').classList.remove('visible'); finishSession(); });
-document.getElementById('modalCancelBtn').addEventListener('click', () => document.getElementById('sessionModal').classList.remove('visible'));
+document.getElementById('activitySelectCancelBtn').addEventListener('click', () => {
+    document.getElementById('activitySelectModal').classList.remove('visible');
+});
+
+document.getElementById('modalPauseBtn').addEventListener('click', () => {
+    document.getElementById('sessionModal').classList.remove('visible');
+    switchState('pause', true);
+});
+
+document.getElementById('modalEndBtn').addEventListener('click', () => {
+    document.getElementById('sessionModal').classList.remove('visible');
+    finishSession();
+});
+
+document.getElementById('modalCancelBtn').addEventListener('click', () => {
+    document.getElementById('sessionModal').classList.remove('visible');
+});
 
 document.getElementById('summarySaveBtn').addEventListener('click', () => {
-    const errEl = document.getElementById('summaryError'), saveBtn = document.getElementById('summarySaveBtn');
+    const errEl  = document.getElementById('summaryError');
+    const saveBtn = document.getElementById('summarySaveBtn');
+
+    // If already saved (warning shown) or acknowledged failure, just close
     if (summarySaveState === 'done') {
-        if (errEl) errEl.className = ''; summarySaveState = null; document.getElementById('summaryModal').classList.remove('visible'); teardownSession(); return;
+        if (errEl) errEl.className = '';
+        summarySaveState = null;
+        document.getElementById('summaryModal').classList.remove('visible');
+        teardownSession();
+        return;
     }
+
     const notes = document.getElementById('summaryNotes').value.trim();
-    if (!pendingSummary) { document.getElementById('summaryModal').classList.remove('visible'); teardownSession(); return; }
+    if (!pendingSummary) {
+        document.getElementById('summaryModal').classList.remove('visible');
+        teardownSession();
+        return;
+    }
+
     const result = saveSessionToHistory(pendingSummary, notes);
+
     if (result === 'ok') {
-        pendingSummary = null; if (errEl) errEl.className = ''; document.getElementById('summaryModal').classList.remove('visible'); teardownSession();
-    } else if (result === 'ok_without_recording') {
         pendingSummary = null;
-        if (errEl) { errEl.className = 'summary-warning'; errEl.textContent = '⚠️ Session saved, but the HR graph recording was dropped — storage is almost full. Export your history and delete old sessions to free space.'; }
-        if (saveBtn) saveBtn.textContent = 'Close'; summarySaveState = 'done';
+        if (errEl) errEl.className = '';
+        document.getElementById('summaryModal').classList.remove('visible');
+        teardownSession();
+
+    } else if (result === 'ok_without_recording') {
+        // Saved, but HR graph recording was dropped to fit in storage
+        pendingSummary = null;
+        if (errEl) {
+            errEl.className = 'summary-warning';
+            errEl.textContent = '⚠️ Session saved, but the HR graph recording was dropped — storage is almost full. Export your history and delete old sessions to free space.';
+        }
+        if (saveBtn) saveBtn.textContent = 'Close';
+        summarySaveState = 'done';
+
     } else {
-        if (errEl) { errEl.className = 'summary-error'; errEl.textContent = '❌ Storage full — session not saved. Go to History, export your data and delete old sessions, then return here and try again.'; }
+        // Complete failure — keep modal open so user can navigate to history
+        if (errEl) {
+            errEl.className = 'summary-error';
+            errEl.textContent = '❌ Storage full — session not saved. Go to History, export your data and delete old sessions, then return here and try again.';
+        }
+        // pendingSummary remains set so they can retry
     }
 });
 
 document.getElementById('summaryDiscardBtn').addEventListener('click', () => {
-    pendingSummary = null; document.getElementById('summaryModal').classList.remove('visible'); teardownSession();
+    pendingSummary = null;
+    document.getElementById('summaryModal').classList.remove('visible');
+    teardownSession();
 });
 
 document.getElementById('homeBtn').addEventListener('click', () => {
-    isManualDisconnect = true; document.body.classList.remove('connected'); document.getElementById('homeBtn').style.display = 'none';
-    if (bluetoothDevice && bluetoothDevice.gatt.connected) bluetoothDevice.gatt.disconnect(); else isManualDisconnect = false;
+    isManualDisconnect = true;
+    document.body.classList.remove('connected');
+    document.getElementById('homeBtn').style.display = 'none';
+    if (bluetoothDevice && bluetoothDevice.gatt.connected) bluetoothDevice.gatt.disconnect();
+    else isManualDisconnect = false;
 });
 
 document.getElementById('connectBtn').addEventListener('click', async () => {
@@ -1387,11 +1766,14 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
         await characteristic.startNotifications();
         characteristic.addEventListener('characteristicvaluechanged', handleHeartRate);
         log('✅ Success! Waiting for first heartbeat...');
-        document.body.classList.add('connected'); requestWakeLock();
+        document.body.classList.add('connected');
+        requestWakeLock();
         const restored = restoreSession();
         if (restored) { restoreSessionUI(); sessionInterval = setInterval(handleTick, 1000); }
         else document.getElementById('homeBtn').style.display = 'flex';
-    } catch (error) { log('❌ Error: ' + error.message + '<br><br>💡 Tip: Please close any other app (like Polar Flow) that might be paired with the HR device.', true); }
+    } catch (error) {
+        log('❌ Error: ' + error.message + '<br><br>💡 Tip: Please close any other app (like Polar Flow) that might be paired with the HR device.', true);
+    }
 });
 
 document.addEventListener('DOMContentLoaded', () => { updateSpeedometer(0); tryAutoReconnect(); });
@@ -1399,12 +1781,17 @@ document.addEventListener('DOMContentLoaded', () => { updateSpeedometer(0); tryA
 async function tryAutoReconnect() {
     const restored = restoreSession();
     if (!restored) return;
-    document.body.classList.add('connected'); restoreSessionUI(); sessionInterval = setInterval(handleTick, 1000); requestWakeLock();
+    document.body.classList.add('connected');
+    restoreSessionUI();
+    sessionInterval = setInterval(handleTick, 1000);
+    requestWakeLock();
     function fallbackToHome() { clearInterval(sessionInterval); document.body.classList.remove('connected'); }
     if (!navigator.bluetooth || !navigator.bluetooth.getDevices) { fallbackToHome(); return; }
     try {
         const devices = await navigator.bluetooth.getDevices();
         if (devices.length === 0) { fallbackToHome(); return; }
-        bluetoothDevice = devices[0]; bluetoothDevice.addEventListener('gattserverdisconnected', handleDisconnect); startReconnect();
+        bluetoothDevice = devices[0];
+        bluetoothDevice.addEventListener('gattserverdisconnected', handleDisconnect);
+        startReconnect();
     } catch (e) { fallbackToHome(); }
 }
