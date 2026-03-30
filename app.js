@@ -143,7 +143,7 @@ class HRVProcessor {
     }
 }
 
-// Autonomic Stability Index: RMSSD + out-of-band spectral fraction + HR slope.
+// Autonomic Stability Index: RMSSD + SDNN + HR slope.
 class ASIProcessor {
     constructor(options = {}) {
         this.sampleRate    = options.sampleRate    || 4;
@@ -152,7 +152,6 @@ class ASIProcessor {
         this.lastASI     = 0;
         this.emaTau      = 10;  // seconds — time constant for ASI smoothing
         this.lastASITime = 0;   // ms epoch of last _ema call
-        this.oobBuffer   = []; // { value, ts } — 30s moving mean for outOfBand smoothing
     }
     addSample(rr, hr, timestamp) {
         if (!this._validRR(rr)) return;
@@ -165,52 +164,37 @@ class ASIProcessor {
         // so rrBuffer is already clean. No secondary rejection needed here.
         const rmssdResult = this._computeRMSSD(this.rrBuffer, this.tsBuffer);
         const rmssd       = rmssdResult.value;
-        const interp  = this._interpolate(this.rrBuffer, this.tsBuffer);
-        if (!interp) return null;
-        // Subtract mean before windowing — eliminates DC component that would
-        // otherwise dominate totalPower and suppress spectral metrics.
-        const mean      = interp.reduce((s, x) => s + x, 0) / interp.length;
-        const detrended = interp.map(x => x - mean);
-        const windowed      = this._hanning(detrended);
-        const spectrum      = this._fft(windowed);
-        const freqs         = this._freqAxis(spectrum.length);
-        const outOfBandRaw  = this._outOfBandFraction(freqs, spectrum);
-        // 30-second moving mean — OOB is noisy tick-to-tick; smooth before normalizing.
-        const nowTs = this.tsBuffer.length ? this.tsBuffer[this.tsBuffer.length - 1] : Date.now();
-        this.oobBuffer.push({ value: outOfBandRaw, ts: nowTs });
-        const oobCutoff = nowTs - 30000;
-        while (this.oobBuffer.length && this.oobBuffer[0].ts < oobCutoff) this.oobBuffer.shift();
-        const outOfBand = this.oobBuffer.reduce((s, x) => s + x.value, 0) / this.oobBuffer.length;
-        const slope         = this._hrSlopeSmoothed();
+        const sdnn        = this._computeSDNN(this.rrBuffer);
+        const slope       = this._hrSlopeSmoothed();
 
         // Normalise each component to 0–1, with a 0.05 floor so no single
         // component can collapse the geometric mean to zero on a noisy tick.
         const floor = 0.05;
 
-        // RMSSD normalization bounds scale with exercise intensity (%HRR).
-        // At rest (0% HRR): low=10 ms, high=80 ms.
-        // At max  (100% HRR): low=3 ms,  high=15 ms.
-        // Linear interpolation between these anchors means the score reflects
-        // dysfunction relative to expected RMSSD at the current workload, not
-        // the absolute suppression that occurs normally during exercise.
+        // RMSSD and SDNN normalization bounds scale with exercise intensity (%HRR).
+        // RMSSD: captures fast vagal modulation (HF band).
+        // SDNN:  captures total HRV across all bands — includes slow sympathetic/
+        //        baroreflex components that RMSSD misses. SDNN >> RMSSD indicates
+        //        significant LF activity; both suppressed = autonomic withdrawal.
+        // At rest (0% HRR): rmssd 10→80 ms, sdnn 20→150 ms (healthy population).
+        // At max  (100% HRR): rmssd 3→15 ms, sdnn 5→30 ms.
         let pHRR = 0;
         if (restingHR && maxHR && currentHR && maxHR > restingHR) {
             pHRR = Math.max(0, Math.min(1, (currentHR - restingHR) / (maxHR - restingHR)));
         }
-       // Dynamically calculate the resting RMSSD ceiling based on Max HR (assumes 200bpm = 80ms, 150bpm = 40ms)
+        // Dynamically calculate the resting RMSSD ceiling based on Max HR (assumes 200bpm = 80ms, 150bpm = 40ms)
         const restingCeiling = maxHR ? Math.max(30, (maxHR - 100) * 0.8) : 80;
-        const restingFloor   = restingCeiling * 0.125; 
+        const restingFloor   = restingCeiling * 0.125;
 
         // Scale personalized anchors down based on current exercise intensity (%HRR)
-        const rmssdLow  = restingFloor   - (restingFloor - 3) * pHRR;
+        const rmssdLow  = restingFloor   - (restingFloor   -  3) * pHRR;
         const rmssdHigh = restingCeiling - (restingCeiling - 15) * pHRR;
         const rmssdNorm = Math.max(floor, this._normalize(rmssd, rmssdLow, rmssdHigh));
 
-        // Out-of-band fraction normalization — range TBD from real data with corrected metric.
-        // With totalPower now capped at 0.5 Hz, expected resting values are much lower than
-        // the previous 60–95% (which included noise up to 2 Hz). Placeholder range set wide;
-        // recalibrate once observed values are known.
-        const outOfBandNorm = Math.max(floor, 1 - this._normalize(outOfBand, 0.10, 0.60));
+        // SDNN: same %HRR scaling, wider absolute range
+        const sdnnLow   = (restingFloor   * 2) - ((restingFloor   * 2) -  5) * pHRR;
+        const sdnnHigh  = (restingCeiling * 2) - ((restingCeiling * 2) - 30) * pHRR;
+        const sdnnNorm  = Math.max(floor, this._normalize(sdnn, sdnnLow, sdnnHigh));
 
         // Slope norm: no penalty within physiologically normal rates of change in
         // either direction; progressive penalty only when |slope| exceeds healthy
@@ -230,12 +214,11 @@ class ASIProcessor {
             slopeNorm = 1.0;
         }
 
-        // Weighted geometric mean: outOfBand carries double weight (it replaces the
-        // two former spectral metrics), rmssd and slope carry single weight each.
-        // (rmssd^1 × outOfBand^2 × slope^1) ^ (1/4)
-        const asiRaw = Math.pow(rmssdNorm * outOfBandNorm * outOfBandNorm * slopeNorm, 0.25);
+        // Geometric mean — equal weights: rmssd, sdnn, slope.
+        // (rmssd × sdnn × slope)^(1/3)
+        const asiRaw = Math.pow(rmssdNorm * sdnnNorm * slopeNorm, 1/3);
         const now = this.tsBuffer.length ? this.tsBuffer[this.tsBuffer.length - 1] : Date.now();
-        return { asi: this._ema(asiRaw, now), rmssd, outOfBand, outOfBandRaw, slope,
+        return { asi: this._ema(asiRaw, now), rmssd, sdnn, slope,
                  rmssdCount: rmssdResult.count, rmssdBufLen: rmssdResult.bufLen,
                  rmssdMinDiff: rmssdResult.minDiff, rmssdMaxDiff: rmssdResult.maxDiff,
                  rmssdMeanRr: rmssdResult.meanRr };
@@ -255,24 +238,11 @@ class ASIProcessor {
         const meanRr = rr.reduce((a, b) => a + b, 0) / rr.length;
         return { value, count, bufLen: rr.length, minDiff: minDiff === Infinity ? 0 : minDiff, maxDiff, meanRr };
     }
-    _outOfBandFraction(freqs, spectrum) {
-        // Compute OOB fraction within the physiologically relevant spectrum only
-        // (0–0.5 Hz). Including bins up to the Nyquist (2 Hz) made totalPower
-        // dominated by high-frequency noise, pushing OOB toward 95% regardless
-        // of autonomic state. Capping at 0.5 Hz means:
-        //   in-band  (0.04–0.40 Hz) covers ~72% of analysed bins
-        //   out-band (<0.04 Hz VLF + 0.40–0.50 Hz edge) covers ~28%
-        // A disorganised spectrum (diffuse VLF power) gives high OOB;
-        // an organised one (power concentrated in LF/HF band) gives low OOB.
-        const MAX_FREQ = 0.5;
-        let inBand = 0, total = 0;
-        for (let i = 0; i < freqs.length; i++) {
-            if (freqs[i] > MAX_FREQ) break; // bins are ordered ascending
-            const p = spectrum[i] ** 2;
-            total += p;
-            if (freqs[i] >= 0.04 && freqs[i] <= 0.4) inBand += p;
-        }
-        return total > 0 ? 1 - (inBand / total) : 0;
+    _computeSDNN(rr) {
+        if (!rr || rr.length < 2) return 0;
+        const mean = rr.reduce((a, b) => a + b, 0) / rr.length;
+        const variance = rr.reduce((s, x) => s + (x - mean) ** 2, 0) / (rr.length - 1);
+        return Math.sqrt(variance);
     }
     _hrSlopeSmoothed() {
         // Linear regression over the last 10 seconds of HR samples.
@@ -310,51 +280,6 @@ class ASIProcessor {
         return this.lastASI;
     }
     _validRR(rr)       { return rr > 300 && rr < 2000; }
-    _artifactReject(rr, ts) {
-        const outRr = [], outTs = [];
-        for (let i = 0; i < rr.length; i++) {
-            const prev = rr[i-1] || rr[i];
-            if (Math.abs(rr[i] - prev) / prev < 0.2) {
-                outRr.push(rr[i]);
-                outTs.push(ts[i]);
-            }
-        }
-        return { rr: outRr, ts: outTs };
-    }
-    _interpolate(rr, ts) {
-        if (rr.length < 4) return null;
-        const start = ts[0], end = ts[ts.length - 1], step = 1000 / this.sampleRate;
-        const res = []; let j = 0;
-        for (let t = start; t <= end; t += step) {
-            while (j < ts.length - 1 && ts[j+1] < t) j++;
-            const t2 = ts[j+1];
-            if (!t2) break;
-            res.push(rr[j] + ((t - ts[j]) / (t2 - ts[j])) * (rr[j+1] - rr[j]));
-        }
-        return res;
-    }
-    _hanning(data) {
-        const N = data.length;
-        return data.map((x, i) => x * (0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (N - 1))));
-    }
-    _fft(signal) {
-        const N = signal.length, re = signal.slice(), im = new Array(N).fill(0);
-        for (let k = 0; k < N; k++) {
-            let sumRe = 0, sumIm = 0;
-            for (let n = 0; n < N; n++) {
-                const angle = (2 * Math.PI * k * n) / N;
-                sumRe += signal[n] * Math.cos(angle);
-                sumIm -= signal[n] * Math.sin(angle);
-            }
-            re[k] = sumRe; im[k] = sumIm;
-        }
-        return re.map((r, i) => Math.sqrt(r * r + im[i] * im[i]));
-    }
-    _freqAxis(N) {
-        const freqs = [];
-        for (let i = 0; i < N; i++) freqs.push((i * this.sampleRate) / N);
-        return freqs;
-    }
     _trim() {
         const cutoff = Date.now() - this.windowSeconds * 1000;
         while (this.tsBuffer.length && this.tsBuffer[0] < cutoff) {
@@ -919,7 +844,7 @@ function updateCoherenceDisplay() {
                 dbg.style.cssText = 'font-size:10px;opacity:0.6;text-align:center;width:100%;margin-top:2px;font-family:monospace;';
                 asiVal.parentElement.insertAdjacentElement('afterend', dbg);
             }
-            dbg.textContent = `rmssd:${result.rmssd.toFixed(1)}ms(n=${result.rmssdCount}/${result.rmssdBufLen}) diff:${result.rmssdMinDiff.toFixed(0)}-${result.rmssdMaxDiff.toFixed(0)}ms meanRR:${result.rmssdMeanRr.toFixed(0)}ms | oob:${(result.outOfBandRaw * 100).toFixed(1)}%→${(result.outOfBand * 100).toFixed(1)}%avg slope:${result.slope.toFixed(2)}`;
+            dbg.textContent = `rmssd:${result.rmssd.toFixed(1)}ms  sdnn:${result.sdnn.toFixed(1)}ms(ratio:${(result.sdnn/Math.max(result.rmssd,0.1)).toFixed(2)})  slope:${result.slope.toFixed(2)}bpm/s  n=${result.rmssdCount}/${result.rmssdBufLen} diff:${result.rmssdMinDiff.toFixed(0)}-${result.rmssdMaxDiff.toFixed(0)}ms`;
             dbg.style.color = stateColor;
         }
         asiVal.style.color = stateColor;
