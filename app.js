@@ -161,14 +161,9 @@ class ASIProcessor {
     }
     computeASI({ restingHR, maxHR, currentHR } = {}) {
         if (this.rrBuffer.length < 10) return null;
-        // RMSSD uses artifact-cleaned RR: ectopics would artificially inflate
-        // successive-difference values in a non-physiological way.
-        // Spectral path uses the raw buffer: abrupt RR changes and ectopics are
-        // genuine dysfunction signals and should contribute to out-of-band power.
-        // Using raw buffers also guarantees RR and timestamp arrays are the same
-        // length, avoiding the mismatch that artifact rejection would introduce.
-        const { rr: rrClean, ts: tsClean } = this._artifactReject(this.rrBuffer, this.tsBuffer);
-        const rmssdResult = this._computeRMSSD(rrClean, tsClean);
+        // Beats are artifact-filtered before entering the buffer (in recordRrHistory),
+        // so rrBuffer is already clean. No secondary rejection needed here.
+        const rmssdResult = this._computeRMSSD(this.rrBuffer, this.tsBuffer);
         const rmssd       = rmssdResult.value;
         const interp  = this._interpolate(this.rrBuffer, this.tsBuffer);
         if (!interp) return null;
@@ -211,13 +206,11 @@ class ASIProcessor {
         const rmssdHigh = restingCeiling - (restingCeiling - 15) * pHRR;
         const rmssdNorm = Math.max(floor, this._normalize(rmssd, rmssdLow, rmssdHigh));
 
-        // Out-of-band fraction normalization:
-        // 0.40 = healthy resting lower bound (a well-regulated ANS keeps most power in-band)
-        // 0.75 = pathological ceiling (severe dysregulation or hard exercise)
-        // Chris's resting dysautonomic baseline of 0.60–0.76 OOB will produce ASI
-        // in the ~18–53% range, settling around 30–40% after EMA smoothing —
-        // appropriate for a known-dysregulated ANS with below-norm RMSSD.
-        const outOfBandNorm = Math.max(floor, 1 - this._normalize(outOfBand, 0.40, 0.75));
+        // Out-of-band fraction normalization — range TBD from real data with corrected metric.
+        // With totalPower now capped at 0.5 Hz, expected resting values are much lower than
+        // the previous 60–95% (which included noise up to 2 Hz). Placeholder range set wide;
+        // recalibrate once observed values are known.
+        const outOfBandNorm = Math.max(floor, 1 - this._normalize(outOfBand, 0.10, 0.60));
 
         // Slope norm: no penalty within physiologically normal rates of change in
         // either direction; progressive penalty only when |slope| exceeds healthy
@@ -247,57 +240,34 @@ class ASIProcessor {
                  rmssdMinDiff: rmssdResult.minDiff, rmssdMaxDiff: rmssdResult.maxDiff,
                  rmssdMeanRr: rmssdResult.meanRr };
     }
-_computeRMSSD(rr, ts) {
-    if (!rr || rr.length < 2) {
-        return { 
-            value: 0, 
-            count: 0, 
-            bufLen: rr ? rr.length : 0, 
-            minDiff: 0, 
-            maxDiff: 0, 
-            meanRr: 0 
-        };
+    _computeRMSSD(rr, ts) {
+        if (!rr || rr.length < 2) {
+            return { value: 0, count: 0, bufLen: rr ? rr.length : 0, minDiff: 0, maxDiff: 0, meanRr: 0 };
+        }
+        let sum = 0, count = 0, minDiff = Infinity, maxDiff = 0;
+        for (let i = 0; i < rr.length - 1; i++) {
+            const d = Math.abs(rr[i+1] - rr[i]);
+            sum += d * d; count++;
+            if (d < minDiff) minDiff = d;
+            if (d > maxDiff) maxDiff = d;
+        }
+        const value  = count > 0 ? Math.sqrt(sum / count) : 0;
+        const meanRr = rr.reduce((a, b) => a + b, 0) / rr.length;
+        return { value, count, bufLen: rr.length, minDiff: minDiff === Infinity ? 0 : minDiff, maxDiff, meanRr };
     }
-
-    let sum = 0;
-    let count = 0;
-    let minDiff = Infinity;
-    let maxDiff = 0;
-
-    // ✅ FIX: no adjacency filtering
-    for (let i = 0; i < rr.length - 1; i++) {
-        const d = Math.abs(rr[i + 1] - rr[i]);
-
-        sum += d * d;
-        count++;
-
-        if (d < minDiff) minDiff = d;
-        if (d > maxDiff) maxDiff = d;
-    }
-
-    const value = count > 0 ? Math.sqrt(sum / count) : 0;
-
-    // ✅ FIX: correct mean RR
-    const meanRr = rr.length > 0
-        ? rr.reduce((a, b) => a + b, 0) / rr.length
-        : 0;
-
-    return { 
-        value, 
-        count, 
-        bufLen: rr.length, 
-        minDiff: minDiff === Infinity ? 0 : minDiff, 
-        maxDiff, 
-        meanRr 
-    };
-}
     _outOfBandFraction(freqs, spectrum) {
-        // Power outside the HRV band (0.04–0.4 Hz) as a fraction of total power.
-        // Sub-VLF (<0.04 Hz): slow sympathetic drift and erratic HR trends.
-        // HF noise (>0.4 Hz): movement artifact, ectopic-driven broadband noise.
-        // Both represent autonomic disorganisation in the context of this tool.
+        // Compute OOB fraction within the physiologically relevant spectrum only
+        // (0–0.5 Hz). Including bins up to the Nyquist (2 Hz) made totalPower
+        // dominated by high-frequency noise, pushing OOB toward 95% regardless
+        // of autonomic state. Capping at 0.5 Hz means:
+        //   in-band  (0.04–0.40 Hz) covers ~72% of analysed bins
+        //   out-band (<0.04 Hz VLF + 0.40–0.50 Hz edge) covers ~28%
+        // A disorganised spectrum (diffuse VLF power) gives high OOB;
+        // an organised one (power concentrated in LF/HF band) gives low OOB.
+        const MAX_FREQ = 0.5;
         let inBand = 0, total = 0;
         for (let i = 0; i < freqs.length; i++) {
+            if (freqs[i] > MAX_FREQ) break; // bins are ordered ascending
             const p = spectrum[i] ** 2;
             total += p;
             if (freqs[i] >= 0.04 && freqs[i] <= 0.4) inBand += p;
@@ -394,7 +364,7 @@ _computeRMSSD(rr, ts) {
 }
 
 const hrvProcessor = new HRVProcessor({ sampleRate: 4, windowSeconds: 120 });
-const asiProcessor = new ASIProcessor({ sampleRate: 4, windowSeconds: 60  });
+const asiProcessor = new ASIProcessor({ sampleRate: 4, windowSeconds: 120 });
 
 let lastRrTimestamp = 0; // Continuous internal clock — prevents packet jitter gaps
 
@@ -423,16 +393,29 @@ function recordRrHistory(rrValuesMs, notifTs) {
         lastRrTimestamp = notifTs;
     }
 
+    // Apply a single consistent artifact filter across all three consumers:
+    // graph display, RMSSD (via ASIProcessor), and spectral analysis.
+    // A beat is an artifact if it differs from its predecessor by >20%.
+    // prevRr seeds from the last accepted beat in the previous packet (persisted
+    // across calls via lastAcceptedRr) so the filter works at packet boundaries.
+    let prevRr = recordRrHistory._lastAcceptedRr || 0;
+
     for (const { rr, ts: t } of pairs) {
-        // Feed raw RR + timestamp to both HRV processors
-        hrvProcessor.addRR(rr, t);
-        asiProcessor.addSample(rr, latestHR, t);
-        // Build instantaneous-HR display history for the graph
-        const instantHr = Math.round(60000 / rr);
-        if (instantHr >= 24 && instantHr <= 240) {
-            rrHistory.push({ hr: instantHr, state: currentState, ts: t });
+        const isArtifact = prevRr > 0 && Math.abs(rr - prevRr) / prevRr >= 0.2;
+
+        if (!isArtifact) {
+            prevRr = rr;
+            // Clean beat — feed to both processors and graph display
+            hrvProcessor.addRR(rr, t);
+            asiProcessor.addSample(rr, latestHR, t);
+            const instantHr = Math.round(60000 / rr);
+            if (instantHr >= 24 && instantHr <= 240) {
+                rrHistory.push({ hr: instantHr, state: currentState, ts: t });
+            }
         }
+        // Artifact beats are silently dropped from all consumers
     }
+    recordRrHistory._lastAcceptedRr = prevRr;
 
     rrHistory.sort((a, b) => a.ts - b.ts);
     const cutoff = notifTs - HR_HISTORY_MS;
