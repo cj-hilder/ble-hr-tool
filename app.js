@@ -241,26 +241,50 @@ class ASIProcessor {
                  rmssdMinDiff: rmssdResult.minDiff, rmssdMaxDiff: rmssdResult.maxDiff,
                  rmssdMeanRr: rmssdResult.meanRr };
     }
-    _computeRMSSD(rr, ts) {
-        // Only compute successive differences between beats that were genuinely
-        // adjacent — i.e. where the timestamp gap matches the RR interval within
-        // a 25% tolerance. This prevents artifact removal from silently pairing
-        // non-adjacent beats and halving the result.
-        let sum = 0, count = 0, minDiff = Infinity, maxDiff = 0, sumRr = 0;
-        for (let i = 0; i < rr.length - 1; i++) {
-            sumRr += rr[i];
-            const expectedGapMs = rr[i];
-            const actualGapMs   = ts[i+1] - ts[i];
-            if (Math.abs(actualGapMs - expectedGapMs) / expectedGapMs > 0.25) continue;
-            const d = Math.abs(rr[i+1] - rr[i]);
-            if (d < minDiff) minDiff = d;
-            if (d > maxDiff) maxDiff = d;
-            sum += d * d; count++;
-        }
-        const meanRr = rr.length > 0 ? (sumRr / rr.length) : 0;
-        const value  = count > 0 ? Math.sqrt(sum / count) : 0;
-        return { value, count, bufLen: rr.length, minDiff: minDiff === Infinity ? 0 : minDiff, maxDiff, meanRr };
+_computeRMSSD(rr, ts) {
+    if (!rr || rr.length < 2) {
+        return { 
+            value: 0, 
+            count: 0, 
+            bufLen: rr ? rr.length : 0, 
+            minDiff: 0, 
+            maxDiff: 0, 
+            meanRr: 0 
+        };
     }
+
+    let sum = 0;
+    let count = 0;
+    let minDiff = Infinity;
+    let maxDiff = 0;
+
+    // ✅ FIX: no adjacency filtering
+    for (let i = 0; i < rr.length - 1; i++) {
+        const d = Math.abs(rr[i + 1] - rr[i]);
+
+        sum += d * d;
+        count++;
+
+        if (d < minDiff) minDiff = d;
+        if (d > maxDiff) maxDiff = d;
+    }
+
+    const value = count > 0 ? Math.sqrt(sum / count) : 0;
+
+    // ✅ FIX: correct mean RR
+    const meanRr = rr.length > 0
+        ? rr.reduce((a, b) => a + b, 0) / rr.length
+        : 0;
+
+    return { 
+        value, 
+        count, 
+        bufLen: rr.length, 
+        minDiff: minDiff === Infinity ? 0 : minDiff, 
+        maxDiff, 
+        meanRr 
+    };
+}
     _outOfBandFraction(freqs, spectrum) {
         // Power outside the HRV band (0.04–0.4 Hz) as a fraction of total power.
         // Sub-VLF (<0.04 Hz): slow sympathetic drift and erratic HR trends.
