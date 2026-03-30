@@ -237,21 +237,29 @@ class ASIProcessor {
         const asiRaw = Math.pow(rmssdNorm * outOfBandNorm * outOfBandNorm * slopeNorm, 0.25);
         const now = this.tsBuffer.length ? this.tsBuffer[this.tsBuffer.length - 1] : Date.now();
         return { asi: this._ema(asiRaw, now), rmssd, outOfBand, outOfBandRaw, slope,
-                 rmssdCount: rmssdResult.count, rmssdBufLen: rmssdResult.bufLen };
+                 rmssdCount: rmssdResult.count, rmssdBufLen: rmssdResult.bufLen,
+                 rmssdMinDiff: rmssdResult.minDiff, rmssdMaxDiff: rmssdResult.maxDiff,
+                 rmssdMeanRr: rmssdResult.meanRr };
     }
     _computeRMSSD(rr, ts) {
         // Only compute successive differences between beats that were genuinely
         // adjacent — i.e. where the timestamp gap matches the RR interval within
         // a 25% tolerance. This prevents artifact removal from silently pairing
         // non-adjacent beats and halving the result.
-        let sum = 0, count = 0;
+        let sum = 0, count = 0, minDiff = Infinity, maxDiff = 0, sumRr = 0;
         for (let i = 0; i < rr.length - 1; i++) {
+            sumRr += rr[i];
             const expectedGapMs = rr[i];
             const actualGapMs   = ts[i+1] - ts[i];
             if (Math.abs(actualGapMs - expectedGapMs) / expectedGapMs > 0.25) continue;
-            const d = rr[i+1] - rr[i]; sum += d * d; count++;
+            const d = Math.abs(rr[i+1] - rr[i]);
+            if (d < minDiff) minDiff = d;
+            if (d > maxDiff) maxDiff = d;
+            sum += d * d; count++;
         }
-        return { value: count > 0 ? Math.sqrt(sum / count) : 0, count, bufLen: rr.length };
+        const meanRr = rr.length > 0 ? (sumRr / rr.length) : 0;
+        const value  = count > 0 ? Math.sqrt(sum / count) : 0;
+        return { value, count, bufLen: rr.length, minDiff: minDiff === Infinity ? 0 : minDiff, maxDiff, meanRr };
     }
     _outOfBandFraction(freqs, spectrum) {
         // Power outside the HRV band (0.04–0.4 Hz) as a fraction of total power.
@@ -898,7 +906,7 @@ function updateCoherenceDisplay() {
                 dbg.style.cssText = 'font-size:10px;opacity:0.6;text-align:center;width:100%;margin-top:2px;font-family:monospace;';
                 asiVal.parentElement.insertAdjacentElement('afterend', dbg);
             }
-            dbg.textContent = `rmssd:${result.rmssd.toFixed(1)}ms(n=${result.rmssdCount}/${result.rmssdBufLen})  oob:${(result.outOfBandRaw * 100).toFixed(1)}%→${(result.outOfBand * 100).toFixed(1)}%avg  slope:${result.slope.toFixed(2)}bpm/s`;
+            dbg.textContent = `rmssd:${result.rmssd.toFixed(1)}ms(n=${result.rmssdCount}/${result.rmssdBufLen}) diff:${result.rmssdMinDiff.toFixed(0)}-${result.rmssdMaxDiff.toFixed(0)}ms meanRR:${result.rmssdMeanRr.toFixed(0)}ms | oob:${(result.outOfBandRaw * 100).toFixed(1)}%→${(result.outOfBand * 100).toFixed(1)}%avg slope:${result.slope.toFixed(2)}`;
             dbg.style.color = stateColor;
         }
         asiVal.style.color = stateColor;
