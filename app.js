@@ -165,8 +165,8 @@ class ASIProcessor {
         // genuine dysfunction signals and should contribute to out-of-band power.
         // Using raw buffers also guarantees RR and timestamp arrays are the same
         // length, avoiding the mismatch that artifact rejection would introduce.
-        const rrClean = this._artifactReject(this.rrBuffer);
-        const rmssd   = this._computeRMSSD(rrClean);
+        const { rr: rrClean, ts: tsClean } = this._artifactReject(this.rrBuffer, this.tsBuffer);
+        const rmssd   = this._computeRMSSD(rrClean, tsClean);
         const interp  = this._interpolate(this.rrBuffer, this.tsBuffer);
         if (!interp) return null;
         // Subtract mean before windowing — eliminates DC component that would
@@ -197,10 +197,13 @@ class ASIProcessor {
         const rmssdHigh = 80 - 65 * pHRR;   // 80 → 15 ms across full HRR range
         const rmssdNorm = Math.max(floor, this._normalize(rmssd, rmssdLow, rmssdHigh));
 
-        // Out-of-band fraction: power outside the HRV band (0.04–0.4 Hz) / total power.
-        // Low fraction = organised HRV (healthy); high fraction = spectral disorganisation.
-        // Normalised so fraction=0 → 1.0, fraction≥0.5 → floor.
-        const outOfBandNorm = Math.max(floor, 1 - this._normalize(outOfBand, 0, 0.5));
+        // Out-of-band fraction normalization:
+        // 0.40 = healthy resting lower bound (a well-regulated ANS keeps most power in-band)
+        // 0.75 = pathological ceiling (severe dysregulation or hard exercise)
+        // Chris's resting dysautonomic baseline of 0.60–0.76 OOB will produce ASI
+        // in the ~18–53% range, settling around 30–40% after EMA smoothing —
+        // appropriate for a known-dysregulated ANS with below-norm RMSSD.
+        const outOfBandNorm = Math.max(floor, 1 - this._normalize(outOfBand, 0.40, 0.75));
 
         // Slope norm: no penalty within physiologically normal rates of change in
         // either direction; progressive penalty only when |slope| exceeds healthy
@@ -227,10 +230,19 @@ class ASIProcessor {
         const now = this.tsBuffer.length ? this.tsBuffer[this.tsBuffer.length - 1] : Date.now();
         return { asi: this._ema(asiRaw, now), rmssd, outOfBand, slope };
     }
-    _computeRMSSD(rr) {
-        let sum = 0;
-        for (let i = 0; i < rr.length - 1; i++) { const d = rr[i+1] - rr[i]; sum += d * d; }
-        return Math.sqrt(sum / (rr.length - 1));
+    _computeRMSSD(rr, ts) {
+        // Only compute successive differences between beats that were genuinely
+        // adjacent — i.e. where the timestamp gap matches the RR interval within
+        // a 25% tolerance. This prevents artifact removal from silently pairing
+        // non-adjacent beats and halving the result.
+        let sum = 0, count = 0;
+        for (let i = 0; i < rr.length - 1; i++) {
+            const expectedGapMs = rr[i];
+            const actualGapMs   = ts[i+1] - ts[i];
+            if (Math.abs(actualGapMs - expectedGapMs) / expectedGapMs > 0.25) continue;
+            const d = rr[i+1] - rr[i]; sum += d * d; count++;
+        }
+        return count > 0 ? Math.sqrt(sum / count) : 0;
     }
     _outOfBandFraction(freqs, spectrum) {
         // Power outside the HRV band (0.04–0.4 Hz) as a fraction of total power.
@@ -281,13 +293,16 @@ class ASIProcessor {
         return this.lastASI;
     }
     _validRR(rr)       { return rr > 300 && rr < 2000; }
-    _artifactReject(rr) {
-        const out = [];
+    _artifactReject(rr, ts) {
+        const outRr = [], outTs = [];
         for (let i = 0; i < rr.length; i++) {
             const prev = rr[i-1] || rr[i];
-            if (Math.abs(rr[i] - prev) / prev < 0.2) out.push(rr[i]);
+            if (Math.abs(rr[i] - prev) / prev < 0.2) {
+                outRr.push(rr[i]);
+                outTs.push(ts[i]);
+            }
         }
-        return out;
+        return { rr: outRr, ts: outTs };
     }
     _interpolate(rr, ts) {
         if (rr.length < 4) return null;
