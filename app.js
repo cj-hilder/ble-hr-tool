@@ -11,6 +11,7 @@ const SPEEDO_NEEDLE_INNER_R = 61, SPEEDO_NEEDLE_OUTER_R = 68;
 const SPEEDO_ARC_R = 69, SPEEDO_START_DEG = 112.5, SPEEDO_SWEEP_DEG = 315;
 
 let latestHR = 0;
+let lastBlePacket = { time: 0, hex: '' };
 
 // --- HR History Graph ---
 const hrHistory = [];
@@ -1251,7 +1252,21 @@ function handleTick() {
 
 function handleHeartRate(event) {
     if (isReconnecting) return;
+
     const dv = event.target.value;
+    
+    // --- DUPLICATE PACKET FILTER ---
+    // Convert the raw DataView bytes into a quick hex string for comparison
+    let hex = '';
+    for (let i = 0; i < dv.byteLength; i++) hex += dv.getUint8(i).toString(16);
+    
+    const now = Date.now();
+    // If we receive the exact same byte payload in less than 100ms, it's a duplicate listener phantom
+    if (now - lastBlePacket.time < 100 && lastBlePacket.hex === hex) {
+        return; // Silently drop the duplicate
+    }
+    lastBlePacket = { time: now, hex: hex };
+    // -------------------------------
     const flags   = dv.getUint8(0);
     const is16bit = flags & 0x01;
     const currentHeartRate = is16bit ? dv.getUint16(1, true) : dv.getUint8(1);
@@ -1637,6 +1652,8 @@ async function attemptReconnect() {
         const service = await server.getPrimaryService('heart_rate');
         const characteristic = await service.getCharacteristic('heart_rate_measurement');
         await characteristic.startNotifications();
+        // Remove any old ghost listeners before adding the new one
+        characteristic.removeEventListener('characteristicvaluechanged', handleHeartRate);
         characteristic.addEventListener('characteristicvaluechanged', handleHeartRate);
         onReconnectSuccess();
     } catch (err) { setTimeout(attemptReconnect, 3000); }
@@ -1794,8 +1811,10 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
         log('3. Requesting Heart Rate data...');
         const service = await server.getPrimaryService('heart_rate');
         const characteristic = await service.getCharacteristic('heart_rate_measurement');
-        log('4. Starting live notifications...<br><br>⚠️ TIP: If the app freezes here, the connection is stuck. Try:<br>1. Closing the watch app on your phone (e.g. Polar Flow).<br>2. Unpairing the phone from inside the watch settings menu.');
+        log('4. Starting live notifications...<br><br>⚠️ TIP: If the app freezes here, the connection is stuck. Try:<br>1. Closing the HR monitor or watch app on your phone (e.g. Polar Flow).<br>2. Unpairing the phone from inside the HR monitor or watch settings menu.<br>3. Unpairing the HR monitor or watch from the phone\'s Bluetooth settings.');
         await characteristic.startNotifications();
+        // Remove any old ghost listeners before adding the new one
+        characteristic.removeEventListener('characteristicvaluechanged', handleHeartRate);
         characteristic.addEventListener('characteristicvaluechanged', handleHeartRate);
         log('✅ Success! Waiting for first heartbeat...');
         document.body.classList.add('connected');
