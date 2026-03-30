@@ -202,8 +202,13 @@ class ASIProcessor {
         if (restingHR && maxHR && currentHR && maxHR > restingHR) {
             pHRR = Math.max(0, Math.min(1, (currentHR - restingHR) / (maxHR - restingHR)));
         }
-        const rmssdLow  = 10 - 7  * pHRR;   // 10 → 3 ms across full HRR range
-        const rmssdHigh = 80 - 65 * pHRR;   // 80 → 15 ms across full HRR range
+       // Dynamically calculate the resting RMSSD ceiling based on Max HR (assumes 200bpm = 80ms, 150bpm = 40ms)
+        const restingCeiling = maxHR ? Math.max(30, (maxHR - 100) * 0.8) : 80;
+        const restingFloor   = restingCeiling * 0.125; 
+
+        // Scale personalized anchors down based on current exercise intensity (%HRR)
+        const rmssdLow  = restingFloor   - (restingFloor - 3) * pHRR;
+        const rmssdHigh = restingCeiling - (restingCeiling - 15) * pHRR;
         const rmssdNorm = Math.max(floor, this._normalize(rmssd, rmssdLow, rmssdHigh));
 
         // Out-of-band fraction normalization:
