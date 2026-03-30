@@ -53,10 +53,15 @@ class HRVProcessor {
         const freqs     = this._frequencyAxis(spectrum.length);
         const { peakFreq, peakBandPower, totalPower } = this._computeBandMetrics(freqs, spectrum);
         if (totalPower === 0) return null;
-        const coherenceRaw = peakBandPower / (totalPower - peakBandPower);
+        // HeartMath standard formula: peak band power as a fraction of total power (0–1).
+        const coherenceRaw = peakBandPower / totalPower;
+        // Validate that the spectral peak lies within the physiological RFB range
+        // (0.07–0.12 Hz = 4.2–7.2 bpm). A peak outside this range means the algorithm
+        // has latched onto LF noise or slow HR drift, not a real breathing oscillation.
+        const validBreathingRate = peakFreq >= 0.07 && peakFreq <= 0.12;
         const now      = this.timestamps.length ? this.timestamps[this.timestamps.length - 1] : Date.now();
         const coherence = this._ema(coherenceRaw, now);
-        return { coherence, peakFreq, breathingRate: peakFreq * 60 };
+        return { coherence, peakFreq, breathingRate: peakFreq * 60, validBreathingRate };
     }
     _isValidRR(rr)    { return rr > 300 && rr < 2000; }
     _trimBuffer() {
@@ -765,14 +770,16 @@ function triggerNotification() {
 }
 
 // ─── Coherence & ASI display ──────────────────────────────────────────────────
-// computeCoherence normalises HRVProcessor's spectral ratio (0→∞) to 0–1.
-// A ratio of 3 means ~75% of LF power sits in the peak band — very high coherence
-// — so we clamp at 3 for a meaningful 0–100% display scale.
+// computeCoherence returns { value, validRate } or null (insufficient data).
+// HeartMath peak/total formula yields 0–1 directly — no further normalisation needed.
+// validRate is false when the spectral peak falls outside the RFB range (0.07–0.12 Hz),
+// indicating the algorithm has not locked onto a real breathing oscillation.
+// Display thresholds recalibrated for peak/total: ≥0.50 = high, ≥0.30 = moderate.
 function computeCoherence() {
     if (!hasRrData) return null;
     const result = hrvProcessor.computeCoherence();
     if (result === null) return null;
-    return Math.min(1, result.coherence / 3);
+    return { value: result.coherence, validRate: result.validBreathingRate };
 }
 
 function computeASI() {
@@ -810,10 +817,15 @@ function updateCoherenceDisplay() {
         const c = computeCoherence();
         if (c === null) {
             coherVal.textContent = '…'; coherVal.style.color = '#444';
+        } else if (!c.validRate) {
+            // Peak outside 0.07–0.12 Hz — not a real breathing oscillation yet
+            coherVal.textContent = '–'; coherVal.style.color = '#666';
         } else {
-            const pct = Math.round(c * 100);
+            const pct = Math.round(c.value * 100);
             coherVal.textContent = pct + '%';
-            coherVal.style.color = pct >= 70 ? '#4af' : pct >= 40 ? '#ffc107' : '#dc3545';
+            // Thresholds recalibrated for HeartMath peak/total formula:
+            // ≥50% = high coherence, ≥30% = moderate, below = low
+            coherVal.style.color = pct >= 50 ? '#4af' : pct >= 30 ? '#ffc107' : '#dc3545';
         }
     }
 
