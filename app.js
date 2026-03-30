@@ -811,34 +811,46 @@ function updateCoherenceDisplay() {
 
     el.style.display = 'flex';
 
+    // Derive state text colour so metrics blend with the surrounding UI.
+    const stateColor = currentState === 'active' ? '#28a745'
+                     : currentState === 'rest'   ? '#fd7e14'
+                     : currentState === 'reset'  ? (rfbOn ? '#1a7fff' : '#dc3545')
+                     : currentState === 'pause'  ? '#888888'
+                     : '#aaaaaa';
+
+    // Stars: level maps to N filled + (3-N) outline stars. No stars when no data.
+    function starsHtml(level) {
+        return '★'.repeat(level) + '☆'.repeat(3 - level);
+    }
+
     // Coherence row — only during reset + RFB
     if (coherEl) coherEl.style.display = inRfb ? 'flex' : 'none';
     if (inRfb && coherVal) {
         const c = computeCoherence();
         if (c === null) {
-            coherVal.textContent = '…'; coherVal.style.color = '#444';
+            coherVal.textContent = '…';
         } else if (!c.validRate) {
             // Peak outside 0.07–0.12 Hz — not a real breathing oscillation yet
-            coherVal.textContent = '–'; coherVal.style.color = '#666';
+            coherVal.textContent = '–';
         } else {
-            const pct = Math.round(c.value * 100);
-            coherVal.textContent = pct + '%';
-            // Thresholds recalibrated for HeartMath peak/total formula:
-            // ≥50% = high coherence, ≥30% = moderate, below = low
-            coherVal.style.color = pct >= 50 ? '#4af' : pct >= 30 ? '#ffc107' : '#dc3545';
+            const pct   = Math.round(c.value * 100);
+            const level = pct >= 50 ? 3 : pct >= 30 ? 2 : 1;
+            coherVal.textContent = `${pct}% ${starsHtml(level)}`;
         }
+        coherVal.style.color = stateColor;
     }
 
     // ASI row — always when RR data is available
     if (asiVal) {
         const a = computeASI();
         if (a === null) {
-            asiVal.textContent = '…'; asiVal.style.color = '#444';
+            asiVal.textContent = '…';
         } else {
-            const pct = Math.round(a * 100);
-            asiVal.textContent = pct + '%';
-            asiVal.style.color = pct >= 70 ? '#4af' : pct >= 40 ? '#ffc107' : '#dc3545';
+            const pct   = Math.round(a * 100);
+            const level = pct >= 70 ? 3 : pct >= 40 ? 2 : 1;
+            asiVal.textContent = `${pct}% ${starsHtml(level)}`;
         }
+        asiVal.style.color = stateColor;
     }
 }
 
