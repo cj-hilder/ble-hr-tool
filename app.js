@@ -790,7 +790,7 @@ function computeASI() {
         currentHR:  latestHR || undefined,
     });
     if (result === null) return null;
-    return result.asi; // already 0–1
+    return result; // { asi, rmssd, outOfBand, slope }
 }
 
 let _lastCoherenceUpdateTs = 0;
@@ -842,13 +842,23 @@ function updateCoherenceDisplay() {
 
     // ASI row — always when RR data is available
     if (asiVal) {
-        const a = computeASI();
-        if (a === null) {
+        const result = computeASI();
+        if (result === null) {
             asiVal.textContent = '…';
         } else {
-            const pct   = Math.round(a * 100);
+            const pct   = Math.round(result.asi * 100);
             const level = pct >= 70 ? 3 : pct >= 40 ? 2 : 1;
             asiVal.textContent = `${pct}% ${starsHtml(level)}`;
+            // DEBUG — raw components for calibration; remove once ranges are tuned
+            let dbg = document.getElementById('asiDebug');
+            if (!dbg) {
+                dbg = document.createElement('div');
+                dbg.id = 'asiDebug';
+                dbg.style.cssText = 'font-size:10px;opacity:0.6;text-align:center;width:100%;margin-top:2px;font-family:monospace;';
+                asiVal.parentElement.insertAdjacentElement('afterend', dbg);
+            }
+            dbg.textContent = `rmssd:${result.rmssd.toFixed(1)}ms  oob:${(result.outOfBand * 100).toFixed(1)}%  slope:${result.slope.toFixed(2)}bpm/s`;
+            dbg.style.color = stateColor;
         }
         asiVal.style.color = stateColor;
     }
