@@ -32,6 +32,8 @@ The app is based on three principles:
 
 The app implements this by monitoring your live heart rate via a Bluetooth HR monitor and alerting you — with sound and vibration — when your heart rate crosses into or out of threshold zones, allowing you to follow strict pacing without having to watch the screen continuously.
 
+This app is intended to help you visualise what your heart is doing and help you pace yourself during exercise. It is not a complete *one-stop shop* for dysautonomia recovery. You must understand your diagnosis, be aware of your symptoms, and know how to track and pace your progress. Do not blindly follow the app, but be aware of your symptoms and be ready to hit the reset button or end the session if needed. Settings can be adjusted mid-session.
+
 ---
 
 ## Two Recovery Contexts
@@ -128,29 +130,70 @@ When RFB is enabled in settings, entering the Reset state transforms the experie
 
 ### Coherence score
 
-If you are using a **Polar H10** chest strap (or any sensor that exposes raw RR intervals via the Bluetooth Heart Rate Measurement characteristic), the app can calculate a **live coherence score** — a Pearson correlation between your actual beat-to-beat heart rate oscillations and the expected sine wave at your set breathing frequency.
+If you are using a **Polar H10** chest strap (or any sensor that exposes raw RR intervals via the Bluetooth Heart Rate Measurement characteristic), the app can calculate a **live coherence score** — a spectral measure of how tightly your beat-to-beat HR oscillations are locked to the breathing rhythm.
 
-The score appears beneath the state description during the Reset state:
+The score appears as a percentage and a star rating beneath the state description during the Reset state. 
 
-- **Blue (≥70%)** — Good coherence. Your HR is meaningfully coupled to the breathing rhythm.
-- **Amber (40–70%)** — Moderate coherence.
-- **Red (<40%)** — Low coherence. Your HR oscillation is not yet coupling to the breath.
+☆☆☆ < 15% No coherence
+★☆☆ ≥ 15% Low coherence
+★★☆ ≥ 30% Moderate coherence
+★★★ ≥ 50% Strong coherence
 
-The score requires approximately 1.5 breath cycles (about 15 seconds at 6 bpm) to compute, and appears as "…" until enough data is available. A flat coherence score early in practice — or even a flat HR line — is physiologically expected. RSA amplitude is suppressed when the ANS is depleted or sympathetically dominant. The visible oscillation grows as ANS function improves, both within individual sessions and across sessions over time. The breath pacer and coherence score are most meaningful as a longitudinal tool: tracking whether your RSA amplitude increases over weeks of practice is a meaningful recovery signal.
+The score requires approximately two minutes of RR data to compute accurately, and appears as "…" until enough data is available. 
+
+**Important:** Do not stress over achieving a high score. Stressing about the number will actively lower it. A perfectly conditioned nervous system might hold 60–80%. With dysautonomia, your baroreflex is out of practice — scores of 15–20% early in your practice are completely normal and a solid starting point. The goal is stability and a slow upward trend over weeks, not an impressive number in any individual session. A flat coherence score — or even a flat HR line — is physiologically expected when the ANS is depleted or sympathetically dominant. The visible oscillation grows as ANS function recovers.
+
+The breath pacer and coherence score are most meaningful as a longitudinal tool: tracking whether your star rating and percentage gradually improve over weeks of consistent practice is a meaningful recovery signal.
 
 Polar and most other sports watches (as opposed to the Polar H10 chest strap) report rolling-averaged HR rather than beat-to-beat RR intervals, which will produce a flat coherence score regardless of actual RSA. The H10 is strongly recommended for this feature.
 
 ### Finding your personal resonance frequency
 
-The 6 bpm default is the most commonly reported resonance frequency and is a reliable starting point, but individual resonance frequency varies. If you have access to a device that shows beat-to-beat HR, you can find your personal resonance frequency by adjusting the breathing rate in small steps (0.5 bpm at a time) and observing which rate produces the largest HR oscillation amplitude. Your resonance frequency is likely to remain relatively stable once found.
+Your resonance frequency is the exact breathing rate at which your cardiovascular and autonomic nervous systems fall into sync — the rate that produces your highest coherence score. For most adults this falls between 4.5 and 7.0 breaths per minute, but it is individual and worth finding precisely.
+
+**Practical method:**
+
+1. Breathe at 6.0 bpm (the 5s/5s default) for one full RFB session and note your average coherence score.
+2. The next session, try 5.5 bpm. The session after, try 5.0 bpm.
+3. Compare the scores. Your true resonance frequency is the pace that produces your highest coherence score while feeling the most effortless and natural.
+
+Adjust the breathing rate using the **Inhale / Exhale** fields in RFB settings, stepping in 0.5 bpm increments. Once found, your resonance frequency is likely to remain relatively stable — lock it in and use it for all future sessions.
 
 ### RFB Settings
 
 - **Enable RFB** — Master toggle. When off, the Reset state behaves as a stop activity state (red dot, no breath pacer).
-- **Inhale / Exhale** — The duration of each phase in seconds. The resulting breathing rate in bpm is shown below these fields. The default 4s inhale and 6s exhale produces a 6 bpm cycle with a slight emphasis on the exhale, which tends to increase parasympathetic tone relative to a symmetric cycle.
+- **Inhale / Exhale** — The duration of each phase in seconds. The resulting breathing rate in bpm is shown below these fields. The default 5s inhale and 5s exhale produces a 6 bpm cycle. A slight emphasis on the exhale (e.g. 4s in / 6s out) can further increase parasympathetic tone.
 - **RFB duration** — How long to remain in the RFB phase after resting HR is achieved. Default is 2 minutes.
 - **Inhale sound guide** — Toggle the rising noise guide.
 - **Inhale vibration guide** — Toggle the tactile buzz guide.
+
+---
+
+## Getting the Most from Your RFB Sessions
+
+### How to Breathe: Light, Slow, and Low
+
+The most common mistake is taking large, heavy breaths. Over-breathing blows off too much carbon dioxide, which can trigger a stress response and produce dizziness or anxiety — the opposite of the intended effect. Instead, follow three rules:
+
+**Breathe lightly.** Take in the same small volume of air you would while sitting quietly. Do not fill your lungs to capacity.
+
+**Breathe low.** Direct that small sip of air down into your belly. Your stomach should gently expand outward while your chest and shoulders remain completely still.
+
+**Exhale passively.** Do not use your muscles to push the air out. Just relax your airways and let the air fall out naturally, like a tyre slowly deflating.
+
+> **Note:** You may feel a mild sensation of "air hunger" — a slight urge to take a bigger breath. This is actually a good sign that your blood vessels are relaxing. Tolerate it gently. Never push into discomfort or panic.
+
+### Knowing When to Stop
+
+Your nervous system is currently deconditioned, meaning it fatigues quickly. Pushing through that fatigue will backfire and produce a stress response. Stop the RFB session and consider it a success if you notice any of the following:
+
+**The coherence crash.** If your score has been sitting in the ★☆☆ or ★★☆ range and then suddenly drops to ☆☆☆ or near-zero, your autonomic nervous system has fatigued. This is the equivalent of muscular failure — you have successfully completed your training stimulus for the day. Stop the timer.
+
+**Brain fog or frustration.** Paced breathing requires sustained focus. If your mind is wandering, you feel agitated, or you are struggling to hold the rhythm, your cognitive battery is empty.
+
+**Physical red flags.** If mild air hunger turns into a racing heart, dizziness, or anxiety, stop immediately and let your breathing return to its natural pattern.
+
+Two minutes of comfortable, high-quality breathing is vastly superior to ten minutes of struggling. Stop while you are ahead. The goal is not duration — it is quality, and a consistently gentle practice will build capacity far more reliably than straining for longer sessions.
 
 ---
 
