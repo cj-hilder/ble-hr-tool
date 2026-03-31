@@ -141,7 +141,7 @@ The score appears as a percentage and a star rating beneath the state descriptio
 | ★★☆ | ≥ 30% | Moderate |
 | ★★★ | ≥ 50% | Strong |
 
-The score requires approximately two minutes of RR data to compute accurately, and appears as "…" until enough data is available. 
+The score requires approximately one minute of RR data to compute accurately, and always appears as 0 at first until enough data is available. 
 
 **Important:** Do not stress over achieving a high score. Stressing about the number will actively lower it. A perfectly conditioned nervous system might hold 60–80%. With dysautonomia, your baroreflex is out of practice — scores of 15–20% early in your practice are completely normal and a solid starting point. The goal is stability and a slow upward trend over weeks, not an impressive number in any individual session. A flat coherence score — or even a flat HR line — is physiologically expected when the ANS is depleted or sympathetically dominant. The visible oscillation grows as ANS function recovers.
 

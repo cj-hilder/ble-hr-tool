@@ -682,8 +682,11 @@ function updateCoherenceDisplay() {
     if (coherEl) coherEl.style.display = inRfb ? 'flex' : 'none';
     if (inRfb && coherVal) {
         const c = computeCoherence();
-        if (c === null) {
-            coherVal.textContent = '…';
+        if (c === null || !c.validRate) {
+            // Null = insufficient data; validRate false = spectral peak not yet
+            // locked onto a breathing oscillation. Show zero rather than a dash
+            // or a spurious early number.
+            coherVal.textContent = `0% ${starsHtml(0)}`;
         } else {
             const pct   = Math.round(c.value * 100);
             const level = pct >= 50 ? 3 : pct >= 30 ? 2 : pct >= 15 ? 1 : 0;
