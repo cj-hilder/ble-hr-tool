@@ -134,10 +134,12 @@ If you are using a **Polar H10** chest strap (or any sensor that exposes raw RR 
 
 The score appears as a percentage and a star rating beneath the state description during the Reset state. 
 
-- ☆☆☆ < 15% No coherence
-- ★☆☆ ≥ 15% Low coherence
-- ★★☆ ≥ 30% Moderate coherence
-- ★★★ ≥ 50% Strong coherence
+| Rating | Percentage | Coherence |
+| :--- | :--- | :--- |
+| ☆☆☆ | < 15% | None |
+| ★☆☆ | ≥ 15% | Low |
+| ★★☆ | ≥ 30% | Moderate |
+| ★★★ | ≥ 50% | Strong |
 
 The score requires approximately two minutes of RR data to compute accurately, and appears as "…" until enough data is available. 
 
