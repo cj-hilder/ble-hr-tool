@@ -21,7 +21,7 @@ const HR_HISTORY_MS = 90000;
 const rrHistory = [];   // { hr: instantaneous bpm, state, ts } — used for graph display
 let hasRrData = false;  // true once valid RR intervals have been received
 
-// ─── HRV Pipeline (HRVProcessor + ASIProcessor) ───────────────────────────────
+// ─── HRV Pipeline (HRVProcessor) ─────────────────────────────────────────────
 // Spectral coherence: interpolates RR to 4 Hz, Hanning-windowed FFT,
 // peak power ratio in the 0.04–0.15 Hz LF band (covers 4.5–7 bpm breathing).
 class HRVProcessor {
@@ -147,186 +147,9 @@ class HRVProcessor {
     }
 }
 
-// Autonomic Stability Index: RMSSD + SDNN + HR slope.
-class ASIProcessor {
-    constructor(options = {}) {
-        this.sampleRate    = options.sampleRate    || 4;
-        this.windowSeconds = options.windowSeconds || 60;
-        this.rrBuffer = []; this.tsBuffer = []; this.hrBuffer = [];
-        this.lastASI     = 0;
-        this.emaTau      = 10;  // seconds — time constant for ASI smoothing
-        this.lastASITime = 0;   // ms epoch of last _ema call
-    }
-    addSample(rr, hr, timestamp) {
-        if (!this._validRR(rr)) return;
-        this.rrBuffer.push(rr); this.hrBuffer.push(hr); this.tsBuffer.push(timestamp);
-        this._trim();
-    }
-    computeASI({ restingHR, maxHR, currentHR } = {}) {
-        if (this.rrBuffer.length < 10) return null;
-        // Beats are artifact-filtered before entering the buffer (in recordRrHistory),
-        // so rrBuffer is already clean. No secondary rejection needed here.
-        const rmssdResult = this._computeRMSSD(this.rrBuffer, this.tsBuffer);
-        const rmssd       = rmssdResult.value;
-        const sdnn        = this._computeSDNN(this.rrBuffer);
-        const slope       = this._hrSlopeSmoothed();
 
-        // Slope norm: dead zone for normal rates of change, penalty outside.
-        //   Rise ≤ 1.0 bpm/s — healthy warm-up, no penalty
-        //   Fall ≤ 1.5 bpm/s — healthy recovery, no penalty
-        //   Rise > 4.0 bpm/s — full penalty (sympathetic surge)
-        //   Fall > 4.0 bpm/s — full penalty (possible vasovagal instability)
-        const SLOPE_NORM_RISE = 1.0, SLOPE_MAX_RISE = 4.0;
-        const SLOPE_NORM_FALL = 1.5, SLOPE_MAX_FALL = 4.0;
-        let slopeNorm;
-        if (slope > SLOPE_NORM_RISE) {
-            slopeNorm = Math.max(0.05, 1.0 - this._normalize(slope,  SLOPE_NORM_RISE, SLOPE_MAX_RISE));
-        } else if (slope < -SLOPE_NORM_FALL) {
-            slopeNorm = Math.max(0.05, 1.0 - this._normalize(-slope, SLOPE_NORM_FALL, SLOPE_MAX_FALL));
-        } else {
-            slopeNorm = 1.0;
-        }
-
-        const scored = asiScore({ rmssd, sdnn, heartRate: currentHR || 0,
-                                   restingHR: restingHR || 60, maxHR: maxHR || 180, slopeNorm });
-        const now = this.tsBuffer.length ? this.tsBuffer[this.tsBuffer.length - 1] : Date.now();
-        return { asi: this._ema(scored.asi, now), rmssd, sdnn, slope,
-                 components: scored.components,
-                 rmssdCount: rmssdResult.count, rmssdBufLen: rmssdResult.bufLen,
-                 rmssdMinDiff: rmssdResult.minDiff, rmssdMaxDiff: rmssdResult.maxDiff,
-                 rmssdMeanRr: rmssdResult.meanRr };
-    }
-    _computeRMSSD(rr, ts) {
-        if (!rr || rr.length < 2) {
-            return { value: 0, count: 0, bufLen: rr ? rr.length : 0, minDiff: 0, maxDiff: 0, meanRr: 0 };
-        }
-        let sum = 0, count = 0, minDiff = Infinity, maxDiff = 0;
-        for (let i = 0; i < rr.length - 1; i++) {
-            const d = Math.abs(rr[i+1] - rr[i]);
-            sum += d * d; count++;
-            if (d < minDiff) minDiff = d;
-            if (d > maxDiff) maxDiff = d;
-        }
-        const value  = count > 0 ? Math.sqrt(sum / count) : 0;
-        const meanRr = rr.reduce((a, b) => a + b, 0) / rr.length;
-        return { value, count, bufLen: rr.length, minDiff: minDiff === Infinity ? 0 : minDiff, maxDiff, meanRr };
-    }
-    _computeSDNN(rr) {
-        if (!rr || rr.length < 2) return 0;
-        const mean = rr.reduce((a, b) => a + b, 0) / rr.length;
-        const variance = rr.reduce((s, x) => s + (x - mean) ** 2, 0) / (rr.length - 1);
-        return Math.sqrt(variance);
-    }
-    _hrSlopeSmoothed() {
-        // Linear regression over the last 10 seconds of HR samples.
-        // Returns slope in bpm/second; negative = falling (good), positive = rising (bad).
-        // Anchor the window to the last buffer timestamp rather than Date.now() so
-        // a flood of queued BLE packets on app resume doesn't collapse all beats
-        // into a spurious 10-second window.
-        const windowMs = 10000;
-        const anchor   = this.tsBuffer.length ? this.tsBuffer[this.tsBuffer.length - 1] : Date.now();
-        const cutoff   = anchor - windowMs;
-        // Collect samples within the window
-        const ts = [], hr = [];
-        for (let i = this.tsBuffer.length - 1; i >= 0; i--) {
-            if (this.tsBuffer[i] < cutoff) break;
-            ts.unshift(this.tsBuffer[i]);
-            hr.unshift(this.hrBuffer[i]);
-        }
-        if (ts.length < 3) return 0;
-        // Normalise timestamps to seconds from first sample to keep numbers small
-        const t0 = ts[0];
-        const n  = ts.length;
-        let sumT = 0, sumHr = 0, sumT2 = 0, sumTHr = 0;
-        for (let i = 0; i < n; i++) {
-            const t = (ts[i] - t0) / 1000;
-            sumT  += t;  sumHr  += hr[i];
-            sumT2 += t * t;  sumTHr += t * hr[i];
-        }
-        const denom = n * sumT2 - sumT * sumT;
-        return denom === 0 ? 0 : (n * sumTHr - sumT * sumHr) / denom;
-    }
-    _normalize(val, min, max) { return Math.max(0, Math.min(1, (val - min) / (max - min))); }
-    _ema(v, now) {
-        // Time-based EMA: α = dt / (τ + dt) so smoothing is independent of call rate.
-        // On first call dt is treated as τ, giving α = 0.5 (fast initial lock-on).
-        const dt = this.lastASITime ? (now - this.lastASITime) / 1000 : this.emaTau;
-        const alpha = dt / (this.emaTau + dt);
-        this.lastASI     = alpha * v + (1 - alpha) * this.lastASI;
-        this.lastASITime = now;
-        return this.lastASI;
-    }
-    _validRR(rr)       { return rr > 300 && rr < 2000; }
-    reset() {
-        this.rrBuffer = []; this.tsBuffer = []; this.hrBuffer = [];
-        this.lastASI = 0; this.lastASITime = 0;
-    }
-    _trim() {
-        const cutoff = Date.now() - this.windowSeconds * 1000;
-        while (this.tsBuffer.length && this.tsBuffer[0] < cutoff) {
-            this.tsBuffer.shift(); this.rrBuffer.shift(); this.hrBuffer.shift();
-        }
-    }
-}
-
-// ─── ASI scoring helpers (module-level, used by ASIProcessor.computeASI) ────────
-
-function normalizeHRV(rmssd, sdnn, heartRate, restingHR, maxHR) {
-    const hrr   = Math.max(1, maxHR - restingHR);
-    const pHRR  = Math.min(1, Math.max(0, (heartRate - restingHR) / hrr));
-    // Nonlinear decay — parasympathetic withdrawal happens early in exercise
-    const decay = Math.exp(-3.0 * pHRR);
-    const rmssdRestMin = 15, rmssdRestMax = 70;
-    const sdnnRestMin  = 20, sdnnRestMax  = 100;
-    const rmssdExMin   =  5, rmssdExMax   = 20;
-    const sdnnExMin    = 10, sdnnExMax    = 40;
-    const rmssdMin = rmssdExMin + (rmssdRestMin - rmssdExMin) * decay;
-    const rmssdMax = rmssdExMax + (rmssdRestMax - rmssdExMax) * decay;
-    const sdnnMin  = sdnnExMin  + (sdnnRestMin  - sdnnExMin)  * decay;
-    const sdnnMax  = sdnnExMax  + (sdnnRestMax  - sdnnExMax)  * decay;
-    function norm(x, mn, mx) {
-        if (mx <= mn) return 0.5;
-        return Math.max(0.05, Math.min(1.0, (x - mn) / (mx - mn)));
-    }
-    return { rmssdNorm: norm(rmssd, rmssdMin, rmssdMax),
-             sdnnNorm:  norm(sdnn,  sdnnMin,  sdnnMax) };
-}
-
-function normalizeRatio(sdnn, rmssd) {
-    const ratio = sdnn / Math.max(rmssd, 1e-3);
-    const low = 1.5, high = 3.0;
-    let ratioNorm;
-    if (ratio < low) {
-        // Too little LF relative to HF (overly vagal or collapsed LF)
-        ratioNorm = Math.max(0.05, ratio / low);
-    } else if (ratio > high) {
-        // Excess LF (sympathetic / baroreflex dominance)
-        ratioNorm = Math.max(0.05, 1 - (ratio - high) / 3.0);
-    } else {
-        // Healthy balance zone
-        ratioNorm = 1.0;
-    }
-    return { ratio, ratioNorm };
-}
-
-function asiScore({ rmssd, sdnn, heartRate, restingHR, maxHR, slopeNorm = 1.0 }) {
-    const { rmssdNorm, sdnnNorm } = normalizeHRV(rmssd, sdnn, heartRate, restingHR, maxHR);
-    const { ratio, ratioNorm }   = normalizeRatio(sdnn, rmssd);
-    slopeNorm = Math.max(0.05, Math.min(1.0, slopeNorm));
-    // Clinically tuned weights
-    const wRmssd = 1.5; // vagal tone (most important)
-    const wSdnn  = 1.2; // total variability
-    const wRatio = 1.5; // autonomic balance (critical)
-    const wSlope = 1.0; // stability / control
-    const product    = Math.pow(rmssdNorm, wRmssd) * Math.pow(sdnnNorm, wSdnn) *
-                       Math.pow(ratioNorm, wRatio) * Math.pow(slopeNorm, wSlope);
-    const weightSum  = wRmssd + wSdnn + wRatio + wSlope;
-    const asi        = Math.pow(product, 1 / weightSum);
-    return { asi, components: { rmssdNorm, sdnnNorm, ratioNorm, slopeNorm, ratio } };
-}
 
 const hrvProcessor = new HRVProcessor({ sampleRate: 4, windowSeconds: 120 });
-const asiProcessor = new ASIProcessor({ sampleRate: 4, windowSeconds: 120 });
 
 let lastRrTimestamp    = 0; // Continuous internal clock — prevents packet jitter gaps
 let lastRrWallClock    = 0; // Wall-clock time of last packet — detects background resume
@@ -345,7 +168,6 @@ function recordRrHistory(rrValuesMs, notifTs) {
     // metrics restart cleanly rather than being distorted by the burst.
     if (wallGap > BACKGROUND_GAP_MS) {
         hrvProcessor.reset();
-        asiProcessor.reset();
         lastRrTimestamp = 0;
         recordRrHistory._lastAcceptedRr = 0;
         rrHistory.length = 0;
@@ -355,7 +177,7 @@ function recordRrHistory(rrValuesMs, notifTs) {
 
     // Build a continuous forward-running clock so beats across packet boundaries
     // have genuinely sequential timestamps. The old backward reconstruction from
-    // notifTs caused cross-packet gaps that halved RMSSD pair counts.
+    // notifTs caused cross-packet gaps that halved pair counts.
     if (lastRrTimestamp > 0 && (notifTs - lastRrTimestamp) < totalRrMs + 3000) {
         let ts = lastRrTimestamp;
         for (let i = 0; i < rrValuesMs.length; i++) {
@@ -374,8 +196,8 @@ function recordRrHistory(rrValuesMs, notifTs) {
         lastRrTimestamp = notifTs;
     }
 
-    // Apply a single consistent artifact filter across all three consumers:
-    // graph display, RMSSD (via ASIProcessor), and spectral analysis.
+    // Apply a single consistent artifact filter across all consumers:
+    // graph display and spectral analysis.
     // A beat is an artifact if it differs from its predecessor by >20%.
     // prevRr seeds from the last accepted beat in the previous packet (persisted
     // across calls via lastAcceptedRr) so the filter works at packet boundaries.
@@ -386,9 +208,8 @@ function recordRrHistory(rrValuesMs, notifTs) {
 
         if (!isArtifact) {
             prevRr = rr;
-            // Clean beat — feed to both processors and graph display
+            // Clean beat — feed to processor and graph display
             hrvProcessor.addRR(rr, t);
-            asiProcessor.addSample(rr, latestHR, t);
             const instantHr = Math.round(60000 / rr);
             if (instantHr >= 24 && instantHr <= 240) {
                 rrHistory.push({ hr: instantHr, state: currentState, ts: t });
@@ -812,28 +633,16 @@ function triggerNotification() {
     } catch (e) { console.log('Audio notification failed:', e); }
 }
 
-// ─── Coherence & ASI display ──────────────────────────────────────────────────
+// ─── Coherence display ────────────────────────────────────────────────────────
 // computeCoherence returns { value, validRate } or null (insufficient data).
 // HeartMath peak/total formula yields 0–1 directly — no further normalisation needed.
 // validRate is false when the spectral peak falls outside the RFB range (0.07–0.12 Hz),
 // indicating the algorithm has not locked onto a real breathing oscillation.
-// Display thresholds recalibrated for peak/total: ≥0.50 = high, ≥0.30 = moderate.
 function computeCoherence() {
     if (!hasRrData) return null;
     const result = hrvProcessor.computeCoherence();
     if (result === null) return null;
     return { value: result.coherence, validRate: result.validBreathingRate };
-}
-
-function computeASI() {
-    if (!hasRrData) return null;
-    const result = asiProcessor.computeASI({
-        restingHR:  (typeof RESTING_HR !== 'undefined') ? RESTING_HR  : undefined,
-        maxHR:      (typeof MAX_HR     !== 'undefined') ? MAX_HR      : undefined,
-        currentHR:  latestHR || undefined,
-    });
-    if (result === null) return null;
-    return result; // { asi, rmssd, outOfBand, slope }
 }
 
 let _lastCoherenceUpdateTs = 0;
@@ -844,7 +653,6 @@ function updateCoherenceDisplay() {
     const el       = document.getElementById('coherenceDisplay');
     const coherEl  = document.getElementById('coherenceRow');
     const coherVal = document.getElementById('coherenceValue');
-    const asiVal   = document.getElementById('asiValue');
     if (!el) return;
 
     const rfbOn = (typeof RFB_ENABLED !== 'undefined') && RFB_ENABLED;
@@ -861,7 +669,11 @@ function updateCoherenceDisplay() {
                      : currentState === 'pause'  ? '#888888'
                      : '#aaaaaa';
 
-    // Stars: level maps to N filled + (3-N) outline stars. No stars when no data.
+    // 4-level star system matching Polar coherence tiers:
+    //   0 = no coherence  (☆☆☆)
+    //   1 = amethyst      (★☆☆)  pct >= 15
+    //   2 = sapphire      (★★☆)  pct >= 30
+    //   3 = diamond       (★★★)  pct >= 50
     function starsHtml(level) {
         return '★'.repeat(level) + '☆'.repeat(3 - level);
     }
@@ -877,34 +689,10 @@ function updateCoherenceDisplay() {
             coherVal.textContent = '–';
         } else {
             const pct   = Math.round(c.value * 100);
-            const level = pct >= 50 ? 3 : pct >= 30 ? 2 : 1;
+            const level = pct >= 50 ? 3 : pct >= 30 ? 2 : pct >= 15 ? 1 : 0;
             coherVal.textContent = `${pct}% ${starsHtml(level)}`;
         }
         coherVal.style.color = stateColor;
-    }
-
-    // ASI row — always when RR data is available
-    if (asiVal) {
-        const result = computeASI();
-        if (result === null) {
-            asiVal.textContent = '…';
-        } else {
-            const pct   = Math.round(result.asi * 100);
-            const level = pct >= 70 ? 3 : pct >= 40 ? 2 : 1;
-            asiVal.textContent = `${pct}% ${starsHtml(level)}`;
-            // DEBUG — raw components for calibration; remove once ranges are tuned
-            let dbg = document.getElementById('asiDebug');
-            if (!dbg) {
-                dbg = document.createElement('div');
-                dbg.id = 'asiDebug';
-                dbg.style.cssText = 'font-size:10px;opacity:0.6;text-align:center;width:100%;margin-top:2px;font-family:monospace;';
-                asiVal.parentElement.insertAdjacentElement('afterend', dbg);
-            }
-            const c = result.components;
-            dbg.textContent = `rmssd:${result.rmssd.toFixed(1)}ms sdnn:${result.sdnn.toFixed(1)}ms ratio:${c.ratio.toFixed(2)} | rN:${c.rmssdNorm.toFixed(2)} sN:${c.sdnnNorm.toFixed(2)} ratN:${c.ratioNorm.toFixed(2)} slN:${c.slopeNorm.toFixed(2)}`;
-            dbg.style.color = stateColor;
-        }
-        asiVal.style.color = stateColor;
     }
 }
 
@@ -1132,7 +920,7 @@ function switchState(newState, isManual) {
     }
 
     // Stop RFB animation and clear RFB phase whenever leaving reset.
-    // Hide only the coherence row — the ASI row remains visible in all states.
+    // Hide the coherence row when not in RFB state.
     if (newState !== 'reset') {
         stopRfbAnimation();
         rfbPhase = false; rfbSecondsRemaining = 0;
@@ -1264,7 +1052,7 @@ function handleHeartRate(event) {
     }
 
     recordHrHistory(currentHeartRate);
-    updateCoherenceDisplay(); // updates ASI in all states; coherence row self-hides outside RFB
+    updateCoherenceDisplay(); // coherence row self-hides outside RFB
 
     if (isSessionRunning) {
         if (currentPeriodType !== null) currentPeriodHrSamples.push(currentHeartRate);

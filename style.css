@@ -118,7 +118,7 @@ body.connected #trainingUI {
     min-height: 3vh;
     margin-bottom: 12px;
 }
-#coherenceRow, #asiRow {
+#coherenceRow {
     display: flex;
     align-items: baseline;
     justify-content: center;
