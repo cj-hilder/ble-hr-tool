@@ -141,6 +141,10 @@ class HRVProcessor {
         this.lastCoherenceTime = now;
         return this.lastCoherence;
     }
+    reset() {
+        this.buffer = []; this.timestamps = [];
+        this.lastCoherence = 0; this.lastCoherenceTime = 0;
+    }
 }
 
 // Autonomic Stability Index: RMSSD + SDNN + HR slope.
@@ -167,58 +171,27 @@ class ASIProcessor {
         const sdnn        = this._computeSDNN(this.rrBuffer);
         const slope       = this._hrSlopeSmoothed();
 
-        // Normalise each component to 0–1, with a 0.05 floor so no single
-        // component can collapse the geometric mean to zero on a noisy tick.
-        const floor = 0.05;
-
-        // RMSSD and SDNN normalization bounds scale with exercise intensity (%HRR).
-        // RMSSD: captures fast vagal modulation (HF band).
-        // SDNN:  captures total HRV across all bands — includes slow sympathetic/
-        //        baroreflex components that RMSSD misses. SDNN >> RMSSD indicates
-        //        significant LF activity; both suppressed = autonomic withdrawal.
-        // At rest (0% HRR): rmssd 10→80 ms, sdnn 20→150 ms (healthy population).
-        // At max  (100% HRR): rmssd 3→15 ms, sdnn 5→30 ms.
-        let pHRR = 0;
-        if (restingHR && maxHR && currentHR && maxHR > restingHR) {
-            pHRR = Math.max(0, Math.min(1, (currentHR - restingHR) / (maxHR - restingHR)));
-        }
-        // Dynamically calculate the resting RMSSD ceiling based on Max HR (assumes 200bpm = 80ms, 150bpm = 40ms)
-        const restingCeiling = maxHR ? Math.max(30, (maxHR - 100) * 0.8) : 80;
-        const restingFloor   = restingCeiling * 0.125;
-
-        // Scale personalized anchors down based on current exercise intensity (%HRR)
-        const rmssdLow  = restingFloor   - (restingFloor   -  3) * pHRR;
-        const rmssdHigh = restingCeiling - (restingCeiling - 15) * pHRR;
-        const rmssdNorm = Math.max(floor, this._normalize(rmssd, rmssdLow, rmssdHigh));
-
-        // SDNN: same %HRR scaling, wider absolute range
-        const sdnnLow   = (restingFloor   * 2) - ((restingFloor   * 2) -  5) * pHRR;
-        const sdnnHigh  = (restingCeiling * 2) - ((restingCeiling * 2) - 30) * pHRR;
-        const sdnnNorm  = Math.max(floor, this._normalize(sdnn, sdnnLow, sdnnHigh));
-
-        // Slope norm: no penalty within physiologically normal rates of change in
-        // either direction; progressive penalty only when |slope| exceeds healthy
-        // bounds. Thresholds in bpm/s from the 10-second linear regression.
-        //   Rise ≤ 1.0 bpm/s  — healthy warm-up, no penalty
-        //   Fall ≤ 1.5 bpm/s  — healthy recovery, no penalty
-        //   Rise > 4.0 bpm/s  — full penalty (sympathetic surge)
-        //   Fall > 4.0 bpm/s  — full penalty (possible vasovagal instability)
+        // Slope norm: dead zone for normal rates of change, penalty outside.
+        //   Rise ≤ 1.0 bpm/s — healthy warm-up, no penalty
+        //   Fall ≤ 1.5 bpm/s — healthy recovery, no penalty
+        //   Rise > 4.0 bpm/s — full penalty (sympathetic surge)
+        //   Fall > 4.0 bpm/s — full penalty (possible vasovagal instability)
         const SLOPE_NORM_RISE = 1.0, SLOPE_MAX_RISE = 4.0;
         const SLOPE_NORM_FALL = 1.5, SLOPE_MAX_FALL = 4.0;
         let slopeNorm;
         if (slope > SLOPE_NORM_RISE) {
-            slopeNorm = Math.max(floor, 1.0 - this._normalize(slope,  SLOPE_NORM_RISE, SLOPE_MAX_RISE));
+            slopeNorm = Math.max(0.05, 1.0 - this._normalize(slope,  SLOPE_NORM_RISE, SLOPE_MAX_RISE));
         } else if (slope < -SLOPE_NORM_FALL) {
-            slopeNorm = Math.max(floor, 1.0 - this._normalize(-slope, SLOPE_NORM_FALL, SLOPE_MAX_FALL));
+            slopeNorm = Math.max(0.05, 1.0 - this._normalize(-slope, SLOPE_NORM_FALL, SLOPE_MAX_FALL));
         } else {
             slopeNorm = 1.0;
         }
 
-        // Geometric mean — equal weights: rmssd, sdnn, slope.
-        // (rmssd × sdnn × slope)^(1/3)
-        const asiRaw = Math.pow(rmssdNorm * sdnnNorm * slopeNorm, 1/3);
+        const scored = asiScore({ rmssd, sdnn, heartRate: currentHR || 0,
+                                   restingHR: restingHR || 60, maxHR: maxHR || 180, slopeNorm });
         const now = this.tsBuffer.length ? this.tsBuffer[this.tsBuffer.length - 1] : Date.now();
-        return { asi: this._ema(asiRaw, now), rmssd, sdnn, slope,
+        return { asi: this._ema(scored.asi, now), rmssd, sdnn, slope,
+                 components: scored.components,
                  rmssdCount: rmssdResult.count, rmssdBufLen: rmssdResult.bufLen,
                  rmssdMinDiff: rmssdResult.minDiff, rmssdMaxDiff: rmssdResult.maxDiff,
                  rmssdMeanRr: rmssdResult.meanRr };
@@ -247,8 +220,12 @@ class ASIProcessor {
     _hrSlopeSmoothed() {
         // Linear regression over the last 10 seconds of HR samples.
         // Returns slope in bpm/second; negative = falling (good), positive = rising (bad).
+        // Anchor the window to the last buffer timestamp rather than Date.now() so
+        // a flood of queued BLE packets on app resume doesn't collapse all beats
+        // into a spurious 10-second window.
         const windowMs = 10000;
-        const cutoff   = Date.now() - windowMs;
+        const anchor   = this.tsBuffer.length ? this.tsBuffer[this.tsBuffer.length - 1] : Date.now();
+        const cutoff   = anchor - windowMs;
         // Collect samples within the window
         const ts = [], hr = [];
         for (let i = this.tsBuffer.length - 1; i >= 0; i--) {
@@ -280,6 +257,10 @@ class ASIProcessor {
         return this.lastASI;
     }
     _validRR(rr)       { return rr > 300 && rr < 2000; }
+    reset() {
+        this.rrBuffer = []; this.tsBuffer = []; this.hrBuffer = [];
+        this.lastASI = 0; this.lastASITime = 0;
+    }
     _trim() {
         const cutoff = Date.now() - this.windowSeconds * 1000;
         while (this.tsBuffer.length && this.tsBuffer[0] < cutoff) {
@@ -288,12 +269,87 @@ class ASIProcessor {
     }
 }
 
+// ─── ASI scoring helpers (module-level, used by ASIProcessor.computeASI) ────────
+
+function normalizeHRV(rmssd, sdnn, heartRate, restingHR, maxHR) {
+    const hrr   = Math.max(1, maxHR - restingHR);
+    const pHRR  = Math.min(1, Math.max(0, (heartRate - restingHR) / hrr));
+    // Nonlinear decay — parasympathetic withdrawal happens early in exercise
+    const decay = Math.exp(-3.0 * pHRR);
+    const rmssdRestMin = 15, rmssdRestMax = 70;
+    const sdnnRestMin  = 20, sdnnRestMax  = 100;
+    const rmssdExMin   =  5, rmssdExMax   = 20;
+    const sdnnExMin    = 10, sdnnExMax    = 40;
+    const rmssdMin = rmssdExMin + (rmssdRestMin - rmssdExMin) * decay;
+    const rmssdMax = rmssdExMax + (rmssdRestMax - rmssdExMax) * decay;
+    const sdnnMin  = sdnnExMin  + (sdnnRestMin  - sdnnExMin)  * decay;
+    const sdnnMax  = sdnnExMax  + (sdnnRestMax  - sdnnExMax)  * decay;
+    function norm(x, mn, mx) {
+        if (mx <= mn) return 0.5;
+        return Math.max(0.05, Math.min(1.0, (x - mn) / (mx - mn)));
+    }
+    return { rmssdNorm: norm(rmssd, rmssdMin, rmssdMax),
+             sdnnNorm:  norm(sdnn,  sdnnMin,  sdnnMax) };
+}
+
+function normalizeRatio(sdnn, rmssd) {
+    const ratio = sdnn / Math.max(rmssd, 1e-3);
+    const low = 1.5, high = 3.0;
+    let ratioNorm;
+    if (ratio < low) {
+        // Too little LF relative to HF (overly vagal or collapsed LF)
+        ratioNorm = Math.max(0.05, ratio / low);
+    } else if (ratio > high) {
+        // Excess LF (sympathetic / baroreflex dominance)
+        ratioNorm = Math.max(0.05, 1 - (ratio - high) / 3.0);
+    } else {
+        // Healthy balance zone
+        ratioNorm = 1.0;
+    }
+    return { ratio, ratioNorm };
+}
+
+function asiScore({ rmssd, sdnn, heartRate, restingHR, maxHR, slopeNorm = 1.0 }) {
+    const { rmssdNorm, sdnnNorm } = normalizeHRV(rmssd, sdnn, heartRate, restingHR, maxHR);
+    const { ratio, ratioNorm }   = normalizeRatio(sdnn, rmssd);
+    slopeNorm = Math.max(0.05, Math.min(1.0, slopeNorm));
+    // Clinically tuned weights
+    const wRmssd = 1.5; // vagal tone (most important)
+    const wSdnn  = 1.2; // total variability
+    const wRatio = 1.5; // autonomic balance (critical)
+    const wSlope = 1.0; // stability / control
+    const product    = Math.pow(rmssdNorm, wRmssd) * Math.pow(sdnnNorm, wSdnn) *
+                       Math.pow(ratioNorm, wRatio) * Math.pow(slopeNorm, wSlope);
+    const weightSum  = wRmssd + wSdnn + wRatio + wSlope;
+    const asi        = Math.pow(product, 1 / weightSum);
+    return { asi, components: { rmssdNorm, sdnnNorm, ratioNorm, slopeNorm, ratio } };
+}
+
 const hrvProcessor = new HRVProcessor({ sampleRate: 4, windowSeconds: 120 });
 const asiProcessor = new ASIProcessor({ sampleRate: 4, windowSeconds: 120 });
 
-let lastRrTimestamp = 0; // Continuous internal clock — prevents packet jitter gaps
+let lastRrTimestamp    = 0; // Continuous internal clock — prevents packet jitter gaps
+let lastRrWallClock    = 0; // Wall-clock time of last packet — detects background resume
+
+// Gap threshold: if wall-clock time since last packet exceeds this, the app was
+// backgrounded. Flush processor buffers so stale/flood data doesn't corrupt metrics.
+const BACKGROUND_GAP_MS = 4000;
 
 function recordRrHistory(rrValuesMs, notifTs) {
+    const wallNow   = Date.now();
+    const wallGap   = lastRrWallClock > 0 ? wallNow - lastRrWallClock : 0;
+    lastRrWallClock = wallNow;
+
+    // Detect app resume from background: wall-clock gap implies queued packets
+    // are about to flood in. Flush both processors and reset the clock so
+    // metrics restart cleanly rather than being distorted by the burst.
+    if (wallGap > BACKGROUND_GAP_MS) {
+        hrvProcessor.reset();
+        asiProcessor.reset();
+        lastRrTimestamp = 0;
+        recordRrHistory._lastAcceptedRr = 0;
+        rrHistory.length = 0;
+    }
     const pairs = [];
     const totalRrMs = rrValuesMs.reduce((sum, val) => sum + val, 0);
 
@@ -844,7 +900,8 @@ function updateCoherenceDisplay() {
                 dbg.style.cssText = 'font-size:10px;opacity:0.6;text-align:center;width:100%;margin-top:2px;font-family:monospace;';
                 asiVal.parentElement.insertAdjacentElement('afterend', dbg);
             }
-            dbg.textContent = `rmssd:${result.rmssd.toFixed(1)}ms  sdnn:${result.sdnn.toFixed(1)}ms(ratio:${(result.sdnn/Math.max(result.rmssd,0.1)).toFixed(2)})  slope:${result.slope.toFixed(2)}bpm/s  n=${result.rmssdCount}/${result.rmssdBufLen} diff:${result.rmssdMinDiff.toFixed(0)}-${result.rmssdMaxDiff.toFixed(0)}ms`;
+            const c = result.components;
+            dbg.textContent = `rmssd:${result.rmssd.toFixed(1)}ms sdnn:${result.sdnn.toFixed(1)}ms ratio:${c.ratio.toFixed(2)} | rN:${c.rmssdNorm.toFixed(2)} sN:${c.sdnnNorm.toFixed(2)} ratN:${c.ratioNorm.toFixed(2)} slN:${c.slopeNorm.toFixed(2)}`;
             dbg.style.color = stateColor;
         }
         asiVal.style.color = stateColor;
