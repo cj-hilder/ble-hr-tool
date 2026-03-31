@@ -684,9 +684,6 @@ function updateCoherenceDisplay() {
         const c = computeCoherence();
         if (c === null) {
             coherVal.textContent = '…';
-        } else if (!c.validRate) {
-            // Peak outside 0.07–0.12 Hz — not a real breathing oscillation yet
-            coherVal.textContent = '–';
         } else {
             const pct   = Math.round(c.value * 100);
             const level = pct >= 50 ? 3 : pct >= 30 ? 2 : pct >= 15 ? 1 : 0;
