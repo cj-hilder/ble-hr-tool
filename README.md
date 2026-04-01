@@ -6,6 +6,8 @@ A specialised, web-based heart rate pacing app designed for individuals with dys
 
 This app was built by a software developer managing their own post-concussion dysautonomia; not by a clinician or researcher. It is a best-effort personal project, grounded in published protocols and personal experience, that has worked well for its author. It may or may not work for you. Nothing here should be taken as medical advice, and it is no substitute for working with a qualified healthcare provider who understands your condition.
 
+> **Note:** Wrist based (optical) heart rate sensors are not usually suitable for measuring heart rate in the presence of dysautonomia. They are misled by irregular beats and weak pulse strength. They will often be significantly, by upwards of 30 bpm, wrong. A chest strap sensor, e.g. Polar H10, is mandatory for HR based pacing with disautonomia.
+
 ---
 
 ## The Problem
