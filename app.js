@@ -1357,6 +1357,16 @@ function startSession() {
     stateSeconds = 0; totalActiveSeconds = 0; resetCount = 0; recoverySeconds = 0;
     activePeriods = []; recoveryPeriods = []; currentPeriodType = null; sessionHrSamples = [];
     rfbSessionClockStart = 0; activityLimitTriggered = false; sessionHrRecording = [];
+    // Flush HR graph history and RR pipeline so stale inter-session data
+    // (accumulated while the sensor kept broadcasting) doesn't anchor the
+    // graph window behind the new session start.
+    hrHistory.length = 0;
+    rrHistory.length = 0;
+    hasRrData = false;
+    lastRrTimestamp = 0;
+    lastRrWallClock = 0;
+    recordRrHistory._lastAcceptedRr = 0;
+    hrvProcessor.reset();
     document.getElementById('homeBtn').style.display = 'none';
     setTimerDisplay(document.getElementById('sessionTimerDisplay'), 0);
     setTimerDisplay(document.getElementById('stateTimerDisplay'), 0);
