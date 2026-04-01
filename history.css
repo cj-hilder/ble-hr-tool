@@ -182,6 +182,7 @@ header .session-count { margin-left: auto; font-size: 13px; color: #555; white-s
 .lag-label      { color: #17a2b8; }
 .session-label  { color: #777; }
 .settings-label { color: #888; }
+.rfb-label      { color: #1a7fff; }
 
 .stat-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 4px; }
 .stat-item { display: flex; flex-direction: column; align-items: center; text-align: center; }

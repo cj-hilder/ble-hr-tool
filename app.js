@@ -418,6 +418,7 @@ let activeToRestCount = 0, activeToResetCount = 0, restToActiveCount = 0, resetT
 let maxHrInRest = 0, timeOfMaxHrInRest = 0, isRecoveryState = false;
 let activityLimitTriggered = false;
 let sessionHrRecording = [];   // 1Hz HR log: {t, hr, state} — attached to summary on save
+let rfbCoherenceRecording = []; // ~1Hz coherence log during valid RFB: {t, c} — c is 0-100 integer
 
 // ─── Activity tracking ────────────────────────────────────────────────────────
 let currentActivityId   = null;
@@ -669,7 +670,7 @@ function computeResonance() {
 
     const stability  = computeStability(peakFreqHistory);
     const isUnstable = stability < 0.4;  // std dev > ~0.018 Hz ≈ ±1.2 bpm drift
-    return { coherence: result.coherence, validRate: result.validBreathingRate, isUnstable };
+    return { coherence: result.coherence, validRate: result.validBreathingRate, isUnstable, stability };
 }
 
 let _lastCoherenceUpdateTs = 0;
@@ -716,8 +717,12 @@ function updateCoherenceDisplay() {
         } else {
             const pct   = Math.round(r.coherence * 100);
             const level = pct >= 50 ? 3 : pct >= 30 ? 2 : pct >= 15 ? 1 : 0;
-            // ~ suffix indicates breathing pace is drifting; doesn't affect the score.
-            coherVal.textContent = `${pct}% ${starsHtml(level)}${r.isUnstable ? '~' : ''}`;
+            // ~ suffix indicates breathing pace is drifting; stability % shown for debugging.
+ //           const unstableStr = r.isUnstable ? `~${Math.round(r.stability * 100)}%` : '';
+            const unstableStr =  `~${Math.round(r.stability * 100)}%`;
+            coherVal.textContent = `${pct}% ${starsHtml(level)}${unstableStr}`;
+            // Collect sample for post-session analysis (only when session is running)
+            if (isSessionRunning) rfbCoherenceRecording.push({ t: sessionSeconds, c: pct });
         }
         coherVal.style.color = stateColor;
     }
@@ -1121,6 +1126,19 @@ function handleHeartRate(event) {
     }
 }
 
+// ─── RFB coherence summary ────────────────────────────────────────────────────
+// Computes session-level RFB stats from the coherence recording.
+// All RFB periods in a session are amalgamated — the recording is a flat
+// time-series regardless of how many reset/RFB cycles occurred.
+function computeRfbSummary(recording) {
+    if (!recording || recording.length === 0) return null;
+    const values = recording.map(s => s.c);
+    const avg    = Math.round(values.reduce((a, b) => a + b, 0) / values.length);
+    const peak   = Math.max(...values);
+    const pctAboveStar1 = Math.round(values.filter(v => v >= 15).length / values.length * 100);
+    return { avg, peak, pctAboveStar1, totalSec: recording.length };
+}
+
 // ─── Session summary ──────────────────────────────────────────────────────────
 function computeSessionSummary() {
     // Inclusion rules (applied separately to active and recovery):
@@ -1180,6 +1198,7 @@ function computeSessionSummary() {
     const aStats = periodStats(activePeriods);
     const rStats = recoveryStats(recoveryPeriods);
 
+    const rfbStats = computeRfbSummary(rfbCoherenceRecording);
     return {
         date: new Date().toISOString(),
         activityName: currentActivityName || '',
@@ -1209,7 +1228,13 @@ function computeSessionSummary() {
         highestHr: sessionHrSamples.length ? Math.max(...sessionHrSamples) : 0,
         avgHr:     sessionHrSamples.length ? arrAvg(sessionHrSamples)      : 0,
         lowestHr:  sessionHrSamples.length ? Math.min(...sessionHrSamples) : 0,
-        hrRecording: sessionHrRecording.slice(), // 1Hz time-series; attached on save, dropped on discard
+        hrRecording: sessionHrRecording.slice(),
+        // RFB coherence — null if RFB was not used or no valid readings were collected
+        rfbAvgCoherence:  rfbStats ? rfbStats.avg          : null,
+        rfbPeakCoherence: rfbStats ? rfbStats.peak         : null,
+        rfbPctAboveStar1: rfbStats ? rfbStats.pctAboveStar1 : null,
+        rfbTotalSec:      rfbStats ? rfbStats.totalSec      : null,
+        rfbCoherenceRecording: rfbStats ? rfbCoherenceRecording.slice() : null,
     };
 }
 
@@ -1243,6 +1268,18 @@ function showSummaryModal(summary) {
     set('s-highestHr',     fmtN(summary.highestHr));
     set('s-avgHr',         fmtN(summary.avgHr));
     set('s-lowestHr',      fmtN(summary.lowestHr));
+    // RFB section — show only if coherence data was collected
+    const rfbSection = document.getElementById('s-rfbSection');
+    if (rfbSection) {
+        const hasRfb = summary.rfbTotalSec > 0;
+        rfbSection.style.display = hasRfb ? '' : 'none';
+        if (hasRfb) {
+            set('s-rfbAvg',      summary.rfbAvgCoherence  + '%');
+            set('s-rfbPeak',     summary.rfbPeakCoherence + '%');
+            set('s-rfbPctAbove', summary.rfbPctAboveStar1 + '%');
+            set('s-rfbTotal',    fmtT(summary.rfbTotalSec));
+        }
+    }
     document.getElementById('summaryNotes').value = '';
     const errEl = document.getElementById('summaryError');
     if (errEl) { errEl.className = ''; }
@@ -1383,7 +1420,7 @@ function startSession() {
     isSessionRunning = true; sessionSeconds = 0; sessionStartTime = Date.now();
     stateSeconds = 0; totalActiveSeconds = 0; resetCount = 0; recoverySeconds = 0;
     activePeriods = []; recoveryPeriods = []; currentPeriodType = null; sessionHrSamples = [];
-    rfbSessionClockStart = 0; activityLimitTriggered = false; sessionHrRecording = [];
+    rfbSessionClockStart = 0; activityLimitTriggered = false; sessionHrRecording = []; rfbCoherenceRecording = [];
     // Flush HR graph history and RR pipeline so stale inter-session data
     // (accumulated while the sensor kept broadcasting) doesn't anchor the
     // graph window behind the new session start.

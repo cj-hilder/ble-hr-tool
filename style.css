@@ -118,7 +118,7 @@ body.connected #trainingUI {
     min-height: 3vh;
     margin-bottom: 12px;
 }
-#coherenceRow {
+#coherenceRow, #asiRow {
     display: flex;
     align-items: baseline;
     justify-content: center;
@@ -331,6 +331,7 @@ body.connected #trainingUI {
 .recovery-header { color: #fd7e14; }
 .lag-header      { color: #17a2b8; }
 .session-header  { color: #aaa; }
+.rfb-header      { color: #1a7fff; }
 
 .summary-grid {
     display: grid;

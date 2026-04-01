@@ -278,6 +278,17 @@ function renderCharts(history) {
     activeCharts.push(new Chart(document.getElementById('chartAvgLag'),     buildChartConfig(labels, avgLag,      '#17a2b8', 's')));
     activeCharts.push(new Chart(document.getElementById('chartAvgPeak'),    buildChartConfig(labels, avgPeakHr,   '#fd7e14', ' bpm')));
     activeCharts.push(new Chart(document.getElementById('chartSessionLen'), buildChartConfig(labels, sessionMins, '#6c757d', ' min')));
+    const rfbCanvas = document.getElementById('chartAvgRfb');
+    const rfbCard   = document.getElementById('chartAvgRfbCard');
+    if (rfbCanvas && rfbCard) {
+        const rfbCoherence = history.map(s => s.rfbAvgCoherence ?? null);
+        if (rfbCoherence.some(v => v != null)) {
+            rfbCard.style.display = '';
+            activeCharts.push(new Chart(rfbCanvas, buildChartConfig(labels, rfbCoherence, '#1a7fff', '%')));
+        } else {
+            rfbCard.style.display = 'none';
+        }
+    }
 }
 
 // ── Notes editing ─────────────────────────────────────────────────────────────
@@ -461,6 +472,17 @@ function buildSessionCard(s, realIndex) {
             </div>
 
             ${settingsHtml}
+
+            ${s.rfbTotalSec > 0 ? `
+            <div class="stat-group">
+                <div class="stat-group-label rfb-label">💙 Resonance Breathing</div>
+                <div class="stat-row">
+                    ${statItem((s.rfbAvgCoherence  ?? '--') + (s.rfbAvgCoherence  != null ? '%' : ''), 'Avg')}
+                    ${statItem((s.rfbPeakCoherence ?? '--') + (s.rfbPeakCoherence != null ? '%' : ''), 'Peak')}
+                    ${statItem((s.rfbPctAboveStar1 ?? '--') + (s.rfbPctAboveStar1 != null ? '%' : ''), 'Time ≥★')}
+                </div>
+                <div class="stat-row">${statItem(fmtT(s.rfbTotalSec), 'Duration')}<div></div><div></div></div>
+            </div>` : ''}
 
             ${hasHrRecording(s)
                 ? `<button class="session-graph-btn" data-action="view-graph" data-index="${realIndex}">📈 View Session Graph (PDF)</button>`
@@ -783,6 +805,116 @@ function generateSessionPDF(session) {
         doc.setLineDashPattern([], 0);
         doc.setTextColor(100, 149, 237);
         doc.text('Resting HR', lx + 6.5, ly);
+    }
+
+    // ── Page 2: Resonance coherence graph (only if RFB data exists) ──────────
+    const rfbRec = session.rfbCoherenceRecording;
+    if (rfbRec && rfbRec.length >= 2) {
+        doc.addPage('a4', 'landscape');
+        doc.setFillColor(255, 255, 255);
+        doc.rect(0, 0, PW, PH, 'F');
+
+        // Use same time axis as HR graph so the two pages align visually
+        const C_PX = ML, C_PY = MT, C_PW = PW - ML - MR, C_PH = PH - MT - MB;
+        function cToX(t)   { return C_PX + (t / maxT) * C_PW; }
+        function cToY(pct) { return C_PY + C_PH - (pct / 100) * C_PH; }
+
+        // ── State background bands (same as page 1 for visual alignment) ────
+        for (const b of bands) {
+            const x1 = Math.max(C_PX, cToX(b.t));
+            const x2 = Math.min(C_PX + C_PW, cToX(b.endT));
+            if (x2 <= x1) continue;
+            const bg = STATE_BG[b.state] || STATE_BG.stopped;
+            doc.setFillColor(bg[0], bg[1], bg[2]);
+            doc.rect(x1, C_PY, x2 - x1, C_PH, 'F');
+        }
+
+        // ── Star-level threshold reference lines ─────────────────────────────
+        // Diamond ≥50%, Sapphire ≥30%, Amethyst ≥15%
+        const THRESHOLDS = [
+            { pct: 50, label: '★★★ Diamond',  rgb: [160, 120, 255] },
+            { pct: 30, label: '★★☆ Sapphire', rgb: [80,  140, 255] },
+            { pct: 15, label: '★☆☆ Amethyst', rgb: [180, 100, 220] },
+        ];
+        for (const th of THRESHOLDS) {
+            const ty = cToY(th.pct);
+            doc.setDrawColor(...th.rgb); doc.setLineWidth(0.25);
+            doc.setLineDashPattern([3, 2], 0);
+            doc.line(C_PX, ty, C_PX + C_PW, ty);
+            doc.setLineDashPattern([], 0);
+            doc.setFontSize(6); doc.setTextColor(...th.rgb);
+            doc.text(th.label, C_PX + C_PW + 1.5, ty + 1.5);
+        }
+
+        // ── Y-axis grid and labels (0–100%) ──────────────────────────────────
+        doc.setFont('helvetica', 'normal');
+        for (let pct = 0; pct <= 100; pct += 20) {
+            const y = cToY(pct);
+            if (y < C_PY - 0.5 || y > C_PY + C_PH + 0.5) continue;
+            doc.setDrawColor(210, 210, 210); doc.setLineWidth(0.15);
+            doc.line(C_PX, y, C_PX + C_PW, y);
+            doc.setFontSize(7); doc.setTextColor(140, 140, 140);
+            doc.text(pct + '%', C_PX - 2, y + 1.5, { align: 'right' });
+        }
+
+        // ── X-axis grid and labels (same steps as page 1) ────────────────────
+        for (let m = 0; m <= maxT / 60 + 0.01; m += xStepMin) {
+            const x = cToX(m * 60);
+            if (x < C_PX - 0.5 || x > C_PX + C_PW + 0.5) continue;
+            doc.setDrawColor(210, 210, 210); doc.setLineWidth(0.15);
+            doc.line(x, C_PY, x, C_PY + C_PH);
+            const mm = Math.floor(m), ss = Math.round((m % 1) * 60);
+            doc.setFontSize(7); doc.setTextColor(140, 140, 140);
+            doc.text(`${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}`,
+                     x, C_PY + C_PH + 5, { align: 'center' });
+        }
+
+        // ── Plot border ───────────────────────────────────────────────────────
+        doc.setDrawColor(80, 80, 80); doc.setLineWidth(0.25);
+        doc.rect(C_PX, C_PY, C_PW, C_PH, 'S');
+
+        // ── Coherence line ────────────────────────────────────────────────────
+        // Draw as connected segments; start a new path if consecutive samples
+        // are >5s apart (user was not in RFB state between those points).
+        const GAP_THRESHOLD_SEC = 5;
+        doc.setDrawColor(26, 127, 255); doc.setLineWidth(0.5);
+        let segStart = null, segPts = [];
+        function flushSeg() {
+            if (segPts.length < 2) { segPts = []; segStart = null; return; }
+            const rel = [];
+            for (let i = 1; i < segPts.length; i++) {
+                rel.push([segPts[i][0] - segPts[i-1][0], segPts[i][1] - segPts[i-1][1]]);
+            }
+            doc.lines(rel, segPts[0][0], segPts[0][1], [1, 1], 'S');
+            segPts = []; segStart = null;
+        }
+        for (let i = 0; i < rfbRec.length; i++) {
+            const { t, c } = rfbRec[i];
+            const x = cToX(t), y = cToY(c);
+            const gap = i > 0 && (t - rfbRec[i - 1].t) > GAP_THRESHOLD_SEC;
+            if (gap) flushSeg();
+            segPts.push([x, y]);
+        }
+        flushSeg();
+
+        // ── Axis labels ───────────────────────────────────────────────────────
+        doc.setTextColor(80, 80, 80); doc.setFontSize(8);
+        doc.text('Resonance (%)', C_PX - 16, C_PY + C_PH / 2, { angle: 90, align: 'center' });
+        doc.text('Time (mm:ss)',   C_PX + C_PW / 2, C_PY + C_PH + 11, { align: 'center' });
+
+        // ── Title ─────────────────────────────────────────────────────────────
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(20, 20, 20);
+        doc.text('Resonance Coherence Graph', C_PX, 10);
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(90, 90, 90);
+        const rfbMeta = [
+            dateStr,
+            session.activityName ? `Activity: ${session.activityName}` : null,
+            session.rfbAvgCoherence  != null ? `Avg: ${session.rfbAvgCoherence}%`          : null,
+            session.rfbPeakCoherence != null ? `Peak: ${session.rfbPeakCoherence}%`         : null,
+            session.rfbPctAboveStar1 != null ? `Time ≥★: ${session.rfbPctAboveStar1}%`     : null,
+            session.rfbTotalSec      != null ? `RFB duration: ${formatTime(session.rfbTotalSec)}` : null,
+        ].filter(Boolean).join('   ·   ');
+        doc.text(rfbMeta, C_PX, 18);
     }
 
     // ── Save ──────────────────────────────────────────────────────────────────
