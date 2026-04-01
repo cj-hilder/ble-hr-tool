@@ -151,6 +151,23 @@ class HRVProcessor {
 
 const hrvProcessor = new HRVProcessor({ sampleRate: 4, windowSeconds: 120 });
 
+// Rolling history of valid in-band spectral peak frequencies, used for the
+// instability indicator only — not used to modify the coherence score.
+const peakFreqHistory = [];
+const PEAK_FREQ_MAX_HISTORY = 120; // ~1 Hz update rate → ~2 min of history
+
+// Returns a 0–1 stability value (1 = stable, 0 = wandering).
+// std dev thresholds: 0.005 Hz ≈ very stable; 0.02 Hz ≈ clearly drifting (~±1.2 bpm).
+function computeStability(history) {
+    if (!history || history.length < 10) return 1; // insufficient data — assume stable
+    const mean = history.reduce((a, b) => a + b, 0) / history.length;
+    const variance = history.reduce((s, f) => { const d = f - mean; return s + d * d; }, 0) / history.length;
+    const std  = Math.sqrt(variance);
+    const MIN_STD = 0.005, MAX_STD = 0.02;
+    const norm = Math.max(0, Math.min(1, (std - MIN_STD) / (MAX_STD - MIN_STD)));
+    return 1 - norm;
+}
+
 let lastRrTimestamp    = 0; // Continuous internal clock — prevents packet jitter gaps
 let lastRrWallClock    = 0; // Wall-clock time of last packet — detects background resume
 
@@ -168,6 +185,7 @@ function recordRrHistory(rrValuesMs, notifTs) {
     // metrics restart cleanly rather than being distorted by the burst.
     if (wallGap > BACKGROUND_GAP_MS) {
         hrvProcessor.reset();
+        peakFreqHistory.length = 0;
         lastRrTimestamp = 0;
         recordRrHistory._lastAcceptedRr = 0;
         rrHistory.length = 0;
@@ -633,16 +651,25 @@ function triggerNotification() {
     } catch (e) { console.log('Audio notification failed:', e); }
 }
 
-// ─── Coherence display ────────────────────────────────────────────────────────
-// computeCoherence returns { value, validRate } or null (insufficient data).
-// HeartMath peak/total formula yields 0–1 directly — no further normalisation needed.
-// validRate is false when the spectral peak falls outside the RFB range (0.07–0.12 Hz),
-// indicating the algorithm has not locked onto a real breathing oscillation.
-function computeCoherence() {
+// ─── Resonance display ───────────────────────────────────────────────────────
+// computeResonance returns the validated HeartMath coherence score unchanged.
+// peakFreqHistory is maintained in parallel purely to drive a instability
+// indicator (~) — it does not modify the coherence value or the star level.
+function computeResonance() {
     if (!hasRrData) return null;
     const result = hrvProcessor.computeCoherence();
     if (result === null) return null;
-    return { value: result.coherence, validRate: result.validBreathingRate };
+
+    // Track in-band peaks only — out-of-band readings are noise and would
+    // inflate the std dev even when breathing technique is sound.
+    if (result.validBreathingRate) {
+        peakFreqHistory.push(result.peakFreq);
+        if (peakFreqHistory.length > PEAK_FREQ_MAX_HISTORY) peakFreqHistory.shift();
+    }
+
+    const stability  = computeStability(peakFreqHistory);
+    const isUnstable = stability < 0.4;  // std dev > ~0.018 Hz ≈ ±1.2 bpm drift
+    return { coherence: result.coherence, validRate: result.validBreathingRate, isUnstable };
 }
 
 let _lastCoherenceUpdateTs = 0;
@@ -670,27 +697,27 @@ function updateCoherenceDisplay() {
                      : '#aaaaaa';
 
     // 4-level star system matching Polar coherence tiers:
-    //   0 = no coherence  (☆☆☆)
-    //   1 = amethyst      (★☆☆)  pct >= 15
-    //   2 = sapphire      (★★☆)  pct >= 30
-    //   3 = diamond       (★★★)  pct >= 50
+    //   0 = none      (☆☆☆)  < 15%
+    //   1 = amethyst  (★☆☆)  >= 15%
+    //   2 = sapphire  (★★☆)  >= 30%
+    //   3 = diamond   (★★★)  >= 50%
     function starsHtml(level) {
         return '★'.repeat(level) + '☆'.repeat(3 - level);
     }
 
-    // Coherence row — only during reset + RFB
+    // Resonance row — only during reset + RFB
     if (coherEl) coherEl.style.display = inRfb ? 'flex' : 'none';
     if (inRfb && coherVal) {
-        const c = computeCoherence();
-        if (c === null || !c.validRate) {
+        const r = computeResonance();
+        if (r === null || !r.validRate) {
             // Null = insufficient data; validRate false = spectral peak not yet
-            // locked onto a breathing oscillation. Show zero rather than a dash
-            // or a spurious early number.
+            // locked onto a breathing oscillation. Show zero until signal is valid.
             coherVal.textContent = `0% ${starsHtml(0)}`;
         } else {
-            const pct   = Math.round(c.value * 100);
+            const pct   = Math.round(r.coherence * 100);
             const level = pct >= 50 ? 3 : pct >= 30 ? 2 : pct >= 15 ? 1 : 0;
-            coherVal.textContent = `${pct}% ${starsHtml(level)}`;
+            // ~ suffix indicates breathing pace is drifting; doesn't affect the score.
+            coherVal.textContent = `${pct}% ${starsHtml(level)}${r.isUnstable ? '~' : ''}`;
         }
         coherVal.style.color = stateColor;
     }
@@ -1366,6 +1393,7 @@ function startSession() {
     lastRrTimestamp = 0;
     lastRrWallClock = 0;
     recordRrHistory._lastAcceptedRr = 0;
+    peakFreqHistory.length = 0;
     hrvProcessor.reset();
     document.getElementById('homeBtn').style.display = 'none';
     setTimerDisplay(document.getElementById('sessionTimerDisplay'), 0);
