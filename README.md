@@ -6,7 +6,7 @@ A specialised, web-based heart rate pacing app designed for individuals with dys
 
 This app was built by a software developer managing their own post-concussion dysautonomia; not by a clinician or researcher. It is a best-effort personal project, grounded in published protocols and personal experience, that has worked well for its author. It may or may not work for you. Nothing here should be taken as medical advice, and it is no substitute for working with a qualified healthcare provider who understands your condition.
 
-> **Note:** Wrist based (optical) heart rate sensors are not usually suitable for measuring heart rate in the presence of dysautonomia. They are misled by irregular beats and weak pulse strength. They will often be significantly, by upwards of 30 bpm, wrong. A chest strap sensor, e.g. Polar H10, is mandatory for HR based pacing with disautonomia.
+> **Note:** Wrist based (optical) heart rate sensors are not usually suitable for measuring heart rate in the presence of dysautonomia. They are misled by irregular beats, weak pulse strength, and arm movement. They will often be significantly wrong by upwards of 30 bpm. A chest strap sensor, e.g. Polar H10, is mandatory for HR based pacing with dysautonomia.
 
 ---
 
@@ -34,7 +34,7 @@ The app is based on three principles:
 
 The app implements this by monitoring your live heart rate via a Bluetooth HR monitor and alerting you — with sound and vibration — when your heart rate crosses into or out of threshold zones, allowing you to follow strict pacing without having to watch the screen continuously.
 
-This app is intended to help you visualise what your heart is doing and help you pace yourself during exercise. It is not a complete *one-stop shop* for dysautonomia recovery. You must understand your diagnosis, be aware of your symptoms, and know how to track and pace your progress. Do not blindly follow the app, but be aware of your symptoms and be ready to hit the reset button or end the session if needed. Settings can be adjusted mid-session.
+This app is intended to help you visualise what your heart is doing and help you pace yourself during exercise. It is not a complete *one-stop shop* for dysautonomia recovery. You must understand your diagnosis, be aware of your symptoms, and know how to track and pace your progress. Do not blindly follow the app, but be aware of your symptoms and be ready to adjust the settings, hit the reset button, or end the session if needed.
 
 ---
 
@@ -111,9 +111,9 @@ You are currently in the active state but want to rest voluntarily — not becau
 
 ## Resonance Frequency Breathing (RFB)
 
-Resonance Frequency Breathing is a biofeedback technique. At a particular breathing rate respiratory and cardiac rhythms enter resonance. This is typically around 6 breaths per minute, but varying between individuals in the range of 4.5–7 bpm. The heart rate rises during each inhale and falls during each exhale in a pattern called **Respiratory Sinus Arrhythmia (RSA)**. When breathing rate matches the body's resonance frequency, RSA amplitude is maximised.  RSA amplitude is a direct expression of vagal tone (the parasympathetic nervous system's capacity to regulate the heart).
+Resonance Frequency Breathing is a biofeedback technique. Regular RFB practice, particularly during rest periods, has evidence of increasing vagal tone over time.
 
-For people with dysautonomia, vagal tone is typically suppressed, which is part of what produces the dysregulated HR patterns the app is designed to manage. Regular RFB practice at the resonance frequency, particularly during rest periods, has evidence of increasing vagal tone over time.
+At a particular breathing rate respiratory and cardiac rhythms enter resonance. This is typically around 6 breaths per minute, but varying between individuals in the range of 4.5–7 bpm. The heart rate rises during each inhale and falls during each exhale. When breathing rate matches the body's resonance frequency the amplitude of these oscillations is maximised.
 
 The app integrates RFB directly into the Reset state, turning a  rest period into a structured, guided recovery practice.
 
@@ -130,43 +130,45 @@ When RFB is enabled in settings, entering the Reset state transforms the experie
 - **Vibration guidance** — an opening pulse at the start of each inhale, followed by a buzzing that accelerates in frequency through the inhale, and a closing pulse at the end. Provides a tactile breath guide.
 - **Once your HR has returned to your resting band for 15 seconds**, the app enters an extended RFB phase — shown as a countdown timer — before returning you to Continue activity. The default is 2 minutes. This is the core of the practice: staying in the resonance breathing state after the HR has settled, deepening the vagal recovery before returning to exertion.
 
-### Coherence score
+### Resonance score
 
-If you are using a **Polar H10** chest strap (or any sensor that exposes raw RR intervals via the Bluetooth Heart Rate Measurement characteristic), the app can calculate a **live coherence score** — a spectral measure of how tightly your beat-to-beat HR oscillations are locked to the breathing rhythm.
+If you are using a **Polar H10** chest strap (or any sensor that exposes raw RR intervals via the Bluetooth Heart Rate Measurement characteristic), the app can calculate a **live resonance score**. This is a combination of wave coherence, frequency stability, and phase lag.
 
-The score appears as a percentage and a star rating beneath the state description during the Reset state. 
+The score appears as a percentage and a star rating beneath the state description. 
 
-| Rating | Percentage | Coherence |
+| Rating | Percentage | Resonance |
 | :--- | :--- | :--- |
 | ☆☆☆ | < 15% | None |
 | ★☆☆ | ≥ 15% | Low |
 | ★★☆ | ≥ 30% | Moderate |
 | ★★★ | ≥ 50% | Strong |
 
-The score requires approximately one minute of RR data to compute accurately, and always appears as 0 at first until enough data is available. 
+The score requires approximately one minute of RR data to compute accurately, and usually appears as 0 at first until enough data is available. 
 
-**Important:** Do not stress over achieving a high score. Stressing about the number will actively lower it. A perfectly conditioned nervous system might hold 60–80%. With dysautonomia, your baroreflex is out of practice — scores of 15–20% early in your practice are completely normal and a solid starting point. The goal is stability and a slow upward trend over weeks, not an impressive number in any individual session. A flat coherence score — or even a flat HR line — is physiologically expected when the ANS is depleted or sympathetically dominant. The visible oscillation grows as ANS function recovers.
+**Important:** Do not stress over achieving a high score. Stressing about the number will actively lower it. A perfectly conditioned nervous system might hold 60–80%. With dysautonomia, your baroreflex is out of practice — scores of 10–20% early in your practice are completely normal and a solid starting point. The goal is stability and a slow upward trend over weeks, not an impressive number in any individual session. A low resonance score, or even a flat HR line, is physiologically expected when the ANS is depleted. The visible oscillation grows as ANS function recovers.
 
-The breath pacer and coherence score are most meaningful as a longitudinal tool: tracking whether your star rating and percentage gradually improve over weeks of consistent practice is a meaningful recovery signal.
+The resonance score is most meaningful as a longitudinal tool: tracking whether your star rating and percentage gradually improve over weeks of consistent practice is a meaningful recovery signal.
 
-Polar and most other sports watches (as opposed to the Polar H10 chest strap) report rolling-averaged HR rather than beat-to-beat RR intervals, which will produce a flat coherence score regardless of actual RSA. The H10 is strongly recommended for this feature.
+Changes in the score during a session can be used to detect ANS fatigue and may be useful as a cue to stop for the day. This applies if you have achieved a stable score which then declines during the session or over the day.
+
+Polar and most other sports watches (as opposed to the Polar H10 chest strap) report rolling-averaged HR rather than beat-to-beat intervals, which will produce a zero resonance score regardless of actual resonance. The H10 is strongly recommended for this feature.
 
 ### Finding your personal resonance frequency
 
-Your resonance frequency is the exact breathing rate at which your cardiovascular and autonomic nervous systems fall into sync — the rate that produces your highest coherence score. For most adults this falls between 4.5 and 7.0 breaths per minute, but it is individual and worth finding precisely.
+Your resonance frequency is the exact breathing rate at which your cardiovascular and autonomic nervous systems fall into sync — the rate that produces your highest resonance score. For most adults this falls between 4.5 and 7.0 breaths per minute, but it is individual and worth finding precisely.
 
 **Practical method:**
 
-1. Breathe at 6.0 bpm (the 5s/5s default) for one full RFB session and note your average coherence score.
+1. Breathe at 6.0 bpm (the 5s/5s default) for one full RFB session and note your average resonance score.
 2. The next session, try 5.5 bpm. The session after, try 5.0 bpm.
-3. Compare the scores. Your true resonance frequency is the pace that produces your highest coherence score while feeling the most effortless and natural.
+3. Compare the scores. Your true resonance frequency is the pace that produces your highest score while feeling the most effortless and natural.
 
 Adjust the breathing rate using the **Inhale / Exhale** fields in RFB settings, stepping in 0.5 bpm increments. Once found, your resonance frequency is likely to remain relatively stable — lock it in and use it for all future sessions.
 
 ### RFB Settings
 
 - **Enable RFB** — Master toggle. When off, the Reset state behaves as a stop activity state (red dot, no breath pacer).
-- **Inhale / Exhale** — The duration of each phase in seconds. The resulting breathing rate in bpm is shown below these fields. The default 5s inhale and 5s exhale produces a 6 bpm cycle. A slight emphasis on the exhale (e.g. 4s in / 6s out) can further increase parasympathetic tone.
+- **Inhale / Exhale** — The duration of each phase in seconds. The resulting breathing rate in bpm is shown below these fields. The default 4s inhale and 6s exhale produces a 6 bpm cycle.
 - **RFB duration** — How long to remain in the RFB phase after resting HR is achieved. Default is 2 minutes.
 - **Inhale sound guide** — Toggle the rising noise guide.
 - **Inhale vibration guide** — Toggle the tactile buzz guide.
@@ -191,11 +193,11 @@ The most common mistake is taking large, heavy breaths. Over-breathing blows off
 
 Your nervous system is currently deconditioned, meaning it fatigues quickly. Pushing through that fatigue will backfire and produce a stress response. Stop the RFB session and consider it a success if you notice any of the following:
 
-**The coherence crash.** If your score has been sitting in the ★☆☆ or ★★☆ range and then suddenly drops to ☆☆☆ or near-zero, your autonomic nervous system has fatigued. This is the equivalent of muscular failure — you have successfully completed your training stimulus for the day. Stop the timer.
+**The resonance crash.** If your score has been sitting in the ★☆☆ or ★★☆ range and then suddenly drops to ☆☆☆ or near-zero, your autonomic nervous system has fatigued. This is the equivalent of muscular failure — time to stop for the day.
 
 **Brain fog or frustration.** Paced breathing requires sustained focus. If your mind is wandering, you feel agitated, or you are struggling to hold the rhythm, your cognitive battery is empty.
 
-**Physical red flags.** If mild air hunger turns into a racing heart, dizziness, or anxiety, stop immediately and let your breathing return to its natural pattern.
+**Physical red flags.** If mild air hunger turns into a racing heart, dizziness, or anxiety, stop RFB immediately and let your breathing return to its natural pattern.
 
 Two minutes of comfortable, high-quality breathing is vastly superior to ten minutes of struggling. Stop while you are ahead. The goal is not duration — it is quality, and a consistently gentle practice will build capacity far more reliably than straining for longer sessions.
 
@@ -243,7 +245,7 @@ The key parameters and their purpose:
 - **Progressive Web App (PWA)** — Installable directly to an Android home screen for fullscreen, app-like behaviour.
 - **Multiple activity profiles** — Different threshold sets for different activities (e.g. walking, cycling, housework), switchable at session start.
 - **Activity time limit** — Optional per-session cap on total active time. When reached, the app transitions to the heart rate Reset state automatically.
-- **Resonance Frequency Breathing** — Integrated breath pacer, sound and vibration guides, coherence scoring, and extended RFB phase during the Reset state. See dedicated section above.
+- **Resonance Frequency Breathing** — Integrated breath pacer, sound and vibration guides, resonance scoring, and extended RFB phase during the Reset state. See dedicated section above.
 - **Session HR recording and graph export** — Every session records 1Hz heart rate data alongside state transitions. Saved sessions can be exported as a landscape A4 PDF graph showing HR over time with colour-coded state background bands, axes, and a resting HR reference line.
 - **Session history and trend graphs** — Each session can be saved with notes. History graphs allow you to track recovery metrics over time.
 - **Response lag and HR overshoot tracking** — Per-session statistics on recovery lag, HR peak during rest, and active/recovery time ratios.
