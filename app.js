@@ -767,7 +767,7 @@ function updateCoherenceDisplay() {
     //   2 = sapphire  (★★☆)  >= 30%
     //   3 = diamond   (★★★)  >= 50%
     function starsHtml(level, easterEgg) {
-        return '★'.repeat(level) + '☆'.repeat(3 - level) + easterEgg ? '🍓' : '' ;
+        return '★'.repeat(level) + '☆'.repeat(3 - level) + (easterEgg ? '🍓' : '') ;
     }
 
     // Resonance row — only during reset + RFB
