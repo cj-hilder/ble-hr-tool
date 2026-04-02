@@ -712,7 +712,15 @@ function computeResonance() {
         // Expected FFT phase: RR oscillation is at maximum at exhale onset (breathPhase = inhaleFrac).
         // FFT phase=0 means the oscillation is at max at the reference time, so
         // expected phase = 2π × (inhaleFrac − breathPhase), wrapped to [−π, π].
-        let expectedPhase = 2 * Math.PI * (inhaleFrac - breathPhase);
+
+const PHYSIO_LAG_RAD = 72 * Math.PI / 180; // 72-degree physiological lag
+
+// Current expected phase: HR max at exhale onset
+let expectedPhase = 2 * Math.PI * (inhaleFrac - breathPhase);
+
+// Apply the lag: Shift the expected HR peak 72 degrees LATER
+expectedPhase -= PHYSIO_LAG_RAD; 
+
         expectedPhase = ((expectedPhase + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
         let diff = result.peakPhaseRad - expectedPhase;
         diff = ((diff + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
@@ -758,8 +766,8 @@ function updateCoherenceDisplay() {
     //   1 = amethyst  (★☆☆)  >= 15%
     //   2 = sapphire  (★★☆)  >= 30%
     //   3 = diamond   (★★★)  >= 50%
-    function starsHtml(level) {
-        return '★'.repeat(level) + '☆'.repeat(3 - level);
+    function starsHtml(level, easterEgg) {
+        return '★'.repeat(level) + '☆'.repeat(3 - level) + easterEgg ? '🍓' : '' ;
     }
 
     // Resonance row — only during reset + RFB
@@ -767,14 +775,14 @@ function updateCoherenceDisplay() {
     if (inRfb && coherVal) {
         const r = computeResonance();
         if (r === null || !r.validRate) {
-            coherVal.textContent = `0% ${starsHtml(0)}`;
+            coherVal.textContent = `0% ${starsHtml(0, false)}`;
             // Remove any lingering debug line
             const dbg = document.getElementById('rfbDebug');
             if (dbg) dbg.textContent = '';
         } else {
             const riPct  = Math.round(r.ri * 100);
             const level  = riPct >= 50 ? 3 : riPct >= 30 ? 2 : riPct >= 15 ? 1 : 0;
-            coherVal.textContent = `${riPct}% ${starsHtml(level)}`;
+            coherVal.textContent = `${riPct}% ${starsHtml(level, riPct >= 75 )}`;
             // Debug line — shows raw components for calibration
             let dbg = document.getElementById('rfbDebug');
             if (!dbg) {
@@ -783,8 +791,9 @@ function updateCoherenceDisplay() {
                 dbg.style.cssText = 'font-size:10px;opacity:0.5;text-align:center;width:100%;margin-top:2px;font-family:monospace;';
                 coherVal.parentElement.insertAdjacentElement('afterend', dbg);
             }
+            const mult = Math.cos(r.phaseDiffDeg * Math.PI / 180)
             const phStr = r.phaseDiffDeg != null ? `ph:${r.phaseDiffDeg > 0 ? '+' : ''}${r.phaseDiffDeg}°` : 'ph:--';
-            dbg.textContent = `c:${Math.round(r.coherence * 100)}% stab:${Math.round(r.stability * 100)}% ${phStr}`;
+            dbg.textContent = `c:${Math.round(r.coherence * 100)}% stab:${Math.round(r.stability * 100)}% ${phStr}  ${mult}`;
             dbg.style.color = stateColor;
             // Collect all raw components for post-session analysis
             if (isSessionRunning) rfbCoherenceRecording.push({
