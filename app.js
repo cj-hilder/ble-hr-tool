@@ -37,6 +37,8 @@ class HRVProcessor {
         this._currentCycleMaxHr = 0;  // highest HR seen in current breath cycle
         this._lastHrMaxTs       = 0;  // wall-clock timestamp of that peak
         this._lastInhaleEndTs   = 0;  // wall-clock timestamp of last inhale→exhale turn
+        this._lagHistory        = []; // ring buffer of finalised per-cycle lag values (seconds)
+        this._LAG_HISTORY_SIZE  = 5;  // number of cycles to average (~50 s at 10 bpm)
     }
     addRR(rrInterval, timestamp) {
         if (!this._isValidRR(rrInterval)) return;
@@ -158,6 +160,8 @@ class HRVProcessor {
     reset() {
         this.buffer = []; this.timestamps = [];
         this.lastCoherence = 0; this.lastCoherenceTime = 0;
+        this._currentCycleMaxHr = 0; this._lastHrMaxTs = 0;
+        this._lastInhaleEndTs = 0; this._lagHistory = [];
     }
 }
 
@@ -706,14 +710,13 @@ function computeResonance() {
     const stability = computeStability(peakFreqHistory);
 
     // Phase alignment — time-domain peak offset method.
-    // Measures actual seconds between inhale end and the subsequent HR peak,
-    // then normalises to degrees. 72° offset centres "0" on the expected healthy lag.
+    // Averages the last N finalised cycle lags for stability, then normalises
+    // to degrees. 72° offset centres "0" on the expected healthy lag (1–2 s).
     let phaseDiffDeg = null;
-    if (hrvProcessor._lastInhaleEndTs > 0 && hrvProcessor._lastHrMaxTs > 0) {
-        const lagSec        = (hrvProcessor._lastHrMaxTs - hrvProcessor._lastInhaleEndTs) / 1000;
+    if (hrvProcessor._lagHistory.length > 0) {
+        const avgLagSec     = hrvProcessor._lagHistory.reduce((a, b) => a + b, 0) / hrvProcessor._lagHistory.length;
         const breathPeriodSec = rfbBreathPeriodMs() / 1000;
-        const rawPhaseDeg   = (lagSec / breathPeriodSec) * 360;
-        // Subtract 72° physiological offset so 0° = healthy 1–2 s vagal lag
+        const rawPhaseDeg   = (avgLagSec / breathPeriodSec) * 360;
         phaseDiffDeg = Math.round(rawPhaseDeg - 72);
     }
 
@@ -772,7 +775,7 @@ function updateCoherenceDisplay() {
         } else {
             const riPct  = Math.round(r.ri * 100);
             const level  = riPct >= 50 ? 3 : riPct >= 30 ? 2 : riPct >= 15 ? 1 : 0;
-            coherVal.textContent = `${riPct}% ${starsHtml(level, riPct >= 75 )}`;
+            coherVal.textContent = `${riPct}% ${starsHtml(level, riPct >= 65)}`;
             // Debug line — shows raw components for calibration
             let dbg = document.getElementById('rfbDebug');
             if (!dbg) {
@@ -1163,6 +1166,16 @@ function handleHeartRate(event) {
         // A 1-second tolerance window catches the crossing on whichever heartbeat
         // arrives first after the boundary.
         if (cyclePos >= inhaleMs && (cyclePos - 1000) < inhaleMs) {
+            // Finalise the PREVIOUS cycle's lag before resetting the peak tracker.
+            // _lastHrMaxTs must be after _lastInhaleEndTs to be a valid exhale peak.
+            if (hrvProcessor._lastInhaleEndTs > 0 &&
+                hrvProcessor._lastHrMaxTs > hrvProcessor._lastInhaleEndTs) {
+                const finalisedLag = (hrvProcessor._lastHrMaxTs - hrvProcessor._lastInhaleEndTs) / 1000;
+                hrvProcessor._lagHistory.push(finalisedLag);
+                if (hrvProcessor._lagHistory.length > hrvProcessor._LAG_HISTORY_SIZE) {
+                    hrvProcessor._lagHistory.shift();
+                }
+            }
             hrvProcessor._lastInhaleEndTs   = Date.now();
             hrvProcessor._currentCycleMaxHr = 0; // reset peak tracker for new exhale phase
         }
