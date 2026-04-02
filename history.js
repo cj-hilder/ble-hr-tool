@@ -281,7 +281,7 @@ function renderCharts(history) {
     const rfbCanvas = document.getElementById('chartAvgRfb');
     const rfbCard   = document.getElementById('chartAvgRfbCard');
     if (rfbCanvas && rfbCard) {
-        const rfbCoherence = history.map(s => s.rfbAvgCoherence ?? null);
+        const rfbCoherence = history.map(s => s.rfbAvgRI ?? s.rfbAvgCoherence ?? null);
         if (rfbCoherence.some(v => v != null)) {
             rfbCard.style.display = '';
             activeCharts.push(new Chart(rfbCanvas, buildChartConfig(labels, rfbCoherence, '#1a7fff', '%')));
@@ -477,8 +477,8 @@ function buildSessionCard(s, realIndex) {
             <div class="stat-group">
                 <div class="stat-group-label rfb-label">💙 Resonance Breathing</div>
                 <div class="stat-row">
-                    ${statItem((s.rfbAvgCoherence  ?? '--') + (s.rfbAvgCoherence  != null ? '%' : ''), 'Avg')}
-                    ${statItem((s.rfbPeakCoherence ?? '--') + (s.rfbPeakCoherence != null ? '%' : ''), 'Peak')}
+                    ${statItem(((s.rfbAvgRI ?? s.rfbAvgCoherence) ?? '--') + ((s.rfbAvgRI ?? s.rfbAvgCoherence) != null ? '%' : ''), 'Avg RI')}
+                    ${statItem(((s.rfbPeakRI ?? s.rfbPeakCoherence) ?? '--') + ((s.rfbPeakRI ?? s.rfbPeakCoherence) != null ? '%' : ''), 'Peak RI')}
                     ${statItem((s.rfbPctAboveStar1 ?? '--') + (s.rfbPctAboveStar1 != null ? '%' : ''), 'Time ≥★')}
                 </div>
                 <div class="stat-row">${statItem(fmtT(s.rfbTotalSec), 'Duration')}<div></div><div></div></div>
@@ -889,8 +889,9 @@ function generateSessionPDF(session) {
             segPts = []; segStart = null;
         }
         for (let i = 0; i < rfbRec.length; i++) {
-            const { t, c } = rfbRec[i];
-            const x = cToX(t), y = cToY(c);
+            const { t, ri, c } = rfbRec[i];
+            const val = ri ?? c;  // fall back to raw coherence for older recordings
+            const x = cToX(t), y = cToY(val);
             const gap = i > 0 && (t - rfbRec[i - 1].t) > GAP_THRESHOLD_SEC;
             if (gap) flushSeg();
             segPts.push([x, y]);
@@ -899,19 +900,21 @@ function generateSessionPDF(session) {
 
         // ── Axis labels ───────────────────────────────────────────────────────
         doc.setTextColor(80, 80, 80); doc.setFontSize(8);
-        doc.text('Resonance (%)', C_PX - 16, C_PY + C_PH / 2, { angle: 90, align: 'center' });
+        doc.text('Resonance Index (%)', C_PX - 16, C_PY + C_PH / 2, { angle: 90, align: 'center' });
         doc.text('Time (mm:ss)',   C_PX + C_PW / 2, C_PY + C_PH + 11, { align: 'center' });
 
         // ── Title ─────────────────────────────────────────────────────────────
         doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(20, 20, 20);
-        doc.text('Resonance Coherence Graph', C_PX, 10);
+        doc.text('Resonance Index Graph', C_PX, 10);
         doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(90, 90, 90);
+        const rfbAvgRI  = session.rfbAvgRI  ?? session.rfbAvgCoherence;
+        const rfbPeakRI = session.rfbPeakRI ?? session.rfbPeakCoherence;
         const rfbMeta = [
             dateStr,
             session.activityName ? `Activity: ${session.activityName}` : null,
-            session.rfbAvgCoherence  != null ? `Avg: ${session.rfbAvgCoherence}%`          : null,
-            session.rfbPeakCoherence != null ? `Peak: ${session.rfbPeakCoherence}%`         : null,
-            session.rfbPctAboveStar1 != null ? `Time ≥★: ${session.rfbPctAboveStar1}%`     : null,
+            rfbAvgRI  != null ? `Avg RI: ${rfbAvgRI}%`              : null,
+            rfbPeakRI != null ? `Peak RI: ${rfbPeakRI}%`            : null,
+            session.rfbPctAboveStar1 != null ? `Time ≥★: ${session.rfbPctAboveStar1}%` : null,
             session.rfbTotalSec      != null ? `RFB duration: ${formatTime(session.rfbTotalSec)}` : null,
         ].filter(Boolean).join('   ·   ');
         doc.text(rfbMeta, C_PX, 18);

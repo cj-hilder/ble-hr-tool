@@ -50,9 +50,9 @@ class HRVProcessor {
         const mean     = interpolated.reduce((s, x) => s + x, 0) / interpolated.length;
         const detrended = interpolated.map(x => x - mean);
         const windowed  = this._applyHanning(detrended);
-        const spectrum  = this._fft(windowed);
-        const freqs     = this._frequencyAxis(spectrum.length);
-        const { peakFreq, peakBandPower, totalPower } = this._computeBandMetrics(freqs, spectrum);
+        const fftResult = this._fft(windowed);
+        const freqs     = this._frequencyAxis(fftResult.magnitude.length);
+        const { peakFreq, peakBin, peakBandPower, totalPower } = this._computeBandMetrics(freqs, fftResult.magnitude);
         if (totalPower === 0) return null;
         // HeartMath standard formula: peak band power as a fraction of total power (0–1).
         const coherenceRaw = peakBandPower / totalPower;
@@ -62,7 +62,15 @@ class HRVProcessor {
         const validBreathingRate = peakFreq >= 0.07 && peakFreq <= 0.12;
         const now      = this.timestamps.length ? this.timestamps[this.timestamps.length - 1] : Date.now();
         const coherence = this._ema(coherenceRaw, now);
-        return { coherence, peakFreq, breathingRate: peakFreq * 60, validBreathingRate };
+        // Phase of the dominant RR oscillation at the START of the analysis window (n=0).
+        // atan2(im, re) of the peak FFT bin: phase=0 means oscillation at maximum at t=0.
+        // The Hanning window emphasises the window centre, so we also expose the centre
+        // timestamp — that is the correct reference point for the phase comparison.
+        const peakPhaseRad      = Math.atan2(fftResult.im[peakBin], fftResult.re[peakBin]);
+        const windowCenterTime  = cleanedTs.length > 1
+            ? (cleanedTs[0] + cleanedTs[cleanedTs.length - 1]) / 2
+            : cleanedTs[0] || 0;
+        return { coherence, peakFreq, breathingRate: peakFreq * 60, validBreathingRate, peakPhaseRad, windowCenterTime };
     }
     _isValidRR(rr)    { return rr > 300 && rr < 2000; }
     _trimBuffer() {
@@ -101,7 +109,8 @@ class HRVProcessor {
         return data.map((x, i) => x * (0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (N - 1))));
     }
     _fft(signal) {
-        const N = signal.length, re = signal.slice(), im = new Array(N).fill(0);
+        const N = signal.length;
+        const re = new Array(N).fill(0), im = new Array(N).fill(0);
         for (let k = 0; k < N; k++) {
             let sumRe = 0, sumIm = 0;
             for (let n = 0; n < N; n++) {
@@ -111,26 +120,27 @@ class HRVProcessor {
             }
             re[k] = sumRe; im[k] = sumIm;
         }
-        return re.map((r, i) => Math.sqrt(r * r + im[i] * im[i]));
+        const magnitude = re.map((r, i) => Math.sqrt(r * r + im[i] * im[i]));
+        return { magnitude, re, im };
     }
     _frequencyAxis(N) {
         const freqs = [];
         for (let i = 0; i < N; i++) freqs.push((i * this.sampleRate) / N);
         return freqs;
     }
-    _computeBandMetrics(freqs, spectrum) {
-        let totalPower = 0, peakPower = 0, peakFreq = 0;
+    _computeBandMetrics(freqs, magnitudes) {
+        let totalPower = 0, peakPower = 0, peakFreq = 0, peakBin = 0;
         for (let i = 0; i < freqs.length; i++) {
-            const f = freqs[i], p = spectrum[i] ** 2;
-            if (f >= 0.04 && f <= 0.15 && p > peakPower) { peakPower = p; peakFreq = f; }
+            const f = freqs[i], p = magnitudes[i] ** 2;
+            if (f >= 0.04 && f <= 0.15 && p > peakPower) { peakPower = p; peakFreq = f; peakBin = i; }
             totalPower += p;
         }
         let peakBandPower = 0;
         const bandWidth = 0.015;
         for (let i = 0; i < freqs.length; i++) {
-            if (Math.abs(freqs[i] - peakFreq) <= bandWidth) peakBandPower += spectrum[i] ** 2;
+            if (Math.abs(freqs[i] - peakFreq) <= bandWidth) peakBandPower += magnitudes[i] ** 2;
         }
-        return { peakFreq, peakBandPower, totalPower };
+        return { peakFreq, peakBin, peakBandPower, totalPower };
     }
     _ema(value, now) {
         // Time-based EMA: α = dt / (τ + dt) so smoothing is independent of call rate.
@@ -652,10 +662,31 @@ function triggerNotification() {
     } catch (e) { console.log('Audio notification failed:', e); }
 }
 
+// ─── Resonance Index ─────────────────────────────────────────────────────────
+// Single combined metric for display and longitudinal tracking.
+// Coherence (validated HeartMath RSA measure) is the primary signal.
+// Phase and stability act as trust multipliers — they can only reduce the score,
+// never inflate it above the raw coherence value.
+//
+//   phaseMult = 0.75 + 0.25 × cos(phaseDiff)  → [0.5, 1.0]
+//     Inverted phase (180°) → 0.50 × coherence  (likely not genuine RSA)
+//     Aligned   (0°)        → 1.00 × coherence  (no penalty)
+//     No data               → 0.85 × coherence  (uncertainty discount)
+//
+//   stabMult  = 0.70 + 0.30 × stability        → [0.7, 1.0]
+//     Max instability → 0.70 × coherence  (dysautonomia causes inherent variability)
+//     Perfect stability → 1.00 × coherence
+//
+// Worst case: coherence × 0.35.  Best case: coherence × 1.00.
+function computeResonanceIndex(coherence, stability, phaseDiffDeg) {
+    const phaseMult = phaseDiffDeg != null
+        ? 0.75 + 0.25 * Math.cos(phaseDiffDeg * Math.PI / 180)
+        : 0.85;
+    const stabMult  = 0.70 + 0.30 * stability;
+    return Math.min(1, coherence * phaseMult * stabMult);
+}
+
 // ─── Resonance display ───────────────────────────────────────────────────────
-// computeResonance returns the validated HeartMath coherence score unchanged.
-// peakFreqHistory is maintained in parallel purely to drive a instability
-// indicator (~) — it does not modify the coherence value or the star level.
 function computeResonance() {
     if (!hasRrData) return null;
     const result = hrvProcessor.computeCoherence();
@@ -668,9 +699,34 @@ function computeResonance() {
         if (peakFreqHistory.length > PEAK_FREQ_MAX_HISTORY) peakFreqHistory.shift();
     }
 
-    const stability  = computeStability(peakFreqHistory);
-    const isUnstable = stability < 0.4;  // std dev > ~0.018 Hz ≈ ±1.2 bpm drift
-    return { coherence: result.coherence, validRate: result.validBreathingRate, isUnstable, stability };
+    const stability = computeStability(peakFreqHistory);
+
+    // Phase alignment — uses window centre time as reference because the Hanning
+    // window emphasises the middle of the 120 s buffer, not its start.
+    let phaseDiffDeg = null;
+    if (result.validBreathingRate && rfbWallStartTime > 0 && result.windowCenterTime > 0) {
+        const breathPeriodMs = rfbBreathPeriodMs();
+        const inhaleFrac     = rfbGetInhaleFrac();
+        const elapsed        = result.windowCenterTime - rfbWallStartTime;
+        const breathPhase    = ((elapsed % breathPeriodMs) + breathPeriodMs) % breathPeriodMs / breathPeriodMs;
+        // Expected FFT phase: RR oscillation is at maximum at exhale onset (breathPhase = inhaleFrac).
+        // FFT phase=0 means the oscillation is at max at the reference time, so
+        // expected phase = 2π × (inhaleFrac − breathPhase), wrapped to [−π, π].
+        let expectedPhase = 2 * Math.PI * (inhaleFrac - breathPhase);
+        expectedPhase = ((expectedPhase + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
+        let diff = result.peakPhaseRad - expectedPhase;
+        diff = ((diff + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
+        phaseDiffDeg = Math.round(diff * 180 / Math.PI);
+    }
+
+    const ri = computeResonanceIndex(result.coherence, stability, phaseDiffDeg);
+    return {
+        ri,
+        coherence:   result.coherence,
+        stability,
+        phaseDiffDeg,
+        validRate:   result.validBreathingRate,
+    };
 }
 
 let _lastCoherenceUpdateTs = 0;
@@ -711,33 +767,33 @@ function updateCoherenceDisplay() {
     if (inRfb && coherVal) {
         const r = computeResonance();
         if (r === null || !r.validRate) {
-            // Null = insufficient data; validRate false = spectral peak not yet
-            // locked onto a breathing oscillation. Show zero until signal is valid.
             coherVal.textContent = `0% ${starsHtml(0)}`;
+            // Remove any lingering debug line
+            const dbg = document.getElementById('rfbDebug');
+            if (dbg) dbg.textContent = '';
         } else {
-            const pct   = Math.round(r.coherence * 100);
-            const level = pct >= 50 ? 3 : pct >= 30 ? 2 : pct >= 15 ? 1 : 0;
-
-let stabilitySymbol = '';
-
-if (r !== null && r.validRate) {
-    const stability = r.stability;
-
-    if (stability < 0.4) {
-        // Severe disorder: high frequency drift (> 0.014 Hz)
-        stabilitySymbol = ' ≈'; 
-    } else if (stability < 0.75) {
-        // Moderate disorder: drifting resonance (0.00875 - 0.014 Hz)
-        stabilitySymbol = ' ~'; 
-    } else {
-        // Healthy state: high precision resonance (< 0.00875 Hz)
-        stabilitySymbol = ''; 
-    }
-}
-
-            coherVal.textContent = `${pct}% ${starsHtml(level)} ${stabilitySymbol}`;
-            // Collect sample for post-session analysis (only when session is running)
-            if (isSessionRunning) rfbCoherenceRecording.push({ t: sessionSeconds, c: pct });
+            const riPct  = Math.round(r.ri * 100);
+            const level  = riPct >= 50 ? 3 : riPct >= 30 ? 2 : riPct >= 15 ? 1 : 0;
+            coherVal.textContent = `${riPct}% ${starsHtml(level)}`;
+            // Debug line — shows raw components for calibration
+            let dbg = document.getElementById('rfbDebug');
+            if (!dbg) {
+                dbg = document.createElement('div');
+                dbg.id = 'rfbDebug';
+                dbg.style.cssText = 'font-size:10px;opacity:0.5;text-align:center;width:100%;margin-top:2px;font-family:monospace;';
+                coherVal.parentElement.insertAdjacentElement('afterend', dbg);
+            }
+            const phStr = r.phaseDiffDeg != null ? `ph:${r.phaseDiffDeg > 0 ? '+' : ''}${r.phaseDiffDeg}°` : 'ph:--';
+            dbg.textContent = `c:${Math.round(r.coherence * 100)}% stab:${Math.round(r.stability * 100)}% ${phStr}`;
+            dbg.style.color = stateColor;
+            // Collect all raw components for post-session analysis
+            if (isSessionRunning) rfbCoherenceRecording.push({
+                t:    sessionSeconds,
+                c:    Math.round(r.coherence * 100),
+                ri:   riPct,
+                stab: Math.round(r.stability * 100),
+                ph:   r.phaseDiffDeg ?? null,
+            });
         }
         coherVal.style.color = stateColor;
     }
@@ -1147,10 +1203,10 @@ function handleHeartRate(event) {
 // time-series regardless of how many reset/RFB cycles occurred.
 function computeRfbSummary(recording) {
     if (!recording || recording.length === 0) return null;
-    const values = recording.map(s => s.c);
-    const avg    = Math.round(values.reduce((a, b) => a + b, 0) / values.length);
-    const peak   = Math.max(...values);
-    const pctAboveStar1 = Math.round(values.filter(v => v >= 15).length / values.length * 100);
+    const riVals  = recording.map(s => s.ri  ?? s.c);  // fall back to raw coherence for old format
+    const avg     = Math.round(riVals.reduce((a, b) => a + b, 0) / riVals.length);
+    const peak    = Math.max(...riVals);
+    const pctAboveStar1 = Math.round(riVals.filter(v => v >= 15).length / riVals.length * 100);
     return { avg, peak, pctAboveStar1, totalSec: recording.length };
 }
 
@@ -1245,8 +1301,8 @@ function computeSessionSummary() {
         lowestHr:  sessionHrSamples.length ? Math.min(...sessionHrSamples) : 0,
         hrRecording: sessionHrRecording.slice(),
         // RFB coherence — null if RFB was not used or no valid readings were collected
-        rfbAvgCoherence:  rfbStats ? rfbStats.avg          : null,
-        rfbPeakCoherence: rfbStats ? rfbStats.peak         : null,
+        rfbAvgRI:         rfbStats ? rfbStats.avg           : null,
+        rfbPeakRI:        rfbStats ? rfbStats.peak          : null,
         rfbPctAboveStar1: rfbStats ? rfbStats.pctAboveStar1 : null,
         rfbTotalSec:      rfbStats ? rfbStats.totalSec      : null,
         rfbCoherenceRecording: rfbStats ? rfbCoherenceRecording.slice() : null,
@@ -1289,8 +1345,8 @@ function showSummaryModal(summary) {
         const hasRfb = summary.rfbTotalSec > 0;
         rfbSection.style.display = hasRfb ? '' : 'none';
         if (hasRfb) {
-            set('s-rfbAvg',      summary.rfbAvgCoherence  + '%');
-            set('s-rfbPeak',     summary.rfbPeakCoherence + '%');
+            set('s-rfbAvg',      (summary.rfbAvgRI  ?? summary.rfbAvgCoherence)  + '%');
+            set('s-rfbPeak',     (summary.rfbPeakRI ?? summary.rfbPeakCoherence) + '%');
             set('s-rfbPctAbove', summary.rfbPctAboveStar1 + '%');
             set('s-rfbTotal',    fmtT(summary.rfbTotalSec));
         }
