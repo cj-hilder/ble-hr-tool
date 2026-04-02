@@ -258,6 +258,37 @@ body.connected #trainingUI {
 #modalEndBtn    { background: #dc3545; }
 #modalCancelBtn { background: #444444; }
 
+/* ─── Resonance Breathing time-up modal ──────────────────────────────────── */
+#rbTimeUpModal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.75);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+}
+#rbTimeUpModal.visible { display: flex; }
+#rbTimeUpModalBox {
+    background: #1a1a1a;
+    border: 1px solid #1a7fff;
+    border-radius: 16px;
+    padding: 28px 24px 20px;
+    width: 82vw;
+    max-width: 340px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+#rbTimeUpModalBox p {
+    margin: 0 0 4px;
+    font-size: 18px;
+    color: #ddd;
+    text-align: center;
+}
+#rbTimeUpEndBtn    { background: #dc3545; }
+#rbTimeUpExtendBtn { background: #1a7fff; }
+
 /* ─── Setup links ─────────────────────────────────────────────────────────── */
 #setupLinks {
     margin-top: 40px;

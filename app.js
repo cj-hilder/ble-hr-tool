@@ -383,6 +383,8 @@ let sessionInterval, wakeLock = null, heartbeatTimeout;
 // ─── RFB (Resonance Frequency Breathing) ─────────────────────────────────────
 let rfbPhase = false;
 let rfbSecondsRemaining = 0;
+let isResonanceBreathing = false; // true for the dedicated Resonance Breathing activity
+let rfbExtended = false;          // true after user extends beyond the timed session
 let rfbWallStartTime = 0;      // phase anchor: set once per session, never reset between RFB periods
 let rfbSessionClockStart = 0;  // Date.now() of the very first RFB entry this session (0 = not yet started)
 let rfbAnimFrame = null;
@@ -524,6 +526,7 @@ function saveSession() {
             sessionHrCount: sessionHrSamples.length,
             currentActivityId, currentActivityName,
             rfbPhase, rfbSecondsRemaining, rfbSessionClockStart,
+            isResonanceBreathing, rfbExtended,
             activityLimitTriggered,
         }));
     } catch (e) {}
@@ -548,6 +551,8 @@ function restoreSession() {
         rfbSecondsRemaining = s.rfbSecondsRemaining || 0;
         rfbSessionClockStart = s.rfbSessionClockStart || 0;
         activityLimitTriggered = s.activityLimitTriggered || false;
+        isResonanceBreathing = s.isResonanceBreathing || false;
+        rfbExtended          = s.rfbExtended          || false;
         // Apply the restored activity's settings
         if (currentActivityId && window.activitiesAPI) {
             window.activitiesAPI.applySettings(currentActivityId);
@@ -1070,7 +1075,7 @@ function switchState(newState, isManual) {
         manualResetBtn.classList.toggle('rfb', !!rfbOn);
         toggleBtn.innerText = 'Pause session'; toggleBtn.classList.remove('paused');
     } else if (newState === 'reset') {
-        manualResetBtn.innerHTML = '&#9654;'; manualResetBtn.style.display = 'flex';
+        manualResetBtn.innerHTML = '&#9654;'; manualResetBtn.style.display = isResonanceBreathing ? 'none' : 'flex';
         manualResetBtn.classList.toggle('rfb', !!rfbOn);
         toggleBtn.innerText = 'Pause session'; toggleBtn.classList.remove('paused');
         descEl.innerText = resetCount >= NUM_RESETS_B4_WARN ? '⚠️ Finish this session ASAP' : 'Reset to resting HR';
@@ -1102,16 +1107,24 @@ function updateTimers(increment) {
         if (stateSeconds > MAX_RECOVERY_PERIOD) switchState('reset', false);
         else if (timeOfMaxHrInRest > MAX_RESPONSE_LAG) switchState('reset', false);
     }
-    // RFB hold-period countdown (entered after resting HR is achieved for 15 s)
+    // RFB hold-period countdown
     if (currentState === 'reset' && rfbPhase) {
-        rfbSecondsRemaining -= increment;
-        if (rfbSecondsRemaining <= 0) {
-            rfbPhase = false;
-            switchState('active', false);
+        if (!rfbExtended) rfbSecondsRemaining -= increment;
+        if (!rfbExtended && rfbSecondsRemaining <= 0) {
+            if (isResonanceBreathing) {
+                // Time's up — show modal; breathing guide and analysis keep running
+                rfbSecondsRemaining = 0;
+                document.getElementById('rbTimeUpModal').classList.add('visible');
+            } else {
+                rfbPhase = false;
+                switchState('active', false);
+            }
         } else {
             const descEl = document.getElementById('stateDescription');
             if (descEl) {
-                descEl.innerText = `RFB — ${formatTime(Math.ceil(rfbSecondsRemaining))} remaining`;
+                descEl.innerText = rfbExtended
+                    ? 'Resonance Breathing — extended'
+                    : `RFB — ${formatTime(Math.ceil(rfbSecondsRemaining))} remaining`;
                 descEl.style.color = '#1a7fff';
             }
         }
@@ -1220,29 +1233,33 @@ function handleHeartRate(event) {
             }
         }
 
-        if (currentState === 'active') {
-            if (currentHeartRate >= ACTIVE_THRESHOLD_UPPER) { activeToRestCount++; activeToResetCount = 0; }
-            else if (currentHeartRate < BRADYCARDIA_THRESHOLD) { activeToResetCount++; activeToRestCount = 0; }
-            else { activeToRestCount = 0; activeToResetCount = 0; }
-            if (activeToRestCount >= 3) switchState('rest', false);
-            else if (activeToResetCount >= 3) switchState('reset', false);
-        } else if (currentState === 'rest') {
-            if (currentHeartRate < ACTIVE_THRESHOLD_LOWER) restToActiveCount++; else restToActiveCount = 0;
-            if (restToActiveCount >= 7) switchState('active', false);
-        } else if (currentState === 'reset') {
-            const lo = RESTING_HR - RESTING_HR_BANDWIDTH / 2, hi = RESTING_HR + RESTING_HR_BANDWIDTH / 2;
-            if (currentHeartRate >= lo && currentHeartRate <= hi) resetToActiveCount++; else resetToActiveCount = 0;
-            if (resetToActiveCount >= 15) {
-                const rfbOn = (typeof RFB_ENABLED !== 'undefined') && RFB_ENABLED;
-                const rfbDurMin = (typeof RFB_DURATION !== 'undefined') ? RFB_DURATION : 2.0;
-                if (rfbOn && !rfbPhase && rfbDurMin > 0) {
-                    // Enter RFB hold period — don't switch to active yet
-                    rfbPhase = true;
-                    rfbSecondsRemaining = rfbDurMin * 60;
-                } else if (!rfbOn) {
-                    switchState('active', false);
+        // Resonance Breathing sessions stay in reset state throughout —
+        // no HR-driven transitions apply.
+        if (!isResonanceBreathing) {
+            if (currentState === 'active') {
+                if (currentHeartRate >= ACTIVE_THRESHOLD_UPPER) { activeToRestCount++; activeToResetCount = 0; }
+                else if (currentHeartRate < BRADYCARDIA_THRESHOLD) { activeToResetCount++; activeToRestCount = 0; }
+                else { activeToRestCount = 0; activeToResetCount = 0; }
+                if (activeToRestCount >= 3) switchState('rest', false);
+                else if (activeToResetCount >= 3) switchState('reset', false);
+            } else if (currentState === 'rest') {
+                if (currentHeartRate < ACTIVE_THRESHOLD_LOWER) restToActiveCount++; else restToActiveCount = 0;
+                if (restToActiveCount >= 7) switchState('active', false);
+            } else if (currentState === 'reset') {
+                const lo = RESTING_HR - RESTING_HR_BANDWIDTH / 2, hi = RESTING_HR + RESTING_HR_BANDWIDTH / 2;
+                if (currentHeartRate >= lo && currentHeartRate <= hi) resetToActiveCount++; else resetToActiveCount = 0;
+                if (resetToActiveCount >= 15) {
+                    const rfbOn = (typeof RFB_ENABLED !== 'undefined') && RFB_ENABLED;
+                    const rfbDurMin = (typeof RFB_DURATION !== 'undefined') ? RFB_DURATION : 2.0;
+                    if (rfbOn && !rfbPhase && rfbDurMin > 0) {
+                        // Enter RFB hold period — don't switch to active yet
+                        rfbPhase = true;
+                        rfbSecondsRemaining = rfbDurMin * 60;
+                    } else if (!rfbOn) {
+                        switchState('active', false);
+                    }
+                    // If rfbPhase already true, updateTimers handles the countdown
                 }
-                // If rfbPhase already true, updateTimers handles the countdown
             }
         }
     }
@@ -1497,6 +1514,7 @@ function finishSession() {
 }
 
 function teardownSession() {
+    isResonanceBreathing = false; rfbExtended = false;
     const toggleBtn = document.getElementById('toggleSessionBtn');
     toggleBtn.innerText = 'Start Session'; toggleBtn.classList.remove('running', 'paused');
     document.getElementById('manualResetBtn').style.display = 'none';
@@ -1562,7 +1580,19 @@ function startSession() {
     document.getElementById('lagDisplay').innerText = '--';
     document.getElementById('toggleSessionBtn').classList.add('running');
     updateActivityDisplay();
-    switchState('active', true);
+    isResonanceBreathing = (currentActivityId === 'resonance_breathing');
+    rfbExtended = false;
+    if (isResonanceBreathing) {
+        // Enter reset+RFB immediately — no active phase, no waiting for resting HR.
+        switchState('reset', true);
+        rfbPhase = true;
+        rfbSecondsRemaining = (typeof RFB_DURATION !== 'undefined' ? RFB_DURATION : 10) * 60;
+        rfbWallStartTime = Date.now();
+        rfbSessionClockStart = Date.now();
+        startRfbAnimation();
+    } else {
+        switchState('active', true);
+    }
     sessionInterval = setInterval(handleTick, 1000);
 }
 
@@ -1647,7 +1677,7 @@ function onReconnectSuccess() {
     }
 }
 document.getElementById('manualResetBtn').addEventListener('click', () => {
-    if (!isSessionRunning) return;
+    if (!isSessionRunning || isResonanceBreathing) return;
     if (currentState === 'reset') {
         rfbPhase = false; rfbSecondsRemaining = 0;
         switchState('active', true);
@@ -1780,6 +1810,19 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
     } catch (error) {
         log('❌ Error: ' + error.message + '<br><br>💡 Tip: Please close any other app (like Polar Flow) that might be paired with the HR device.', true);
     }
+});
+
+// ─── Resonance Breathing time-up modal ───────────────────────────────────────
+document.getElementById('rbTimeUpEndBtn').addEventListener('click', () => {
+    document.getElementById('rbTimeUpModal').classList.remove('visible');
+    finishSession();
+});
+document.getElementById('rbTimeUpExtendBtn').addEventListener('click', () => {
+    document.getElementById('rbTimeUpModal').classList.remove('visible');
+    rfbExtended = true;
+    // Update description immediately
+    const descEl = document.getElementById('stateDescription');
+    if (descEl) { descEl.innerText = 'Resonance Breathing — extended'; descEl.style.color = '#1a7fff'; }
 });
 
 document.addEventListener('DOMContentLoaded', () => { updateSpeedometer(0); tryAutoReconnect(); });

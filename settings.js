@@ -27,6 +27,46 @@ const DEFAULTS = {
     RFB_VIBRATION:          1,   // 0=off, 1=on
 };
 
+const RESONANCE_BREATHING_ID = 'resonance_breathing';
+
+// Defaults for the built-in Resonance Breathing activity.
+// RFB_ENABLED is always 1 here and is not user-editable.
+const RB_DEFAULTS = {
+    MAX_HR:                 170,
+    RESTING_HR:             65,
+    RESTING_HR_BANDWIDTH:   10,
+    TARGET_MIN_HR:          60,
+    TARGET_MAX_HR:          75,
+    ACTIVE_THRESHOLD_UPPER: 80,
+    ACTIVE_THRESHOLD_LOWER: 77,
+    BRADYCARDIA_THRESHOLD:  55,
+    ACTIVE_TIME_LIMIT:      0,
+    MAX_RECOVERY_PERIOD:    240,
+    MAX_RESPONSE_LAG:       60,
+    NUM_RESETS_B4_WARN:     3,
+    ALERT_VIBRATION:        0,
+    ALERT_SOUND:            0,
+    RFB_ENABLED:            1,   // always on — not user-editable
+    RFB_INHALE_SEC:         4.0,
+    RFB_EXHALE_SEC:         6.0,
+    RFB_DURATION:           10.0, // session length in minutes
+    RFB_SOUND:              1,
+    RFB_VIBRATION:          1,
+};
+
+// Fields hidden in the settings panel when Resonance Breathing is selected.
+const RESONANCE_HIDDEN_KEYS = new Set([
+    'BRADYCARDIA_THRESHOLD',
+    'ACTIVE_THRESHOLD_UPPER', 'ACTIVE_THRESHOLD_LOWER', 'ACTIVE_TIME_LIMIT',
+    'MAX_RECOVERY_PERIOD', 'MAX_RESPONSE_LAG', 'NUM_RESETS_B4_WARN',
+    'TARGET_MIN_HR', 'TARGET_MAX_HR',
+    'ALERT_VIBRATION', 'ALERT_SOUND',
+    'RFB_ENABLED',
+]);
+const RESONANCE_HIDDEN_GROUPS = new Set([
+    'Active Thresholds', 'Recovery Limits', 'Target Zone', 'Alerts',
+]);
+
 const ALERT_OPTIONS = [
     { value: 0, label: 'Off'     },
     { value: 1, label: 'Subtle'  },
@@ -127,6 +167,26 @@ function loadActivities() {
         }];
         persistActivities();
     }
+
+    // Ensure the built-in Resonance Breathing activity always exists and is first.
+    // This runs on every load so it self-heals after migrations or manual storage edits.
+    (function ensureResonanceBreathing() {
+        const idx = activities.findIndex(a => a.id === RESONANCE_BREATHING_ID);
+        if (idx >= 0) {
+            const rb = activities[idx];
+            if (!rb.settings) rb.settings = {};
+            rb.settings.RFB_ENABLED = 1; // always enforce
+            if (idx !== 0) { activities.splice(idx, 1); activities.unshift(rb); }
+        } else {
+            activities.unshift({
+                id: RESONANCE_BREATHING_ID,
+                name: 'Resonance Breathing',
+                description: 'Guided resonance frequency breathing session with real-time coherence monitoring.',
+                settings: { ...RB_DEFAULTS },
+            });
+        }
+        persistActivities();
+    })();
 
     const savedSel = localStorage.getItem(SELECTED_ACTIVITY_KEY);
     selectedActivityId = (savedSel && activities.find(a => a.id === savedSel))
@@ -353,10 +413,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (item.group) {
             const g = document.createElement('div');
             g.className = 'sg-group'; g.textContent = item.group;
+            g.dataset.group = item.group;
             body.appendChild(g);
         } else {
             const row = document.createElement('div');
             row.className = 'sg-row';
+            if (item.key) row.dataset.key = item.key;
             const top = document.createElement('div'); top.className = 'sg-top';
             const left = document.createElement('div'); left.className = 'sg-left';
             const lbl = document.createElement('div'); lbl.className = 'sg-label'; lbl.textContent = item.label;
@@ -413,6 +475,28 @@ document.addEventListener('DOMContentLoaded', () => {
         deleteActivityBtn.disabled = activities.length <= 1;
     }
 
+    function updatePanelForActivity(act) {
+        const isRB = act.id === RESONANCE_BREATHING_ID;
+        // Lock/unlock the name field
+        activityNameInp.disabled = isRB;
+        activityNameInp.style.opacity = isRB ? '0.4' : '';
+        // Show/hide delete button (RB cannot be deleted)
+        deleteActivityBtn.style.display = isRB ? 'none' : '';
+        // Show/hide new button (hidden for RB to keep UI clean)
+        newActivityBtn.style.display = isRB ? 'none' : '';
+        // Toggle individual field rows
+        document.querySelectorAll('.sg-row[data-key]').forEach(row => {
+            row.style.display = (isRB && RESONANCE_HIDDEN_KEYS.has(row.dataset.key)) ? 'none' : '';
+        });
+        // Toggle group headers — hide if ALL their keys are hidden for RB
+        document.querySelectorAll('.sg-group[data-group]').forEach(g => {
+            g.style.display = (isRB && RESONANCE_HIDDEN_GROUPS.has(g.dataset.group)) ? 'none' : '';
+        });
+        // Reset-to-defaults button label
+        document.getElementById('settingsResetBtn').textContent =
+            isRB ? 'Reset to defaults' : 'Reset to defaults';
+    }
+
     function updateRfbRateDisplay() {
         const el = document.getElementById('rfbRateDisplay');
         if (!el) return;
@@ -437,6 +521,7 @@ document.addEventListener('DOMContentLoaded', () => {
             else { el.value = String(val); }
         }
         updateRfbRateDisplay();
+        updatePanelForActivity(act);
     }
 
     function applyGlobalsIfNeeded() {
@@ -459,6 +544,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     activityNameInp.addEventListener('change', () => {
         const act = getSelectedActivity();
+        if (act.id === RESONANCE_BREATHING_ID) return; // name is locked
         const trimmed = activityNameInp.value.trim();
         if (trimmed) { act.name = trimmed; persistActivities(); rebuildActivityDropdown(); }
     });
@@ -484,6 +570,7 @@ document.addEventListener('DOMContentLoaded', () => {
     deleteActivityBtn.addEventListener('click', () => {
         if (activities.length <= 1) { alert('You need at least one activity type.'); return; }
         const act = getSelectedActivity();
+        if (act.id === RESONANCE_BREATHING_ID) { alert('Resonance Breathing cannot be deleted.'); return; }
         if (!confirm(`Delete activity "${act.name}"? This cannot be undone.`)) return;
         activities = activities.filter(a => a.id !== selectedActivityId);
         persistActivities();
@@ -504,6 +591,8 @@ document.addEventListener('DOMContentLoaded', () => {
             else { v = Number(el.value); if (isNaN(v)) return; }
             const act = getSelectedActivity();
             if (!act.settings) act.settings = {};
+            // Resonance Breathing always has RFB_ENABLED = 1
+            if (act.id === RESONANCE_BREATHING_ID && item.key === 'RFB_ENABLED') { v = 1; }
             act.settings[item.key] = v;
             persistActivities();
             const sessionRunning = (typeof isSessionRunning !== 'undefined') && isSessionRunning;
@@ -520,7 +609,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     resetBtn.addEventListener('click', () => {
         const act = getSelectedActivity();
-        act.settings = { ...DEFAULTS };
+        act.settings = act.id === RESONANCE_BREATHING_ID
+            ? { ...RB_DEFAULTS }
+            : { ...DEFAULTS };
         persistActivities();
         loadActivityIntoPanel(act);
         applyGlobalsIfNeeded();
