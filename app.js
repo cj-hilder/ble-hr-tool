@@ -709,7 +709,7 @@ function computeResonance() {
     // Measures actual seconds between inhale end and the subsequent HR peak,
     // then normalises to degrees. 72° offset centres "0" on the expected healthy lag.
     let phaseDiffDeg = null;
-    if (this._lastInhaleEndTs > 0 && this._lastHrMaxTs > 0) {
+    if (hrvProcessor._lastInhaleEndTs > 0 && hrvProcessor._lastHrMaxTs > 0) {
         const lagSec        = (hrvProcessor._lastHrMaxTs - hrvProcessor._lastInhaleEndTs) / 1000;
         const breathPeriodSec = rfbBreathPeriodMs() / 1000;
         const rawPhaseDeg   = (lagSec / breathPeriodSec) * 360;
