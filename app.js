@@ -784,8 +784,9 @@ function updateCoherenceDisplay() {
                 dbg.style.cssText = 'font-size:10px;opacity:0.5;text-align:center;width:100%;margin-top:2px;font-family:monospace;';
                 coherVal.parentElement.insertAdjacentElement('afterend', dbg);
             }
-            const lagSeconds = r.phaseDiffDeg != null ? ((r.phaseDiffDeg + 72) / 360 * (rfbBreathPeriodMs()/1000)).toFixed(1) : '--';
-            dbg.textContent = `c:${Math.round(r.coherence * 100)}% stab:${Math.round(r.stability * 100)}% lag:${lagSeconds}s`;
+            const relLagSec = r.phaseDiffDeg != null ? (r.phaseDiffDeg / 360 * (rfbBreathPeriodMs() / 1000)) : null;
+            const lagStr = relLagSec != null ? `${relLagSec >= 0 ? '+' : ''}${relLagSec.toFixed(1)}s` : '--';
+            dbg.textContent = `coherence:${Math.round(r.coherence * 100)}% stability:${Math.round(r.stability * 100)}% lag:${lagStr}`;
             dbg.style.color = stateColor;
             // Collect all raw components for post-session analysis
             if (isSessionRunning) rfbCoherenceRecording.push({
@@ -1008,6 +1009,15 @@ function switchState(newState, isManual) {
     if (newState === 'reset') {
         if (!isManual) resetCount++;
         if (prevState === 'rest') isRecoveryState = true;
+        // If coming from active with HR still above the resting zone, the user
+        // stopped intentionally (timer or manual) rather than because HR dropped —
+        // treat as a recovery so lag and peak HR are tracked.
+        if (prevState === 'active') {
+            const restingHi = (typeof RESTING_HR !== 'undefined' && typeof RESTING_HR_BANDWIDTH !== 'undefined')
+                ? RESTING_HR + RESTING_HR_BANDWIDTH / 2
+                : Infinity;
+            if (latestHR > restingHi) isRecoveryState = true;
+        }
     }
 
     currentState = newState;
@@ -1019,6 +1029,14 @@ function switchState(newState, isManual) {
 
     if (newState === 'rest') {
         maxHrInRest = 0; timeOfMaxHrInRest = 0; isRecoveryState = true; recoverySeconds = 0;
+        document.getElementById('maxHrDisplay').innerText = '--';
+        document.getElementById('lagDisplay').innerText = '--';
+    }
+
+    // Initialise recovery HR tracking whenever entering reset with isRecoveryState active.
+    // Covers both the existing rest->reset path and the new active->reset-with-elevated-HR path.
+    if (newState === 'reset' && isRecoveryState && prevState !== 'reset') {
+        maxHrInRest = 0; timeOfMaxHrInRest = 0; recoverySeconds = 0;
         document.getElementById('maxHrDisplay').innerText = '--';
         document.getElementById('lagDisplay').innerText = '--';
     }
