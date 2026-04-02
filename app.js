@@ -33,6 +33,10 @@ class HRVProcessor {
         this.lastCoherence     = 0;
         this.emaTau            = 8;    // seconds — time constant for coherence smoothing
         this.lastCoherenceTime = 0;    // ms epoch of last _ema call
+        // Time-domain peak offset tracking (replaces FFT phase)
+        this._currentCycleMaxHr = 0;  // highest HR seen in current breath cycle
+        this._lastHrMaxTs       = 0;  // wall-clock timestamp of that peak
+        this._lastInhaleEndTs   = 0;  // wall-clock timestamp of last inhale→exhale turn
     }
     addRR(rrInterval, timestamp) {
         if (!this._isValidRR(rrInterval)) return;
@@ -701,30 +705,16 @@ function computeResonance() {
 
     const stability = computeStability(peakFreqHistory);
 
-    // Phase alignment — uses window centre time as reference because the Hanning
-    // window emphasises the middle of the 120 s buffer, not its start.
+    // Phase alignment — time-domain peak offset method.
+    // Measures actual seconds between inhale end and the subsequent HR peak,
+    // then normalises to degrees. 72° offset centres "0" on the expected healthy lag.
     let phaseDiffDeg = null;
-    if (result.validBreathingRate && rfbWallStartTime > 0 && result.windowCenterTime > 0) {
-        const breathPeriodMs = rfbBreathPeriodMs();
-        const inhaleFrac     = rfbGetInhaleFrac();
-        const elapsed        = result.windowCenterTime - rfbWallStartTime;
-        const breathPhase    = ((elapsed % breathPeriodMs) + breathPeriodMs) % breathPeriodMs / breathPeriodMs;
-        // Expected FFT phase: RR oscillation is at maximum at exhale onset (breathPhase = inhaleFrac).
-        // FFT phase=0 means the oscillation is at max at the reference time, so
-        // expected phase = 2π × (inhaleFrac − breathPhase), wrapped to [−π, π].
-
-const PHYSIO_LAG_RAD = 72 * Math.PI / 180; // 72-degree physiological lag
-
-// Current expected phase: HR max at exhale onset
-let expectedPhase = 2 * Math.PI * (inhaleFrac - breathPhase);
-
-// Apply the lag: Shift the expected HR peak 72 degrees LATER
-expectedPhase -= PHYSIO_LAG_RAD; 
-
-        expectedPhase = ((expectedPhase + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
-        let diff = result.peakPhaseRad - expectedPhase;
-        diff = ((diff + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
-        phaseDiffDeg = Math.round(diff * 180 / Math.PI);
+    if (this._lastInhaleEndTs > 0 && this._lastHrMaxTs > 0) {
+        const lagSec        = (hrvProcessor._lastHrMaxTs - hrvProcessor._lastInhaleEndTs) / 1000;
+        const breathPeriodSec = rfbBreathPeriodMs() / 1000;
+        const rawPhaseDeg   = (lagSec / breathPeriodSec) * 360;
+        // Subtract 72° physiological offset so 0° = healthy 1–2 s vagal lag
+        phaseDiffDeg = Math.round(rawPhaseDeg - 72);
     }
 
     const ri = computeResonanceIndex(result.coherence, stability, phaseDiffDeg);
@@ -791,9 +781,8 @@ function updateCoherenceDisplay() {
                 dbg.style.cssText = 'font-size:10px;opacity:0.5;text-align:center;width:100%;margin-top:2px;font-family:monospace;';
                 coherVal.parentElement.insertAdjacentElement('afterend', dbg);
             }
-            const mult = Math.cos(r.phaseDiffDeg * Math.PI / 180)
-            const phStr = r.phaseDiffDeg != null ? `ph:${r.phaseDiffDeg > 0 ? '+' : ''}${r.phaseDiffDeg}°` : 'ph:--';
-            dbg.textContent = `c:${Math.round(r.coherence * 100)}% stab:${Math.round(r.stability * 100)}% ${phStr}  ${mult}`;
+            const lagSeconds = r.phaseDiffDeg != null ? ((r.phaseDiffDeg + 72) / 360 * (rfbBreathPeriodMs()/1000)).toFixed(1) : '--';
+            dbg.textContent = `c:${Math.round(r.coherence * 100)}% stab:${Math.round(r.stability * 100)}% lag:${lagSeconds}s`;
             dbg.style.color = stateColor;
             // Collect all raw components for post-session analysis
             if (isSessionRunning) rfbCoherenceRecording.push({
@@ -1161,6 +1150,28 @@ function handleHeartRate(event) {
             rrOffset += 2;
         }
         if (rrValuesMs.length > 0) recordRrHistory(rrValuesMs, Date.now());
+    }
+
+    // ── RFB phase tracking: detect inhale→exhale turn and lock HR peak ──────────
+    if (currentState === 'reset' && rfbPhase) {
+        const breathPeriodMs = rfbBreathPeriodMs();
+        const elapsed        = Date.now() - rfbWallStartTime;
+        const cyclePos       = elapsed % breathPeriodMs;
+        const inhaleMs       = rfbGetInhaleSec() * 1000;
+
+        // Detect the moment cyclePos crosses the inhale→exhale threshold.
+        // A 1-second tolerance window catches the crossing on whichever heartbeat
+        // arrives first after the boundary.
+        if (cyclePos >= inhaleMs && (cyclePos - 1000) < inhaleMs) {
+            hrvProcessor._lastInhaleEndTs   = Date.now();
+            hrvProcessor._currentCycleMaxHr = 0; // reset peak tracker for new exhale phase
+        }
+
+        // Track the highest HR seen; record its timestamp for lag calculation.
+        if (currentHeartRate > hrvProcessor._currentCycleMaxHr) {
+            hrvProcessor._currentCycleMaxHr = currentHeartRate;
+            hrvProcessor._lastHrMaxTs       = Date.now();
+        }
     }
 
     recordHrHistory(currentHeartRate);
