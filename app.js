@@ -717,10 +717,25 @@ function updateCoherenceDisplay() {
         } else {
             const pct   = Math.round(r.coherence * 100);
             const level = pct >= 50 ? 3 : pct >= 30 ? 2 : pct >= 15 ? 1 : 0;
-            // ~ suffix indicates breathing pace is drifting; stability % shown for debugging.
- //           const unstableStr = r.isUnstable ? `~${Math.round(r.stability * 100)}%` : '';
-            const unstableStr =  `~${Math.round(r.stability * 100)}%`;
-            coherVal.textContent = `${pct}% ${starsHtml(level)}${unstableStr}`;
+
+let stabilitySymbol = '';
+
+if (r !== null && r.validRate) {
+    const stability = r.stability;
+
+    if (stability < 0.4) {
+        // Severe disorder: high frequency drift (> 0.014 Hz)
+        stabilitySymbol = ' ≈'; 
+    } else if (stability < 0.75) {
+        // Moderate disorder: drifting resonance (0.00875 - 0.014 Hz)
+        stabilitySymbol = ' ~'; 
+    } else {
+        // Healthy state: high precision resonance (< 0.00875 Hz)
+        stabilitySymbol = ''; 
+    }
+}
+
+            coherVal.textContent = `${pct}% ${starsHtml(level)} ${stabilitySymbol}`;
             // Collect sample for post-session analysis (only when session is running)
             if (isSessionRunning) rfbCoherenceRecording.push({ t: sessionSeconds, c: pct });
         }
