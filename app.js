@@ -597,7 +597,7 @@ function restoreSessionUI() {
         manualResetBtn.classList.toggle('rfb', !!rfbOn);
         toggleBtn.innerText = 'Pause session'; toggleBtn.classList.remove('paused');
     } else if (currentState === 'reset') {
-        manualResetBtn.innerHTML = '&#9654;'; manualResetBtn.style.display = 'flex';
+        manualResetBtn.innerHTML = '&#9654;'; manualResetBtn.style.display = isResonanceBreathing ? 'none' : 'flex';
         manualResetBtn.classList.toggle('rfb', !!rfbOn);
         toggleBtn.innerText = 'Pause session'; toggleBtn.classList.remove('paused');
         if (rfbOn) {
@@ -1591,6 +1591,9 @@ function setRbDisplayMode(isRb) {
     hide('restStatsContainer');
     hide('stateTimerBlock');
     hide('activeTotalTimerBlock');
+    hide('manualResetBtn');
+    const desc = document.getElementById('stateDescription');
+    if (desc) desc.classList.toggle('rb-mode', isRb);
 }
 
 function startSession() {

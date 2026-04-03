@@ -550,3 +550,8 @@ body.connected #trainingUI {
     border: 1px solid #2a2a2a;
     max-width: 260px;
 }
+
+/* ─── Resonance Breathing layout adjustments ─────────────────────────────── */
+#stateDescription.rb-mode {
+    margin-top: 2vh;
+}
