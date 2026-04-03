@@ -567,6 +567,7 @@ function restoreSession() {
     } catch (e) { return false; }
 }
 function restoreSessionUI() {
+    setRbDisplayMode(isResonanceBreathing);
     setTimerDisplay(document.getElementById('stateTimerDisplay'),       stateSeconds);
     setTimerDisplay(document.getElementById('sessionTimerDisplay'),     sessionSeconds);
     setTimerDisplay(document.getElementById('totalActiveTimerDisplay'), totalActiveSeconds);
@@ -1060,12 +1061,14 @@ function switchState(newState, isManual) {
     }
 
     // Stop RFB animation and clear RFB phase whenever leaving reset.
-    // Hide the coherence row when not in RFB state.
+    // Hide the coherence row and clear debug display when not in RFB state.
     if (newState !== 'reset') {
         stopRfbAnimation();
         rfbPhase = false; rfbSecondsRemaining = 0;
         const coherEl = document.getElementById('coherenceRow');
         if (coherEl) coherEl.style.display = 'none';
+        const dbg = document.getElementById('rfbDebug');
+        if (dbg) dbg.textContent = '';
     }
 
     const rfbOn = (typeof RFB_ENABLED !== 'undefined') && RFB_ENABLED;
@@ -1529,6 +1532,8 @@ function saveSessionToHistory(summary, notes) {
 }
 
 function finishSession() {
+    const dbg = document.getElementById('rfbDebug');
+    if (dbg) dbg.textContent = '';
     if (currentPeriodType === 'active') closeActivePeriod(true);
     else if (currentPeriodType === 'recovery') closeRecoveryPeriod(true);
     clearInterval(sessionInterval);
@@ -1539,6 +1544,7 @@ function finishSession() {
 
 function teardownSession() {
     isResonanceBreathing = false; rfbExtended = false;
+    setRbDisplayMode(false);
     const toggleBtn = document.getElementById('toggleSessionBtn');
     toggleBtn.innerText = 'Start Session'; toggleBtn.classList.remove('running', 'paused');
     document.getElementById('manualResetBtn').style.display = 'none';
@@ -1580,6 +1586,13 @@ function showActivitySelectModal() {
     modal.classList.add('visible');
 }
 
+function setRbDisplayMode(isRb) {
+    const hide = id => { const el = document.getElementById(id); if (el) el.style.display = isRb ? 'none' : ''; };
+    hide('restStatsContainer');
+    hide('stateTimerBlock');
+    hide('activeTotalTimerBlock');
+}
+
 function startSession() {
     isSessionRunning = true; sessionSeconds = 0; sessionStartTime = Date.now();
     stateSeconds = 0; totalActiveSeconds = 0; resetCount = 0; recoverySeconds = 0;
@@ -1606,6 +1619,7 @@ function startSession() {
     updateActivityDisplay();
     isResonanceBreathing = (currentActivityId === 'resonance_breathing');
     rfbExtended = false;
+    setRbDisplayMode(isResonanceBreathing);
     if (isResonanceBreathing) {
         // Enter reset+RFB immediately — no active phase, no waiting for resting HR.
         switchState('reset', true);
@@ -1714,6 +1728,8 @@ document.getElementById('toggleSessionBtn').addEventListener('click', () => {
         return;
     }
     if (currentState === 'pause') { switchState('active', true); return; }
+    // Pause option is not available during a Resonance Breathing session
+    document.getElementById('modalPauseBtn').style.display = isResonanceBreathing ? 'none' : '';
     document.getElementById('sessionModal').classList.add('visible');
 });
 
