@@ -434,6 +434,8 @@ const HR_RECORDING_MAX_SAMPLES = 10800; // 3 hours at 1 Hz — hard cap to prote
 
 let sessionStartTime = 0, sessionSeconds = 0, stateSeconds = 0;
 let recoverySeconds = 0, totalActiveSeconds = 0, resetCount = 0;
+let rfbActiveSeconds = 0;    // real clock of actual RFB time (increments while rfbPhase is true)
+let rbSessionEndSeconds = 0; // sessionSeconds snapshot at the moment the RB timer hits zero
 let activeToRestCount = 0, activeToResetCount = 0, restToActiveCount = 0, resetToActiveCount = 0;
 let maxHrInRest = 0, timeOfMaxHrInRest = 0, isRecoveryState = false;
 let activityLimitTriggered = false;
@@ -527,6 +529,7 @@ function saveSession() {
             currentActivityId, currentActivityName,
             rfbPhase, rfbSecondsRemaining, rfbSessionClockStart,
             isResonanceBreathing, rfbExtended,
+            rfbActiveSeconds, rbSessionEndSeconds,
             activityLimitTriggered,
         }));
     } catch (e) {}
@@ -551,8 +554,10 @@ function restoreSession() {
         rfbSecondsRemaining = s.rfbSecondsRemaining || 0;
         rfbSessionClockStart = s.rfbSessionClockStart || 0;
         activityLimitTriggered = s.activityLimitTriggered || false;
-        isResonanceBreathing = s.isResonanceBreathing || false;
-        rfbExtended          = s.rfbExtended          || false;
+        isResonanceBreathing  = s.isResonanceBreathing  || false;
+        rfbExtended           = s.rfbExtended           || false;
+        rfbActiveSeconds      = s.rfbActiveSeconds      || 0;
+        rbSessionEndSeconds   = s.rbSessionEndSeconds   || 0;
         // Apply the restored activity's settings
         if (currentActivityId && window.activitiesAPI) {
             window.activitiesAPI.applySettings(currentActivityId);
@@ -773,27 +778,30 @@ function updateCoherenceDisplay() {
     if (coherEl) coherEl.style.display = inRfb ? 'flex' : 'none';
     if (inRfb && coherVal) {
         const r = computeResonance();
+        const showDebug = (typeof RFB_SHOW_DEBUG !== 'undefined') && RFB_SHOW_DEBUG;
+
+        // Ensure debug element exists whenever we are in RFB (created once, persists)
+        let dbg = document.getElementById('rfbDebug');
+        if (!dbg) {
+            dbg = document.createElement('div');
+            dbg.id = 'rfbDebug';
+            dbg.style.cssText = 'font-size:10px;text-align:center;width:100%;margin-top:2px;font-family:monospace;color:white;';
+            coherVal.parentElement.insertAdjacentElement('afterend', dbg);
+        }
+        dbg.style.display = showDebug ? '' : 'none';
+
         if (r === null || !r.validRate) {
-            coherVal.textContent = `0% ${starsHtml(0, false)}`;
-            // Remove any lingering debug line
-            const dbg = document.getElementById('rfbDebug');
-            if (dbg) dbg.textContent = '';
+            coherVal.textContent = `0 ${starsHtml(0, false)}`;
+            if (showDebug) dbg.textContent = 'coherence:--% stability:--% lag:--';
         } else {
             const riPct  = Math.round(r.ri * 100);
             const level  = riPct >= 50 ? 3 : riPct >= 30 ? 2 : riPct >= 15 ? 1 : 0;
-            coherVal.textContent = `${riPct}% ${starsHtml(level, riPct >= 65)}`;
-            // Debug line — shows raw components for calibration
-            let dbg = document.getElementById('rfbDebug');
-            if (!dbg) {
-                dbg = document.createElement('div');
-                dbg.id = 'rfbDebug';
-                dbg.style.cssText = 'font-size:10px;opacity:0.5;text-align:center;width:100%;margin-top:2px;font-family:monospace;';
-                coherVal.parentElement.insertAdjacentElement('afterend', dbg);
+            coherVal.textContent = `${riPct} ${starsHtml(level, riPct >= 65)}`;
+            if (showDebug) {
+                const relLagSec = r.phaseDiffDeg != null ? (r.phaseDiffDeg / 360 * (rfbBreathPeriodMs() / 1000)) : null;
+                const lagStr = relLagSec != null ? `${relLagSec >= 0 ? '+' : ''}${relLagSec.toFixed(1)}s` : '--';
+                dbg.textContent = `coherence:${Math.round(r.coherence * 100)}% stability:${Math.round(r.stability * 100)}% lag:${lagStr}`;
             }
-            const relLagSec = r.phaseDiffDeg != null ? (r.phaseDiffDeg / 360 * (rfbBreathPeriodMs() / 1000)) : null;
-            const lagStr = relLagSec != null ? `${relLagSec >= 0 ? '+' : ''}${relLagSec.toFixed(1)}s` : '--';
-            dbg.textContent = `coherence:${Math.round(r.coherence * 100)}% stability:${Math.round(r.stability * 100)}% lag:${lagStr}`;
-            dbg.style.color = stateColor;
             // Collect all raw components for post-session analysis
             if (isSessionRunning) rfbCoherenceRecording.push({
                 t:    sessionSeconds,
@@ -1123,13 +1131,17 @@ function updateTimers(increment) {
         if (stateSeconds > MAX_RECOVERY_PERIOD) switchState('reset', false);
         else if (timeOfMaxHrInRest > MAX_RESPONSE_LAG) switchState('reset', false);
     }
+    // Accumulate real RFB time regardless of extended/modal state
+    if (currentState === 'reset' && rfbPhase) rfbActiveSeconds += increment;
+
     // RFB hold-period countdown
     if (currentState === 'reset' && rfbPhase) {
         if (!rfbExtended) rfbSecondsRemaining -= increment;
         if (!rfbExtended && rfbSecondsRemaining <= 0) {
             if (isResonanceBreathing) {
-                // Time's up — show modal; breathing guide and analysis keep running
+                // Time's up — snapshot the session clock before modal delay inflates it
                 rfbSecondsRemaining = 0;
+                rbSessionEndSeconds = sessionSeconds;
                 document.getElementById('rbTimeUpModal').classList.add('visible');
             } else {
                 rfbPhase = false;
@@ -1296,13 +1308,16 @@ function handleHeartRate(event) {
 // Computes session-level RFB stats from the coherence recording.
 // All RFB periods in a session are amalgamated — the recording is a flat
 // time-series regardless of how many reset/RFB cycles occurred.
-function computeRfbSummary(recording) {
+function computeRfbSummary(recording, activeSec) {
     if (!recording || recording.length === 0) return null;
     const riVals  = recording.map(s => s.ri  ?? s.c);  // fall back to raw coherence for old format
     const avg     = Math.round(riVals.reduce((a, b) => a + b, 0) / riVals.length);
     const peak    = Math.max(...riVals);
-    const pctAboveStar1 = Math.round(riVals.filter(v => v >= 15).length / riVals.length * 100);
-    return { avg, peak, pctAboveStar1, totalSec: recording.length };
+    // Use the real RFB clock if available; fall back to recording length for old sessions
+    const totalSec = (activeSec && activeSec > 0) ? activeSec : recording.length;
+    // Denominator is total RFB time so warmup seconds count against the score
+    const pctAboveStar1 = Math.round(riVals.filter(v => v >= 15).length / totalSec * 100);
+    return { avg, peak, pctAboveStar1, totalSec };
 }
 
 // ─── Session summary ──────────────────────────────────────────────────────────
@@ -1364,7 +1379,7 @@ function computeSessionSummary() {
     const aStats = periodStats(activePeriods);
     const rStats = recoveryStats(recoveryPeriods);
 
-    const rfbStats = computeRfbSummary(rfbCoherenceRecording);
+    const rfbStats = computeRfbSummary(rfbCoherenceRecording, rfbActiveSeconds);
     return {
         date: new Date().toISOString(),
         activityName: currentActivityName || '',
@@ -1390,7 +1405,7 @@ function computeSessionSummary() {
         highestPeakHr:  rStats.peaks.length ? Math.max(...rStats.peaks) : 0,
         avgPeakHr:      rStats.peaks.length ? arrAvg(rStats.peaks)      : 0,
         lowestPeakHr:   rStats.peaks.length ? Math.min(...rStats.peaks) : 0,
-        sessionLengthSec: sessionSeconds,
+        sessionLengthSec: (isResonanceBreathing && rbSessionEndSeconds > 0) ? rbSessionEndSeconds : sessionSeconds,
         highestHr: sessionHrSamples.length ? Math.max(...sessionHrSamples) : 0,
         avgHr:     sessionHrSamples.length ? arrAvg(sessionHrSamples)      : 0,
         lowestHr:  sessionHrSamples.length ? Math.min(...sessionHrSamples) : 0,
@@ -1601,6 +1616,7 @@ function startSession() {
     stateSeconds = 0; totalActiveSeconds = 0; resetCount = 0; recoverySeconds = 0;
     activePeriods = []; recoveryPeriods = []; currentPeriodType = null; sessionHrSamples = [];
     rfbSessionClockStart = 0; activityLimitTriggered = false; sessionHrRecording = []; rfbCoherenceRecording = [];
+    rfbActiveSeconds = 0; rbSessionEndSeconds = 0;
     // Flush HR graph history and RR pipeline so stale inter-session data
     // (accumulated while the sensor kept broadcasting) doesn't anchor the
     // graph window behind the new session start.

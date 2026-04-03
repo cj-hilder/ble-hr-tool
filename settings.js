@@ -25,6 +25,7 @@ const DEFAULTS = {
     RFB_DURATION:           2.0, // minutes to spend in RFB after resting HR achieved
     RFB_SOUND:              1,   // 0=off, 1=on
     RFB_VIBRATION:          1,   // 0=off, 1=on
+    RFB_SHOW_DEBUG:         0,   // 0=off, 1=on
 };
 
 const RESONANCE_BREATHING_ID = 'resonance_breathing';
@@ -52,6 +53,7 @@ const RB_DEFAULTS = {
     RFB_DURATION:           10.0, // session length in minutes
     RFB_SOUND:              1,
     RFB_VIBRATION:          1,
+    RFB_SHOW_DEBUG:         0,
 };
 
 // Fields hidden in the settings panel when Resonance Breathing is selected.
@@ -123,6 +125,8 @@ const FIELDS = [
       desc: 'Rising filtered noise during each inhale — starts low and brightens, helping you pace the breath without watching the screen.' },
     { key: 'RFB_VIBRATION', label: 'Inhale vibration guide', type: 'toggle',
       desc: 'An initial pulse, followed by buzzing that accelerates through the inhale, then a closing pulse.' },
+    { key: 'RFB_SHOW_DEBUG', label: 'Display details', type: 'toggle',
+      desc: 'Display wave coherence, frequency stability, and phase lag — the components that are used to calculate the resonance index.' },
 ];
 
 const ACTIVITIES_KEY        = 'hrPacerActivities';
