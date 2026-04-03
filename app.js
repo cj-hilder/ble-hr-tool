@@ -1011,6 +1011,19 @@ function switchState(newState, isManual) {
     }
 
     if (newState !== 'pause') isRecoveryState = false;
+    // active→pause: if HR is still above the resting zone the user has paused
+    // mid-effort — start recovery tracking so lag and peak are captured.
+    if (newState === 'pause' && prevState === 'active') {
+        const restingHi = (typeof RESTING_HR !== 'undefined' && typeof RESTING_HR_BANDWIDTH !== 'undefined')
+            ? RESTING_HR + RESTING_HR_BANDWIDTH / 2
+            : Infinity;
+        if (latestHR > restingHi) {
+            isRecoveryState = true;
+            maxHrInRest = 0; timeOfMaxHrInRest = 0; recoverySeconds = 0;
+            document.getElementById('maxHrDisplay').innerText = '--';
+            document.getElementById('lagDisplay').innerText = '--';
+        }
+    }
     if (newState === 'reset') {
         if (!isManual) resetCount++;
         if (prevState === 'rest') isRecoveryState = true;
@@ -1235,6 +1248,17 @@ function handleHeartRate(event) {
 
         // Resonance Breathing sessions stay in reset state throughout —
         // no HR-driven transitions apply.
+        // During pause with recovery tracking active: monitor resting band and
+        // stop recovery timer once HR is stable in zone (15 consecutive beats).
+        // No state transition occurs — this is purely a timer stop.
+        if (currentState === 'pause' && isRecoveryState) {
+            const lo = RESTING_HR - RESTING_HR_BANDWIDTH / 2, hi = RESTING_HR + RESTING_HR_BANDWIDTH / 2;
+            if (currentHeartRate >= lo && currentHeartRate <= hi) resetToActiveCount++; else resetToActiveCount = 0;
+            if (resetToActiveCount >= 15) {
+                isRecoveryState = false; // stop the recovery timer — HR has returned to resting
+            }
+        }
+
         if (!isResonanceBreathing) {
             if (currentState === 'active') {
                 if (currentHeartRate >= ACTIVE_THRESHOLD_UPPER) { activeToRestCount++; activeToResetCount = 0; }
