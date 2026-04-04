@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <meta charset="UTF-8">
     <title>Autonomic HR Pacer</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#000000">
@@ -16,7 +17,7 @@
         <button id="connectBtn">Connect to HR monitor</button>
         <p id="log">Ready to connect...</p>
         <div id="setupLinks">
-            <a href="about.html">About</a>
+            <a href="about.html">Help</a><br />
             <a href="history.html">Session History</a>
         </div>
     </div>
@@ -47,7 +48,7 @@
             </div>
             <div class="stat-block">
                 <div id="lagDisplay">--</div>
-                <div class="timer-label">LAG</div>
+                <div class="timer-label">RECOVERY LAG</div>
             </div>
         </div>
 
@@ -141,7 +142,7 @@
             </div>
 
             <div class="summary-section">
-                <div class="summary-section-header lag-header">📈 Lag & Peak HR</div>
+                <div class="summary-section-header lag-header">📈 Recovery Lag & Peak HR</div>
                 <div class="summary-grid">
                     <div class="summary-stat"><span id="s-longestLag">--</span><label>Longest lag</label></div>
                     <div class="summary-stat"><span id="s-avgLag">--</span><label>Avg lag</label></div>
