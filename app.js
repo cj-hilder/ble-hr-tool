@@ -1215,7 +1215,8 @@ function handleHeartRate(event) {
     }
 
     // ── RFB phase tracking: detect inhale→exhale turn and lock HR peak ──────────
-    if (currentState === 'reset' && rfbPhase) {
+const rfbOnNow = (typeof RFB_ENABLED !== 'undefined') && RFB_ENABLED;
+if (currentState === 'reset' && rfbOnNow && rfbWallStartTime > 0) {
         const breathPeriodMs = rfbBreathPeriodMs();
         const elapsed        = Date.now() - rfbWallStartTime;
         const cyclePos       = elapsed % breathPeriodMs;
