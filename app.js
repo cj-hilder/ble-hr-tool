@@ -626,10 +626,34 @@ function restoreSessionUI() {
     document.getElementById('homeBtn').style.display = 'none';
 }
 
+// --- Updated Wake Lock Logic ---
 async function requestWakeLock() {
-    try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); }
-    catch (err) { console.log('Wake Lock Error:', err); }
+    // Only request if the API is supported and we don't already have an active lock
+    if ('wakeLock' in navigator && wakeLock === null) {
+        try {
+            wakeLock = await navigator.wakeLock.request('screen');
+            
+            // Log for debugging
+            console.log('Wake Lock acquired');
+
+            // Handle the case where the system releases the lock
+            wakeLock.addEventListener('release', () => {
+                console.log('Wake Lock was released');
+                wakeLock = null; 
+            });
+        } catch (err) {
+            console.log('Wake Lock Error:', err);
+        }
+    }
 }
+
+// --- Re-acquire lock when the app comes back to the foreground ---
+document.addEventListener('visibilitychange', async () => {
+    if (wakeLock !== null && document.visibilityState === 'visible') {
+        await requestWakeLock();
+    }
+});
+
 
 function resetTimeout() {
     clearTimeout(heartbeatTimeout);
