@@ -4,7 +4,7 @@
 
 A specialised, web-based heart rate pacing app designed for individuals with dysautonomia (such as POTS, Long COVID, ME/CFS, or Post-Concussion Syndrome).
 
-This app is intended to help you visualise what your heart is doing and help you pace yourself during exercise. It is not intended for logging symptoms or offering advice. To use this app effectively you need to be aware of your symptoms, and understand how to pace your progress. 
+This app is intended to help you visualise what your heart is doing and help you pace yourself during exercise. It is not intended for logging symptoms, nor does it analyse the data and offer advice. To use this app effectively you need to be aware of your symptoms, and understand how to pace your progress. 
 
 This app was built by a software developer managing their own post-concussion dysautonomia; not by a clinician or researcher. It is a best-effort personal project, grounded in published protocols and personal experience, that has worked well for its author. It may or may not work for you. Nothing here should be taken as medical advice, and it is no substitute for working with a qualified healthcare provider who understands your condition.
 
@@ -36,7 +36,7 @@ The app is based on three principles:
 
 The app implements this by monitoring your live heart rate via a Bluetooth HR monitor and alerting you — with sound and vibration — when your heart rate crosses into or out of threshold zones, allowing you to follow strict pacing without having to watch the screen continuously.
 
-Do not blindly follow the app and be ready to adjust the settings, hit the reset button, or end the session if needed.
+Do not blindly follow the app. Be ready to adjust the settings, hit the reset button, or end the session if needed.
 
 ---
 
@@ -113,7 +113,7 @@ You are currently in the active state but want to rest voluntarily — not becau
 
 ## Resonance Frequency Breathing (RFB)
 
-Resonance Frequency Breathing is a biofeedback technique. Regular RFB practice, particularly during rest periods, has evidence of increasing vagal tone over time.
+Resonance Frequency Breathing is a biofeedback technique. Regular RFB practice has evidence of increasing vagal tone over time.
 
 At a particular breathing rate respiratory and cardiac rhythms enter resonance. This is typically around 6 breaths per minute, but varying between individuals in the range of 4.5–7 bpm. The heart rate rises during each inhale and falls during each exhale. When breathing rate matches the body's resonance frequency the amplitude of these oscillations is maximised.
 
@@ -126,13 +126,13 @@ your breathing has settled down before attempting to follow the breathing guide,
 
 ### How it works
 
-When RFB is enabled in settings, entering the Reset state transforms the experience:
+You can choose "Resonance Breathing" from the activity drop-down menu, or for any other activity you can enable it in settings, which transforms the heart rate Reset into resonance frequency breathing.
 
 - **The status dot turns blue** and **pulses in and out** as a breath pacer — expanding during inhale, contracting during exhale, with a subtle flash at each transition.
 - **A sine wave overlay** appears on the HR graph, showing the HR pattern your heart *should* produce if breathing is coupled to the breath pacer. This gives you a visual target for coherence.
 - **Sound guidance** — a rising filtered noise during each inhale, brightening in frequency as the inhale progresses, then falling silent during the exhale. Allows you to follow the breath without watching the screen.
 - **Vibration guidance** — an opening pulse at the start of each inhale, followed by a buzzing that accelerates in frequency through the inhale, and a closing pulse at the end. Provides a tactile breath guide.
-- **Once your HR has returned to your resting band for 15 seconds**, the app enters an extended RFB phase — shown as a countdown timer — before returning you to Continue activity. The default is 2 minutes. This is the core of the practice: staying in the resonance breathing state after the HR has settled, deepening the vagal recovery before returning to exertion.
+- **During heart rate Reset, once your HR has returned to your resting HR**, the app enters an extended RFB phase — shown as a countdown timer — before returning you to Continue activity. The default is 2 minutes. This is the core of the practice: staying in the resonance breathing state after the HR has settled, deepening the vagal recovery before returning to exertion.
 
 ### Resonance score
 
@@ -149,7 +149,7 @@ The score appears as a number and a star rating beneath the state description.
 
 The score requires approximately one minute of RR data to compute accurately, and appears as 0 until enough data is available.
 
-**Important:** Do not stress over achieving a high score. Stressing about the number will actively lower it. A healthy nervous system will earn three stars. With dysautonomia, your baroreflex is out of practice — scores of 10–20 early in your practice are completely normal and a solid starting point. The goal is stability and a slow upward trend over weeks, not an impressive number in any individual session. A low resonance score, or even a flat HR line, is physiologically expected when the ANS is depleted. The visible oscillation grows as ANS function recovers.
+**Important:** Do not stress over achieving a high score. Stressing about the number will actively lower it. A healthy nervous system will earn three stars. With dysautonomia, your baroreflex is out of practice — scores of 10–20 early in your practice are completely normal and a solid starting point. The goal is stability and a slow upward trend over weeks, not an impressive number in any individual session. A low resonance score, or even a flat HR line, is physiologically expected when the ANS is depleted. The score will increase as ANS function recovers.
 
 The resonance score is most meaningful as a longitudinal tool: tracking whether your star rating and score gradually improve over weeks of consistent practice is a meaningful recovery signal.
 
