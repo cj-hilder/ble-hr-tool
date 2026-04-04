@@ -1662,7 +1662,7 @@ function handleDisconnect() {
     clearTimeout(heartbeatTimeout);
     if (isSessionRunning && !isReconnecting) startReconnect();
     else if (!isSessionRunning) {
-        log('❌ Disconnected from device. Refresh the page to reconnect.', true);
+        log('❌ Disconnected from device', true);
         document.body.classList.remove('connected');
         if (wakeLock !== null) wakeLock.release().then(() => { wakeLock = null; });
     }
@@ -1870,7 +1870,7 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
         if (restored) { restoreSessionUI(); sessionInterval = setInterval(handleTick, 1000); }
         else document.getElementById('homeBtn').style.display = 'flex';
     } catch (error) {
-        log('❌ Error: ' + error.message + '<br><br>💡 Tip: Please close any other app (like Polar Flow) that might be paired with the HR device.', true);
+        log('❌ Error: ' + error.message + '<br><br>💡 Tip: Please close any other app (like Polar Flow) that might be paired with the HR device, or unpair from device or phone settings.', true);
     }
 });
 
