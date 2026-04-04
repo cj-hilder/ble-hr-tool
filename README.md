@@ -132,7 +132,7 @@ You can choose "Resonance Breathing" from the activity drop-down menu, or for an
 - **A sine wave overlay** appears on the HR graph, showing the HR pattern your heart *should* produce if breathing is coupled to the breath pacer. This gives you a visual target for coherence.
 - **Sound guidance** — a rising filtered noise during each inhale, brightening in frequency as the inhale progresses, then falling silent during the exhale. Allows you to follow the breath without watching the screen.
 - **Vibration guidance** — an opening pulse at the start of each inhale, followed by a buzzing that accelerates in frequency through the inhale, and a closing pulse at the end. Provides a tactile breath guide.
-- **During heart rate Reset, once your HR has returned to your resting HR**, the app enters an extended RFB phase — shown as a countdown timer — before returning you to Continue activity. The default is 2 minutes. This is the core of the practice: staying in the resonance breathing state after the HR has settled, deepening the vagal recovery before returning to exertion.
+- **During heart rate Reset, once your HR has returned to your resting HR**, the app enters an extended RFB phase — shown as a countdown timer — before returning you to Continue activity. The default is 2 minutes. This promotes staying in the resonance breathing state after the HR has settled, deepening the  recovery before returning to exertion.
 
 ### Resonance score
 
@@ -149,7 +149,7 @@ The score appears as a number and a star rating beneath the state description.
 
 The score requires approximately one minute of RR data to compute accurately, and appears as 0 until enough data is available.
 
-**Important:** Do not stress over achieving a high score. Stressing about the number will actively lower it. A healthy nervous system will earn three stars. With dysautonomia, your baroreflex is out of practice — scores of 10–20 early in your practice are completely normal and a solid starting point. The goal is stability and a slow upward trend over weeks, not an impressive number in any individual session. A low resonance score, or even a flat HR line, is physiologically expected when the ANS is depleted. The score will increase as ANS function recovers.
+**Important:** Do not stress over achieving a high score. Stressing about the number will actively lower it. A healthy nervous system is, with practice, usually capable of scores over 50. With dysautonomia — scores of 10–20 early in your recovery are completely normal and a solid starting point. The goal is stability and a slow upward trend over weeks, not an impressive number in any individual session. A low score, or even a flat HR line, is physiologically expected when the ANS is depleted. The score will increase as ANS function recovers.
 
 The resonance score is most meaningful as a longitudinal tool: tracking whether your star rating and score gradually improve over weeks of consistent practice is a meaningful recovery signal.
 
