@@ -4,6 +4,8 @@
 
 A specialised, web-based heart rate pacing app designed for individuals with dysautonomia (such as POTS, Long COVID, ME/CFS, or Post-Concussion Syndrome).
 
+This app is intended to help you visualise what your heart is doing and help you pace yourself during exercise. It is not intended for logging symptoms or offering advice. To use this app effectively you need to be aware of your symptoms, and understand how to pace your progress. 
+
 This app was built by a software developer managing their own post-concussion dysautonomia; not by a clinician or researcher. It is a best-effort personal project, grounded in published protocols and personal experience, that has worked well for its author. It may or may not work for you. Nothing here should be taken as medical advice, and it is no substitute for working with a qualified healthcare provider who understands your condition.
 
 > **Note:** Wrist based (optical) heart rate sensors are not usually suitable for measuring heart rate in the presence of dysautonomia. They are misled by irregular beats, weak pulse strength, and arm movement. They will often be significantly wrong by upwards of 30 bpm. A chest strap sensor, e.g. Polar H10, is mandatory for HR based pacing with dysautonomia.
@@ -34,7 +36,7 @@ The app is based on three principles:
 
 The app implements this by monitoring your live heart rate via a Bluetooth HR monitor and alerting you — with sound and vibration — when your heart rate crosses into or out of threshold zones, allowing you to follow strict pacing without having to watch the screen continuously.
 
-This app is intended to help you visualise what your heart is doing and help you pace yourself during exercise. It is not a complete *one-stop shop* for dysautonomia recovery. You must understand your diagnosis, be aware of your symptoms, and know how to track and pace your progress. Do not blindly follow the app, but be aware of your symptoms and be ready to adjust the settings, hit the reset button, or end the session if needed.
+Do not blindly follow the app and be ready to adjust the settings, hit the reset button, or end the session if needed.
 
 ---
 
@@ -117,6 +119,8 @@ At a particular breathing rate respiratory and cardiac rhythms enter resonance. 
 
 The app integrates RFB directly into the Reset state, turning a  rest period into a structured, guided recovery practice.
 
+It also allows you to practice resonance frequency breathing on its own, as an activity type. To do this, choose "Resonance Breathing" from the activity drop-down menu.
+
 **Note** If you have been exercising at a level that causes you to breathe heavily, wait until
 your breathing has settled down before attempting to follow the breathing guide, otherwise you will be depriving your system of oxygen by breathing too slowly. 
 
@@ -134,20 +138,20 @@ When RFB is enabled in settings, entering the Reset state transforms the experie
 
 If you are using a **Polar H10** chest strap (or any sensor that exposes raw RR intervals via the Bluetooth Heart Rate Measurement characteristic), the app can calculate a **live resonance score**. This is a combination of wave coherence, frequency stability, and phase lag.
 
-The score appears as a percentage and a star rating beneath the state description. 
+The score appears as a number and a star rating beneath the state description. 
 
-| Rating | Percentage | Resonance |
+| Rating | Score | Resonance |
 | :--- | :--- | :--- |
-| ☆☆☆ | < 15% | None |
-| ★☆☆ | ≥ 15% | Low |
-| ★★☆ | ≥ 30% | Moderate |
-| ★★★ | ≥ 50% | Strong |
+| ☆☆☆ | < 15 | None |
+| ★☆☆ | ≥ 15 | Low |
+| ★★☆ | ≥ 30 | Moderate |
+| ★★★ | ≥ 50 | Strong |
 
-The score requires approximately one minute of RR data to compute accurately, and usually appears as 0 at first until enough data is available. 
+The score requires approximately one minute of RR data to compute accurately, and appears as 0 until enough data is available.
 
-**Important:** Do not stress over achieving a high score. Stressing about the number will actively lower it. A perfectly conditioned nervous system might hold 60–80%. With dysautonomia, your baroreflex is out of practice — scores of 10–20% early in your practice are completely normal and a solid starting point. The goal is stability and a slow upward trend over weeks, not an impressive number in any individual session. A low resonance score, or even a flat HR line, is physiologically expected when the ANS is depleted. The visible oscillation grows as ANS function recovers.
+**Important:** Do not stress over achieving a high score. Stressing about the number will actively lower it. A healthy nervous system will earn three stars. With dysautonomia, your baroreflex is out of practice — scores of 10–20 early in your practice are completely normal and a solid starting point. The goal is stability and a slow upward trend over weeks, not an impressive number in any individual session. A low resonance score, or even a flat HR line, is physiologically expected when the ANS is depleted. The visible oscillation grows as ANS function recovers.
 
-The resonance score is most meaningful as a longitudinal tool: tracking whether your star rating and percentage gradually improve over weeks of consistent practice is a meaningful recovery signal.
+The resonance score is most meaningful as a longitudinal tool: tracking whether your star rating and score gradually improve over weeks of consistent practice is a meaningful recovery signal.
 
 Changes in the score during a session can be used to detect ANS fatigue and may be useful as a cue to stop for the day. This applies if you have achieved a stable score which then declines during the session or over the day.
 
@@ -266,8 +270,6 @@ The graph shows:
 - **Session metadata** in the header: date, time, activity type, duration, and average HR
 - **Legend** showing only the states that actually occurred in the session
 
-Older sessions saved before this feature was introduced will not have the recording and the button will not appear.
-
 ---
 
 ## Requirements & Usage
@@ -295,8 +297,9 @@ Bluetooth LE can be finicky, especially on Android. If the app connects but free
 
 To fix this:
 1. Close the watch or HR monitor's companion app on your phone (e.g. Polar Flow).
-2. **Crucial step:** Go into your watch or HR monitor's own settings menu and delete/unpair your phone from there.
-3. Try connecting again.
+2. Open Bluetooth settings on your phone and unpair your watch or HR monitor there.
+3. **Crucial step:** Go into your watch or HR monitor's own settings menu and delete/unpair your phone from there.
+4. Try connecting again.
 
 ---
 
