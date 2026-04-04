@@ -284,7 +284,7 @@ function renderCharts(history) {
         const rfbCoherence = history.map(s => s.rfbAvgRI ?? s.rfbAvgCoherence ?? null);
         if (rfbCoherence.some(v => v != null)) {
             rfbCard.style.display = '';
-            activeCharts.push(new Chart(rfbCanvas, buildChartConfig(labels, rfbCoherence, '#1a7fff', '%')));
+            activeCharts.push(new Chart(rfbCanvas, buildChartConfig(labels, rfbCoherence, '#1a7fff', '')));
         } else {
             rfbCard.style.display = 'none';
         }
@@ -477,8 +477,8 @@ function buildSessionCard(s, realIndex) {
             <div class="stat-group">
                 <div class="stat-group-label rfb-label">💙 Resonance Breathing</div>
                 <div class="stat-row">
-                    ${statItem(((s.rfbAvgRI ?? s.rfbAvgCoherence) ?? '--') + ((s.rfbAvgRI ?? s.rfbAvgCoherence) != null ? '%' : ''), 'Avg RI')}
-                    ${statItem(((s.rfbPeakRI ?? s.rfbPeakCoherence) ?? '--') + ((s.rfbPeakRI ?? s.rfbPeakCoherence) != null ? '%' : ''), 'Peak RI')}
+                    ${statItem(((s.rfbAvgRI ?? s.rfbAvgCoherence) ?? '--') + ((s.rfbAvgRI ?? s.rfbAvgCoherence) != null ? '' : ''), 'Avg RI')}
+                    ${statItem(((s.rfbPeakRI ?? s.rfbPeakCoherence) ?? '--') + ((s.rfbPeakRI ?? s.rfbPeakCoherence) != null ? '' : ''), 'Peak RI')}
                     ${statItem((s.rfbPctAboveStar1 ?? '--') + (s.rfbPctAboveStar1 != null ? '%' : ''), 'Time ≥★')}
                 </div>
                 <div class="stat-row">${statItem(fmtT(s.rfbTotalSec), 'Duration')}<div></div><div></div></div>
@@ -912,8 +912,8 @@ function generateSessionPDF(session) {
         const rfbMeta = [
             dateStr,
             session.activityName ? `Activity: ${session.activityName}` : null,
-            rfbAvgRI  != null ? `Avg RI: ${rfbAvgRI}%`              : null,
-            rfbPeakRI != null ? `Peak RI: ${rfbPeakRI}%`            : null,
+            rfbAvgRI  != null ? `Avg RI: ${rfbAvgRI}`              : null,
+            rfbPeakRI != null ? `Peak RI: ${rfbPeakRI}`            : null,
             session.rfbPctAboveStar1 != null ? `Time ≥★: ${session.rfbPctAboveStar1}%` : null,
             session.rfbTotalSec      != null ? `RFB duration: ${formatTime(session.rfbTotalSec)}` : null,
         ].filter(Boolean).join('   ·   ');

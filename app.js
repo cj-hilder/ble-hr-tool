@@ -1458,8 +1458,8 @@ function showSummaryModal(summary) {
         const hasRfb = summary.rfbTotalSec > 0;
         rfbSection.style.display = hasRfb ? '' : 'none';
         if (hasRfb) {
-            set('s-rfbAvg',      (summary.rfbAvgRI  ?? summary.rfbAvgCoherence)  + ' RI');
-            set('s-rfbPeak',     (summary.rfbPeakRI ?? summary.rfbPeakCoherence) + ' RI');
+            set('s-rfbAvg',      (summary.rfbAvgRI  ?? summary.rfbAvgCoherence));
+            set('s-rfbPeak',     (summary.rfbPeakRI ?? summary.rfbPeakCoherence));
             set('s-rfbPctAbove', summary.rfbPctAboveStar1 + '%');
             set('s-rfbTotal',    fmtT(summary.rfbTotalSec));
         }
