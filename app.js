@@ -1237,10 +1237,12 @@ function handleHeartRate(event) {
             }
             hrvProcessor._lastInhaleEndTs   = Date.now();
             hrvProcessor._currentCycleMaxHr = 0; // reset peak tracker for new exhale phase
-        }
-
-        // Track the highest HR seen; record its timestamp for lag calculation.
-        if (currentHeartRate > hrvProcessor._currentCycleMaxHr) {
+            // Do NOT update _lastHrMaxTs on the crossing beat — it shares the same
+            // millisecond as _lastInhaleEndTs, making > comparison fail and blocking
+            // finalisation next cycle. Only non-crossing beats update _lastHrMaxTs.
+        } else if (currentHeartRate > hrvProcessor._currentCycleMaxHr) {
+            // Non-crossing beat: track highest HR — timestamp is guaranteed to be
+            // after _lastInhaleEndTs, so finalisation will succeed next crossing.
             hrvProcessor._currentCycleMaxHr = currentHeartRate;
             hrvProcessor._lastHrMaxTs       = Date.now();
         }
