@@ -78,20 +78,24 @@ const RESONANCE_HIDDEN_KEYS = new Set([
     'TARGET_MIN_HR', 'TARGET_MAX_HR',
     'ALERT_VIBRATION', 'ALERT_SOUND',
     'RFB_ENABLED',
+    'HRV_SHOW_DEBUG',
 ]);
 const RESONANCE_HIDDEN_GROUPS = new Set([
-    'Active Thresholds', 'Recovery Limits', 'Target Zone', 'Alerts',
+    'Active Thresholds', 'Recovery Limits', 'Target Zone', 'Alerts', 'HRV Reading',
 ]);
 
 // Fields shown in the settings panel when HRV Reading is selected.
 const HRV_SHOWN_KEYS = new Set([
     'MAX_HR', 'RESTING_HR', 'RESTING_HR_BANDWIDTH',
-    'TARGET_MIN_HR', 'TARGET_MAX_HR',
     'HRV_SHOW_DEBUG',
 ]);
 const HRV_SHOWN_GROUPS = new Set([
-    'Heart Rate Range', 'Resting HR', 'Target Zone', 'HRV Reading',
+    'Heart Rate Range', 'Resting HR', 'HRV Reading',
 ]);
+
+// Fields always hidden for standard (non-built-in) activities.
+const DEFAULT_HIDDEN_KEYS   = new Set(['HRV_SHOW_DEBUG']);
+const DEFAULT_HIDDEN_GROUPS = new Set(['HRV Reading']);
 
 const ALERT_OPTIONS = [
     { value: 0, label: 'Off'     },
@@ -536,19 +540,23 @@ document.addEventListener('DOMContentLoaded', () => {
         deleteActivityBtn.style.display = (isRB || isHRV) ? 'none' : '';
         // Show/hide new button
         newActivityBtn.style.display = (isRB || isHRV) ? 'none' : '';
-        // Toggle individual field rows
+        // Toggle individual field rows (those with a data-key attribute)
         document.querySelectorAll('.sg-row[data-key]').forEach(row => {
             const key = row.dataset.key;
-            if (isRB)  { row.style.display = RESONANCE_HIDDEN_KEYS.has(key) ? 'none' : ''; }
-            else if (isHRV) { row.style.display = HRV_SHOWN_KEYS.has(key)   ? ''     : 'none'; }
-            else { row.style.display = ''; }
+            if (isRB)       { row.style.display = RESONANCE_HIDDEN_KEYS.has(key)  ? 'none' : ''; }
+            else if (isHRV) { row.style.display = HRV_SHOWN_KEYS.has(key)         ? ''     : 'none'; }
+            else            { row.style.display = DEFAULT_HIDDEN_KEYS.has(key)     ? 'none' : ''; }
+        });
+        // Hide display rows (no data-key, e.g. breathing rate) for non-RFB activity types
+        document.querySelectorAll('.sg-row:not([data-key])').forEach(row => {
+            row.style.display = (isRB && !isHRV) ? '' : 'none';
         });
         // Toggle group headers
         document.querySelectorAll('.sg-group[data-group]').forEach(g => {
             const grp = g.dataset.group;
-            if (isRB)  { g.style.display = RESONANCE_HIDDEN_GROUPS.has(grp) ? 'none' : ''; }
-            else if (isHRV) { g.style.display = HRV_SHOWN_GROUPS.has(grp)   ? ''     : 'none'; }
-            else { g.style.display = ''; }
+            if (isRB)       { g.style.display = RESONANCE_HIDDEN_GROUPS.has(grp)  ? 'none' : ''; }
+            else if (isHRV) { g.style.display = HRV_SHOWN_GROUPS.has(grp)         ? ''     : 'none'; }
+            else            { g.style.display = DEFAULT_HIDDEN_GROUPS.has(grp)     ? 'none' : ''; }
         });
         // Reset-to-defaults button label
         document.getElementById('settingsResetBtn').textContent = 'Reset to defaults';
