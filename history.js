@@ -289,6 +289,18 @@ function renderCharts(history) {
             rfbCard.style.display = 'none';
         }
     }
+
+    const hrvCanvas = document.getElementById('chartHrvIndex');
+    const hrvCard   = document.getElementById('chartHrvIndexCard');
+    if (hrvCanvas && hrvCard) {
+        const hrvVals = history.map(s => (s.activityId === 'hrv_reading' && s.hvIndexFinal != null) ? s.hvIndexFinal : null);
+        if (hrvVals.some(v => v != null)) {
+            hrvCard.style.display = '';
+            activeCharts.push(new Chart(hrvCanvas, buildChartConfig(labels, hrvVals, '#7c3aed', '')));
+        } else {
+            hrvCard.style.display = 'none';
+        }
+    }
 }
 
 // ── Notes editing ─────────────────────────────────────────────────────────────
@@ -379,6 +391,7 @@ function buildSessionCard(s, realIndex) {
     const durationMin = s.sessionLengthSec ? Math.round(s.sessionLengthSec / 60) : '--';
     const actName     = s.activityName || '';
     const notes       = s.notes || '';
+    const isHRV       = s.activityId === 'hrv_reading';
 
     const notesHtml = `
         <div class="notes-row">
@@ -400,6 +413,47 @@ function buildSessionCard(s, realIndex) {
         </div>`;
     }
 
+    // ── HRV Reading card ─────────────────────────────────────────────────────
+    if (isHRV) {
+        const hrvVal   = s.hvIndexFinal != null ? s.hvIndexFinal.toFixed(1) : '--';
+        const shortNote = s.hrvSessionTooShort
+            ? `<div class="hrv-card-short-note">⚠️ Short snapshot — less than 3 minutes. Result may be unreliable.</div>`
+            : '';
+        return `
+    <div class="session-card" id="card-${realIndex}">
+        <div class="session-card-header" data-action="toggle-card" data-index="${realIndex}">
+            <div class="session-header-left" style="pointer-events:none">
+                <div class="session-date">${fmtDate(s.date)} · ${fmtTime(s.date)}</div>
+                <div class="session-chips">
+                    <span class="chip chip-hrv">HRV Reading</span>
+                    <span class="chip chip-duration">${durationMin} min</span>
+                    ${s.hvIndexFinal != null ? `<span class="chip chip-hrv-index">HRV ${hrvVal}</span>` : ''}
+                </div>
+            </div>
+            <span class="session-chevron" style="pointer-events:none">›</span>
+        </div>
+        <div class="session-detail">
+            <div id="notes-container-${realIndex}">${notesHtml}</div>
+
+            <div class="stat-group">
+                <div class="stat-group-label hrv-label">💜 HRV Index</div>
+                <div class="stat-row">
+                    ${statItem(hrvVal, 'HRV')}
+                    ${statItem(fmtT(s.sessionLengthSec), 'Duration')}
+                    ${statItem(fmtN(s.avgHr), 'Avg HR')}
+                </div>
+                ${shortNote}
+            </div>
+
+            ${hasHrRecording(s)
+                ? `<button class="session-graph-btn" data-action="view-graph" data-index="${realIndex}">📈 View HR Graph (PDF)</button>`
+                : ''}
+            <button class="session-delete-btn" data-action="delete-session" data-index="${realIndex}">Delete this session</button>
+        </div>
+    </div>`;
+    }
+
+    // ── Standard activity card ────────────────────────────────────────────────
     return `
     <div class="session-card" id="card-${realIndex}">
         <div class="session-card-header" data-action="toggle-card" data-index="${realIndex}">
@@ -807,9 +861,9 @@ function generateSessionPDF(session) {
         doc.text('Resting HR', lx + 6.5, ly);
     }
 
-    // ── Page 2: Resonance coherence graph (only if RFB data exists) ──────────
+    // ── Page 2: Resonance coherence graph (only if RFB data exists and not HRV Reading) ──
     const rfbRec = session.rfbCoherenceRecording;
-    if (rfbRec && rfbRec.length >= 2) {
+    if (rfbRec && rfbRec.length >= 2 && session.activityId !== 'hrv_reading') {
         doc.addPage('a4', 'landscape');
         doc.setFillColor(255, 255, 255);
         doc.rect(0, 0, PW, PH, 'F');

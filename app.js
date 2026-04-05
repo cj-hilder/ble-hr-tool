@@ -157,6 +157,23 @@ class HRVProcessor {
         this.lastCoherenceTime = now;
         return this.lastCoherence;
     }
+    // Compute RMSSD, SDNN, mean RR from the raw buffer (sensor artifacts already excluded
+    // during ingestion). Physiological artifacts (ectopy) are intentionally included —
+    // their effect on RMSSD is discounted by the quality factor in calculateHRVIndex.
+    computeHRVMetrics(windowMs = 180000) {
+        if (this.buffer.length < 5) return null;
+        const cutoff = Date.now() - windowMs;
+        let startIdx = 0;
+        while (startIdx < this.timestamps.length && this.timestamps[startIdx] < cutoff) startIdx++;
+        const rrs = this.buffer.slice(startIdx);
+        if (rrs.length < 5) return null;
+        const meanRR = rrs.reduce((a, b) => a + b, 0) / rrs.length;
+        const sdnn   = Math.sqrt(rrs.reduce((s, x) => s + (x - meanRR) ** 2, 0) / rrs.length);
+        let sumSqDiff = 0;
+        for (let i = 1; i < rrs.length; i++) sumSqDiff += (rrs[i] - rrs[i - 1]) ** 2;
+        const rmssd = Math.sqrt(sumSqDiff / (rrs.length - 1));
+        return { rmssd: Math.round(rmssd), sdnn: Math.round(sdnn), meanRR: Math.round(meanRR), n: rrs.length };
+    }
     reset() {
         this.buffer = []; this.timestamps = [];
         this.lastCoherence = 0; this.lastCoherenceTime = 0;
@@ -232,26 +249,43 @@ function recordRrHistory(rrValuesMs, notifTs) {
         lastRrTimestamp = notifTs;
     }
 
-    // Apply a single consistent artifact filter across all consumers:
-    // graph display and spectral analysis.
-    // A beat is an artifact if it differs from its predecessor by >20%.
-    // prevRr seeds from the last accepted beat in the previous packet (persisted
-    // across calls via lastAcceptedRr) so the filter works at packet boundaries.
+    // Two-tier artifact classification:
+    //
+    // Sensor artifact (dropped from everything — graph, HRV analysis, RFB analysis):
+    //   • RR < 250 ms or > 2000 ms — physiologically impossible rate
+    //   • >50% deviation from previous accepted beat — sensor dropout/malfunction
+    //   These imply a hardware problem, not real cardiac events.
+    //
+    // Physiological artifact (kept in graph + HRV analysis, counted for quality factor):
+    //   • 20–50% deviation from previous accepted beat — real ectopic beat or ANS irregularity
+    //   These are genuine heartbeats; their influence on RMSSD is discounted by the
+    //   quality factor inside calculateHRVIndex rather than being removed from the data.
     let prevRr = recordRrHistory._lastAcceptedRr || 0;
 
     for (const { rr, ts: t } of pairs) {
-        const isArtifact = prevRr > 0 && Math.abs(rr - prevRr) / prevRr >= 0.2;
+        sessionTotalBeats++;
 
-        if (!isArtifact) {
-            prevRr = rr;
-            // Clean beat — feed to processor and graph display
-            hrvProcessor.addRR(rr, t);
-            const instantHr = Math.round(60000 / rr);
-            if (instantHr >= 24 && instantHr <= 240) {
-                rrHistory.push({ hr: instantHr, state: currentState, ts: t });
-            }
+        // Tier 1: sensor artifact check
+        const isSensorArtifact = rr < 250 || rr > 2000 ||
+            (prevRr > 0 && Math.abs(rr - prevRr) / prevRr >= 0.5);
+
+        if (isSensorArtifact) {
+            sessionSensorArtifacts++;
+            // Drop entirely — do not update prevRr, graph, or processors
+            continue;
         }
-        // Artifact beats are silently dropped from all consumers
+
+        // Tier 2: physiological artifact check (20–50% deviation)
+        const isPhysioArtifact = prevRr > 0 && Math.abs(rr - prevRr) / prevRr >= 0.2;
+        if (isPhysioArtifact) sessionPhysioArtifacts++;
+
+        // All non-sensor beats: add to graph display and HRV processor
+        prevRr = rr;
+        hrvProcessor.addRR(rr, t);
+        const instantHr = Math.round(60000 / rr);
+        if (instantHr >= 24 && instantHr <= 240) {
+            rrHistory.push({ hr: instantHr, state: currentState, ts: t });
+        }
     }
     recordRrHistory._lastAcceptedRr = prevRr;
 
@@ -390,6 +424,18 @@ let rfbSessionClockStart = 0;  // Date.now() of the very first RFB entry this se
 let rfbAnimFrame = null;
 let rfbScheduleTimer = null;
 let rfbAudioNodes = null;
+
+// ─── HRV Reading ──────────────────────────────────────────────────────────────
+let isHRVReading = false;
+let hrvSecondsRemaining = 0;
+let currentHRVIndex = null; // live-computed index shown during session and stored in summary
+const HRV_READING_ID = 'hrv_reading';
+const HRV_SESSION_DURATION_SEC = 180; // fixed 3-minute session
+
+// Per-session artifact counters (reset in startSession, incremented in recordRrHistory)
+let sessionTotalBeats     = 0;
+let sessionSensorArtifacts  = 0;
+let sessionPhysioArtifacts  = 0;
 
 // Breath timing helpers — read live globals so changes take effect immediately.
 function rfbBreathPeriodMs() {
@@ -530,6 +576,9 @@ function saveSession() {
             rfbPhase, rfbSecondsRemaining, rfbSessionClockStart,
             isResonanceBreathing, rfbExtended,
             rfbActiveSeconds, rbSessionEndSeconds,
+            isHRVReading, hrvSecondsRemaining,
+            sessionTotalBeats, sessionSensorArtifacts, sessionPhysioArtifacts,
+            currentHRVIndex,
             activityLimitTriggered,
         }));
     } catch (e) {}
@@ -558,6 +607,12 @@ function restoreSession() {
         rfbExtended           = s.rfbExtended           || false;
         rfbActiveSeconds      = s.rfbActiveSeconds      || 0;
         rbSessionEndSeconds   = s.rbSessionEndSeconds   || 0;
+        isHRVReading          = s.isHRVReading          || false;
+        hrvSecondsRemaining   = s.hrvSecondsRemaining   || 0;
+        sessionTotalBeats     = s.sessionTotalBeats     || 0;
+        sessionSensorArtifacts  = s.sessionSensorArtifacts  || 0;
+        sessionPhysioArtifacts  = s.sessionPhysioArtifacts  || 0;
+        currentHRVIndex       = s.currentHRVIndex       ?? null;
         // Apply the restored activity's settings
         if (currentActivityId && window.activitiesAPI) {
             window.activitiesAPI.applySettings(currentActivityId);
@@ -572,7 +627,7 @@ function restoreSession() {
     } catch (e) { return false; }
 }
 function restoreSessionUI() {
-    setRbDisplayMode(isResonanceBreathing);
+    setRbDisplayMode(isResonanceBreathing || isHRVReading);
     setTimerDisplay(document.getElementById('stateTimerDisplay'),       stateSeconds);
     setTimerDisplay(document.getElementById('sessionTimerDisplay'),     sessionSeconds);
     setTimerDisplay(document.getElementById('totalActiveTimerDisplay'), totalActiveSeconds);
@@ -602,10 +657,15 @@ function restoreSessionUI() {
         manualResetBtn.classList.toggle('rfb', !!rfbOn);
         toggleBtn.innerText = 'Pause session'; toggleBtn.classList.remove('paused');
     } else if (currentState === 'reset') {
-        manualResetBtn.innerHTML = '&#9654;'; manualResetBtn.style.display = isResonanceBreathing ? 'none' : 'flex';
+        manualResetBtn.innerHTML = '&#9654;';
+        manualResetBtn.style.display = (isResonanceBreathing || isHRVReading) ? 'none' : 'flex';
         manualResetBtn.classList.toggle('rfb', !!rfbOn);
         toggleBtn.innerText = 'Pause session'; toggleBtn.classList.remove('paused');
-        if (rfbOn) {
+        if (isHRVReading) {
+            document.getElementById('stateIndicator').className = 'state-dot reset-hrv';
+            descEl.style.color = '#7c3aed';
+            descEl.innerText = `HRV — ${formatTime(Math.ceil(hrvSecondsRemaining))} remaining`;
+        } else if (rfbOn) {
             document.getElementById('stateIndicator').className = 'state-dot reset-rfb';
             descEl.style.color = '#1a7fff';
             if (rfbPhase) {
@@ -729,7 +789,85 @@ function computeResonanceIndex(coherence, stability, phaseDiffDeg) {
     return Math.min(1, coherence * phaseMult * stabMult);
 }
 
-// ─── Resonance display ───────────────────────────────────────────────────────
+// ─── HRV Index ────────────────────────────────────────────────────────────────
+// Headline HRV index for the HRV Reading session type.
+// Returns null when pSensor > 2% (session data is unreliable — don't produce a number).
+// Otherwise: rawIndex × balanceFactor × qualityFactor
+//   rawIndex      = ln(RMSSD) × 15          — vagal tone, calibrated to ~healthy adult values
+//   balanceFactor ∈ [0,1]                   — sympathovagal balance; penalises sympathetic dominance
+//   qualityFactor ∈ [0,1]                   — discounts physiological irregularity (ectopy / dysautonomia)
+function calculateHRVIndex({ rmssd, sdnn, pSensor, pPhysio }) {
+    const HEALTHY_BALANCE  = 0.5;  // healthy RMSSD/SDNN ratio target
+    const ARTIFACT_CEILING = 0.05; // 5% physiological artifact rate → quality factor = 0
+    if (pSensor > 0.02 || rmssd <= 0 || sdnn <= 0) return null;
+    const rawIndex      = Math.log(rmssd) * 15;
+    const balanceFactor = Math.min(Math.max((rmssd / sdnn) / HEALTHY_BALANCE, 0), 1);
+    const qualityFactor = Math.max(1 - pPhysio / ARTIFACT_CEILING, 0);
+    return {
+        index:         Math.round(rawIndex * balanceFactor * qualityFactor * 10) / 10,
+        rawIndex:      Math.round(rawIndex * 10) / 10,
+        balanceFactor: Math.round(balanceFactor * 1000) / 1000,
+        qualityFactor: Math.round(qualityFactor * 1000) / 1000,
+    };
+}
+
+// ─── HRV display (updated once per second during HRV Reading sessions) ────────
+let _lastHRVDisplayTs = 0;
+function updateHRVDisplay() {
+    if (!isHRVReading) return;
+    const now = Date.now();
+    if (now - _lastHRVDisplayTs < 1000) return;
+    _lastHRVDisplayTs = now;
+
+    const el       = document.getElementById('coherenceDisplay');
+    const coherEl  = document.getElementById('coherenceRow');
+    const coherVal = document.getElementById('coherenceValue');
+    if (!el || !coherVal) return;
+
+    el.style.display    = 'flex';
+    if (coherEl) coherEl.style.display = 'flex';
+
+    // Ensure HRV debug line exists (created once, persists)
+    let dbg = document.getElementById('hrvDebug');
+    if (!dbg) {
+        dbg = document.createElement('div');
+        dbg.id = 'hrvDebug';
+        dbg.style.cssText = 'font-size:10px;text-align:center;width:100%;margin-top:2px;font-family:monospace;color:white;';
+        coherVal.parentElement.insertAdjacentElement('afterend', dbg);
+    }
+    const showDebug = (typeof HRV_SHOW_DEBUG !== 'undefined') && HRV_SHOW_DEBUG;
+    dbg.style.display = showDebug ? '' : 'none';
+
+    const metrics = hrvProcessor.computeHRVMetrics(HRV_SESSION_DURATION_SEC * 1000);
+    const pSensor = sessionTotalBeats > 0 ? sessionSensorArtifacts / sessionTotalBeats : 0;
+    const pPhysio = sessionTotalBeats > 0 ? sessionPhysioArtifacts / sessionTotalBeats : 0;
+
+    if (!metrics || pSensor > 0.02) {
+        coherVal.textContent = '--';
+        coherVal.style.color = '#7c3aed';
+        if (showDebug) dbg.textContent = pSensor > 0.02 ? 'sensor unreliable' : 'collecting data…';
+        currentHRVIndex = null;
+        return;
+    }
+
+    const result = calculateHRVIndex({ rmssd: metrics.rmssd, sdnn: metrics.sdnn, pSensor, pPhysio });
+    if (!result) {
+        coherVal.textContent = '--';
+        coherVal.style.color = '#7c3aed';
+        if (showDebug) dbg.textContent = 'insufficient data';
+        currentHRVIndex = null;
+        return;
+    }
+
+    currentHRVIndex = result.index;
+    coherVal.textContent = result.index.toFixed(1);
+    coherVal.style.color = '#7c3aed';
+
+    if (showDebug) {
+        dbg.textContent =
+            `RMSSD:${metrics.rmssd}ms  balance:${Math.round(result.balanceFactor * 100)}%  anomalies:${Math.round(result.qualityFactor * 100)}%`;
+    }
+}
 function computeResonance() {
     if (!hasRrData) return null;
     const result = hrvProcessor.computeCoherence();
@@ -767,6 +905,8 @@ function computeResonance() {
 
 let _lastCoherenceUpdateTs = 0;
 function updateCoherenceDisplay() {
+    // During HRV Reading, the coherence display area is managed by updateHRVDisplay instead.
+    if (isHRVReading) return;
     const now = Date.now();
     if (now - _lastCoherenceUpdateTs < 1000) return;
     _lastCoherenceUpdateTs = now;
@@ -1093,7 +1233,7 @@ function switchState(newState, isManual) {
     }
 
     // Stop RFB animation and clear RFB phase whenever leaving reset.
-    // Hide the coherence row and clear debug display when not in RFB state.
+    // Hide the coherence row and clear debug display when not in RFB/HRV state.
     if (newState !== 'reset') {
         stopRfbAnimation();
         rfbPhase = false; rfbSecondsRemaining = 0;
@@ -1101,10 +1241,14 @@ function switchState(newState, isManual) {
         if (coherEl) coherEl.style.display = 'none';
         const dbg = document.getElementById('rfbDebug');
         if (dbg) dbg.textContent = '';
+        const dbg2 = document.getElementById('hrvDebug');
+        if (dbg2) dbg2.textContent = '';
     }
 
     const rfbOn = (typeof RFB_ENABLED !== 'undefined') && RFB_ENABLED;
-    const indicatorClass = (newState === 'reset' && rfbOn) ? 'reset-rfb' : newState;
+    const indicatorClass = (newState === 'reset' && rfbOn)       ? 'reset-rfb'
+                         : (newState === 'reset' && isHRVReading) ? 'reset-hrv'
+                         : newState;
     document.getElementById('stateIndicator').className = `state-dot ${indicatorClass}`;
     updateSpeedometer(latestHR);
     if (newState !== 'pause') triggerNotification();
@@ -1123,12 +1267,18 @@ function switchState(newState, isManual) {
         manualResetBtn.classList.toggle('rfb', !!rfbOn);
         toggleBtn.innerText = 'Pause session'; toggleBtn.classList.remove('paused');
     } else if (newState === 'reset') {
-        manualResetBtn.innerHTML = '&#9654;'; manualResetBtn.style.display = isResonanceBreathing ? 'none' : 'flex';
+        manualResetBtn.innerHTML = '&#9654;';
+        manualResetBtn.style.display = (isResonanceBreathing || isHRVReading) ? 'none' : 'flex';
         manualResetBtn.classList.toggle('rfb', !!rfbOn);
         toggleBtn.innerText = 'Pause session'; toggleBtn.classList.remove('paused');
-        descEl.innerText = resetCount >= NUM_RESETS_B4_WARN ? '⚠️ Finish this session ASAP' : 'Reset to resting HR';
-        descEl.style.color = rfbOn ? '#1a7fff' : '#dc3545';
-        if (rfbOn) startRfbAnimation();
+        if (isHRVReading) {
+            descEl.innerText = `HRV — ${formatTime(Math.ceil(hrvSecondsRemaining))} remaining`;
+            descEl.style.color = '#7c3aed';
+        } else {
+            descEl.innerText = resetCount >= NUM_RESETS_B4_WARN ? '⚠️ Finish this session ASAP' : 'Reset to resting HR';
+            descEl.style.color = rfbOn ? '#1a7fff' : '#dc3545';
+            if (rfbOn) startRfbAnimation();
+        }
     } else if (newState === 'pause') {
         descEl.innerText = 'Pause activity'; descEl.style.color = '#888888';
         manualResetBtn.style.display = 'none'; manualResetBtn.classList.remove('rfb');
@@ -1179,6 +1329,21 @@ function updateTimers(increment) {
                     : `RFB — ${formatTime(Math.ceil(rfbSecondsRemaining))} remaining`;
                 descEl.style.color = '#1a7fff';
             }
+        }
+    }
+
+    // HRV Reading countdown
+    if (isHRVReading && currentState === 'reset') {
+        hrvSecondsRemaining -= increment;
+        if (hrvSecondsRemaining <= 0) {
+            hrvSecondsRemaining = 0;
+            finishSession();
+            return;
+        }
+        const descEl = document.getElementById('stateDescription');
+        if (descEl) {
+            descEl.innerText = `HRV — ${formatTime(Math.ceil(hrvSecondsRemaining))} remaining`;
+            descEl.style.color = '#7c3aed';
         }
     }
     setTimerDisplay(document.getElementById('sessionTimerDisplay'), sessionSeconds);
@@ -1275,6 +1440,7 @@ if (currentState === 'reset' && rfbOnNow && rfbWallStartTime > 0) {
 
     recordHrHistory(currentHeartRate);
     updateCoherenceDisplay(); // coherence row self-hides outside RFB
+    if (isHRVReading) updateHRVDisplay();
 
     if (isSessionRunning) {
         if (currentPeriodType !== null) currentPeriodHrSamples.push(currentHeartRate);
@@ -1443,6 +1609,10 @@ function computeSessionSummary() {
         rfbPctAboveStar1: rfbStats ? rfbStats.pctAboveStar1 : null,
         rfbTotalSec:      rfbStats ? rfbStats.totalSec      : null,
         rfbCoherenceRecording: rfbStats ? rfbCoherenceRecording.slice() : null,
+        // HRV Reading fields
+        hvIndexFinal:      isHRVReading ? currentHRVIndex : null,
+        hrvSessionTooShort: isHRVReading && sessionSeconds < HRV_SESSION_DURATION_SEC - 5,
+        activityIsHRV:     isHRVReading,
     };
 }
 
@@ -1476,6 +1646,23 @@ function showSummaryModal(summary) {
     set('s-highestHr',     fmtN(summary.highestHr));
     set('s-avgHr',         fmtN(summary.avgHr));
     set('s-lowestHr',      fmtN(summary.lowestHr));
+    // Show/hide sections based on session type
+    const isHRV = summary.activityIsHRV || summary.activityId === HRV_READING_ID;
+    ['s-activeSection', 's-recoverySection', 's-lagSection'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.style.display = isHRV ? 'none' : '';
+    });
+
+    // HRV Reading section
+    const hrvSection = document.getElementById('s-hrvSection');
+    if (hrvSection) {
+        hrvSection.style.display = isHRV ? '' : 'none';
+        if (isHRV) {
+            set('s-hrvIndex', summary.hvIndexFinal != null ? summary.hvIndexFinal.toFixed(1) : '--');
+            const shortNote = document.getElementById('s-hrvShortNote');
+            if (shortNote) shortNote.style.display = summary.hrvSessionTooShort ? '' : 'none';
+        }
+    }
+
     // RFB section — show only if coherence data was collected
     const rfbSection = document.getElementById('s-rfbSection');
     if (rfbSection) {
@@ -1576,6 +1763,8 @@ function saveSessionToHistory(summary, notes) {
 function finishSession() {
     const dbg = document.getElementById('rfbDebug');
     if (dbg) dbg.textContent = '';
+    const dbg2 = document.getElementById('hrvDebug');
+    if (dbg2) dbg2.textContent = '';
     if (currentPeriodType === 'active') closeActivePeriod(true);
     else if (currentPeriodType === 'recovery') closeRecoveryPeriod(true);
     clearInterval(sessionInterval);
@@ -1586,6 +1775,7 @@ function finishSession() {
 
 function teardownSession() {
     isResonanceBreathing = false; rfbExtended = false;
+    isHRVReading = false; currentHRVIndex = null;
     setRbDisplayMode(false);
     const toggleBtn = document.getElementById('toggleSessionBtn');
     toggleBtn.innerText = 'Start Session'; toggleBtn.classList.remove('running', 'paused');
@@ -1664,8 +1854,12 @@ function startSession() {
     document.getElementById('toggleSessionBtn').classList.add('running');
     updateActivityDisplay();
     isResonanceBreathing = (currentActivityId === 'resonance_breathing');
+    isHRVReading         = (currentActivityId === HRV_READING_ID);
     rfbExtended = false;
-    setRbDisplayMode(isResonanceBreathing);
+    // Reset artifact counters and HRV index for fresh session
+    sessionTotalBeats = 0; sessionSensorArtifacts = 0; sessionPhysioArtifacts = 0;
+    currentHRVIndex = null; _lastHRVDisplayTs = 0;
+    setRbDisplayMode(isResonanceBreathing || isHRVReading);
     if (isResonanceBreathing) {
         // Enter reset+RFB immediately — no active phase, no waiting for resting HR.
         switchState('reset', true);
@@ -1674,6 +1868,10 @@ function startSession() {
         rfbWallStartTime = Date.now();
         rfbSessionClockStart = Date.now();
         startRfbAnimation();
+    } else if (isHRVReading) {
+        // HRV Reading: stay in reset state for the full 3-minute measurement window.
+        switchState('reset', true);
+        hrvSecondsRemaining = HRV_SESSION_DURATION_SEC;
     } else {
         switchState('active', true);
     }
@@ -1742,7 +1940,11 @@ function onReconnectSuccess() {
         manualResetBtn.classList.toggle('rfb', !!rfbOn);
     } else if (currentState === 'reset') {
         manualResetBtn.classList.toggle('rfb', !!rfbOn);
-        if (rfbOn) {
+        if (isHRVReading) {
+            document.getElementById('stateIndicator').className = 'state-dot reset-hrv';
+            descEl.style.color = '#7c3aed';
+            descEl.innerText = `HRV — ${formatTime(Math.ceil(hrvSecondsRemaining))} remaining`;
+        } else if (rfbOn) {
             document.getElementById('stateIndicator').className = 'state-dot reset-rfb';
             descEl.style.color = '#1a7fff';
             if (rfbPhase) {
@@ -1761,7 +1963,7 @@ function onReconnectSuccess() {
     }
 }
 document.getElementById('manualResetBtn').addEventListener('click', () => {
-    if (!isSessionRunning || isResonanceBreathing) return;
+    if (!isSessionRunning || isResonanceBreathing || isHRVReading) return;
     if (currentState === 'reset') {
         rfbPhase = false; rfbSecondsRemaining = 0;
         switchState('active', true);
@@ -1774,8 +1976,8 @@ document.getElementById('toggleSessionBtn').addEventListener('click', () => {
         return;
     }
     if (currentState === 'pause') { switchState('active', true); return; }
-    // Pause option is not available during a Resonance Breathing session
-    document.getElementById('modalPauseBtn').style.display = isResonanceBreathing ? 'none' : '';
+    // Pause option is not available during Resonance Breathing or HRV Reading sessions
+    document.getElementById('modalPauseBtn').style.display = (isResonanceBreathing || isHRVReading) ? 'none' : '';
     document.getElementById('sessionModal').classList.add('visible');
 });
 

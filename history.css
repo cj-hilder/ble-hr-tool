@@ -117,10 +117,12 @@ header .session-count { margin-left: auto; font-size: 13px; color: #555; white-s
     font-size: 11px; padding: 2px 8px; border-radius: 20px;
     font-weight: 600; letter-spacing: 0.03em;
 }
-.chip-duration  { background: #1e1e2e; color: #888; border: 1px solid #333; }
-.chip-active    { background: #0d2b14; color: #28a745; border: 1px solid #1a4726; }
-.chip-resets    { background: #2b1010; color: #dc3545; border: 1px solid #4a1515; }
-.chip-activity  { background: #0e1e30; color: #4af; border: 1px solid #1a3a55; }
+.chip-duration   { background: #1e1e2e; color: #888; border: 1px solid #333; }
+.chip-active     { background: #0d2b14; color: #28a745; border: 1px solid #1a4726; }
+.chip-resets     { background: #2b1010; color: #dc3545; border: 1px solid #4a1515; }
+.chip-activity   { background: #0e1e30; color: #4af; border: 1px solid #1a3a55; }
+.chip-hrv        { background: #1a0e2e; color: #a78bfa; border: 1px solid #3d1f7a; }
+.chip-hrv-index  { background: #1a0e2e; color: #7c3aed; border: 1px solid #3d1f7a; font-weight: 700; }
 
 .session-chevron { color: #555; font-size: 18px; transition: transform 0.2s; flex-shrink: 0; }
 .session-card.open .session-chevron { transform: rotate(90deg); }
@@ -183,6 +185,13 @@ header .session-count { margin-left: auto; font-size: 13px; color: #555; white-s
 .session-label  { color: #777; }
 .settings-label { color: #888; }
 .rfb-label      { color: #1a7fff; }
+.hrv-label      { color: #7c3aed; }
+
+.hrv-card-short-note {
+    font-size: 11px; color: #a78bfa; margin-top: 10px;
+    padding-top: 8px; border-top: 1px solid #2a2a2a;
+    text-align: center; line-height: 1.5;
+}
 
 .stat-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 4px; }
 .stat-item { display: flex; flex-direction: column; align-items: center; text-align: center; }

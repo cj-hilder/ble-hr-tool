@@ -115,7 +115,7 @@
         <div id="summaryModalBox">
             <h2 class="summary-title">Session Summary</h2>
 
-            <div class="summary-section">
+            <div class="summary-section" id="s-activeSection">
                 <div class="summary-section-header active-header">🟢 Active Periods</div>
                 <div class="summary-grid">
                     <div class="summary-stat"><span id="s-totalActive">--</span><label>Total time</label></div>
@@ -128,7 +128,7 @@
                 </div>
             </div>
 
-            <div class="summary-section">
+            <div class="summary-section" id="s-recoverySection">
                 <div class="summary-section-header recovery-header">🟠 Recovery Periods</div>
                 <div class="summary-grid">
                     <div class="summary-stat"><span id="s-totalRecovery">--</span><label>Total time</label></div>
@@ -141,7 +141,7 @@
                 </div>
             </div>
 
-            <div class="summary-section">
+            <div class="summary-section" id="s-lagSection">
                 <div class="summary-section-header lag-header">📈 Recovery Lag & Peak HR</div>
                 <div class="summary-grid">
                     <div class="summary-stat"><span id="s-longestLag">--</span><label>Longest lag</label></div>
@@ -160,6 +160,16 @@
                     <div class="summary-stat"><span id="s-highestHr">--</span><label>Highest HR</label></div>
                     <div class="summary-stat"><span id="s-avgHr">--</span><label>Avg HR</label></div>
                     <div class="summary-stat summary-stat-wide"><span id="s-lowestHr">--</span><label>Lowest HR</label></div>
+                </div>
+            </div>
+
+            <div class="summary-section" id="s-hrvSection" style="display:none;">
+                <div class="summary-section-header hrv-header">💜 HRV Reading</div>
+                <div class="summary-grid">
+                    <div class="summary-stat summary-stat-wide"><span id="s-hrvIndex">--</span><label>HRV</label></div>
+                </div>
+                <div id="s-hrvShortNote" style="display:none;" class="hrv-short-note">
+                    ⚠️ Short snapshot — less than 3 minutes. Result may be unreliable.
                 </div>
             </div>
 

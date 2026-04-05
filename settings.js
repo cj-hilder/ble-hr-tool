@@ -26,9 +26,22 @@ const DEFAULTS = {
     RFB_SOUND:              1,   // 0=off, 1=on
     RFB_VIBRATION:          1,   // 0=off, 1=on
     RFB_SHOW_DEBUG:         0,   // 0=off, 1=on
+    HRV_SHOW_DEBUG:         0,   // 0=off, 1=on
 };
 
 const RESONANCE_BREATHING_ID = 'resonance_breathing';
+const HRV_READING_ID_S = 'hrv_reading';
+
+// Defaults for the built-in HRV Reading activity.
+const HRV_DEFAULTS = {
+    MAX_HR:               170,
+    RESTING_HR:           65,
+    RESTING_HR_BANDWIDTH: 10,
+    TARGET_MIN_HR:        60,
+    TARGET_MAX_HR:        75,
+    HRV_SHOW_DEBUG:       0,
+    // All other settings inherit from DEFAULTS but are hidden in the panel
+};
 
 // Defaults for the built-in Resonance Breathing activity.
 // RFB_ENABLED is always 1 here and is not user-editable.
@@ -54,6 +67,7 @@ const RB_DEFAULTS = {
     RFB_SOUND:              1,
     RFB_VIBRATION:          1,
     RFB_SHOW_DEBUG:         0,
+    HRV_SHOW_DEBUG:         0,
 };
 
 // Fields hidden in the settings panel when Resonance Breathing is selected.
@@ -67,6 +81,16 @@ const RESONANCE_HIDDEN_KEYS = new Set([
 ]);
 const RESONANCE_HIDDEN_GROUPS = new Set([
     'Active Thresholds', 'Recovery Limits', 'Target Zone', 'Alerts',
+]);
+
+// Fields shown in the settings panel when HRV Reading is selected.
+const HRV_SHOWN_KEYS = new Set([
+    'MAX_HR', 'RESTING_HR', 'RESTING_HR_BANDWIDTH',
+    'TARGET_MIN_HR', 'TARGET_MAX_HR',
+    'HRV_SHOW_DEBUG',
+]);
+const HRV_SHOWN_GROUPS = new Set([
+    'Heart Rate Range', 'Resting HR', 'Target Zone', 'HRV Reading',
 ]);
 
 const ALERT_OPTIONS = [
@@ -127,6 +151,9 @@ const FIELDS = [
       desc: 'An initial pulse, followed by buzzing that accelerates through the inhale, then a closing pulse.' },
     { key: 'RFB_SHOW_DEBUG', label: 'Display details', type: 'toggle',
       desc: 'Display wave coherence, frequency stability, and phase lag — the components that are used to calculate the resonance index.' },
+    { group: 'HRV Reading' },
+    { key: 'HRV_SHOW_DEBUG', label: 'Display details', type: 'toggle',
+      desc: 'Display RMSSD, autonomic balance, and anomaly percentage during an HRV Reading session.' },
 ];
 
 const ACTIVITIES_KEY        = 'hrPacerActivities';
@@ -187,6 +214,26 @@ function loadActivities() {
                 name: 'Resonance Breathing',
                 description: 'Guided resonance frequency breathing session with real-time coherence monitoring.',
                 settings: { ...RB_DEFAULTS },
+            });
+        }
+        persistActivities();
+    })();
+
+    // Ensure the built-in HRV Reading activity always exists at position 1 (after RB).
+    (function ensureHRVReading() {
+        const idx = activities.findIndex(a => a.id === HRV_READING_ID_S);
+        const baseSettings = { ...DEFAULTS, ...HRV_DEFAULTS };
+        if (idx >= 0) {
+            const hrv = activities[idx];
+            if (!hrv.settings) hrv.settings = {};
+            // Move to position 1 if not already there
+            if (idx !== 1) { activities.splice(idx, 1); activities.splice(1, 0, hrv); }
+        } else {
+            activities.splice(1, 0, {
+                id: HRV_READING_ID_S,
+                name: 'HRV Reading',
+                description: 'A 3-minute resting HRV measurement. Sit still and breathe normally.',
+                settings: baseSettings,
             });
         }
         persistActivities();
@@ -480,25 +527,31 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updatePanelForActivity(act) {
-        const isRB = act.id === RESONANCE_BREATHING_ID;
+        const isRB  = act.id === RESONANCE_BREATHING_ID;
+        const isHRV = act.id === HRV_READING_ID_S;
         // Lock/unlock the name field
-        activityNameInp.disabled = isRB;
-        activityNameInp.style.opacity = isRB ? '0.4' : '';
-        // Show/hide delete button (RB cannot be deleted)
-        deleteActivityBtn.style.display = isRB ? 'none' : '';
-        // Show/hide new button (hidden for RB to keep UI clean)
-        newActivityBtn.style.display = isRB ? 'none' : '';
+        activityNameInp.disabled = isRB || isHRV;
+        activityNameInp.style.opacity = (isRB || isHRV) ? '0.4' : '';
+        // Show/hide delete button (built-ins cannot be deleted)
+        deleteActivityBtn.style.display = (isRB || isHRV) ? 'none' : '';
+        // Show/hide new button
+        newActivityBtn.style.display = (isRB || isHRV) ? 'none' : '';
         // Toggle individual field rows
         document.querySelectorAll('.sg-row[data-key]').forEach(row => {
-            row.style.display = (isRB && RESONANCE_HIDDEN_KEYS.has(row.dataset.key)) ? 'none' : '';
+            const key = row.dataset.key;
+            if (isRB)  { row.style.display = RESONANCE_HIDDEN_KEYS.has(key) ? 'none' : ''; }
+            else if (isHRV) { row.style.display = HRV_SHOWN_KEYS.has(key)   ? ''     : 'none'; }
+            else { row.style.display = ''; }
         });
-        // Toggle group headers — hide if ALL their keys are hidden for RB
+        // Toggle group headers
         document.querySelectorAll('.sg-group[data-group]').forEach(g => {
-            g.style.display = (isRB && RESONANCE_HIDDEN_GROUPS.has(g.dataset.group)) ? 'none' : '';
+            const grp = g.dataset.group;
+            if (isRB)  { g.style.display = RESONANCE_HIDDEN_GROUPS.has(grp) ? 'none' : ''; }
+            else if (isHRV) { g.style.display = HRV_SHOWN_GROUPS.has(grp)   ? ''     : 'none'; }
+            else { g.style.display = ''; }
         });
         // Reset-to-defaults button label
-        document.getElementById('settingsResetBtn').textContent =
-            isRB ? 'Reset to defaults' : 'Reset to defaults';
+        document.getElementById('settingsResetBtn').textContent = 'Reset to defaults';
     }
 
     function updateRfbRateDisplay() {
@@ -548,7 +601,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     activityNameInp.addEventListener('change', () => {
         const act = getSelectedActivity();
-        if (act.id === RESONANCE_BREATHING_ID) return; // name is locked
+        if (act.id === RESONANCE_BREATHING_ID || act.id === HRV_READING_ID_S) return; // name is locked
         const trimmed = activityNameInp.value.trim();
         if (trimmed) { act.name = trimmed; persistActivities(); rebuildActivityDropdown(); }
     });
@@ -575,6 +628,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (activities.length <= 1) { alert('You need at least one activity type.'); return; }
         const act = getSelectedActivity();
         if (act.id === RESONANCE_BREATHING_ID) { alert('Resonance Breathing cannot be deleted.'); return; }
+        if (act.id === HRV_READING_ID_S)       { alert('HRV Reading cannot be deleted.'); return; }
         if (!confirm(`Delete activity "${act.name}"? This cannot be undone.`)) return;
         activities = activities.filter(a => a.id !== selectedActivityId);
         persistActivities();
@@ -613,9 +667,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     resetBtn.addEventListener('click', () => {
         const act = getSelectedActivity();
-        act.settings = act.id === RESONANCE_BREATHING_ID
-            ? { ...RB_DEFAULTS }
-            : { ...DEFAULTS };
+        act.settings = act.id === RESONANCE_BREATHING_ID ? { ...RB_DEFAULTS }
+                     : act.id === HRV_READING_ID_S       ? { ...DEFAULTS, ...HRV_DEFAULTS }
+                     : { ...DEFAULTS };
         persistActivities();
         loadActivityIntoPanel(act);
         applyGlobalsIfNeeded();
