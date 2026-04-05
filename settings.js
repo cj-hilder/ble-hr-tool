@@ -76,21 +76,21 @@ const RESONANCE_HIDDEN_KEYS = new Set([
     'ACTIVE_THRESHOLD_UPPER', 'ACTIVE_THRESHOLD_LOWER', 'ACTIVE_TIME_LIMIT',
     'MAX_RECOVERY_PERIOD', 'MAX_RESPONSE_LAG', 'NUM_RESETS_B4_WARN',
     'TARGET_MIN_HR', 'TARGET_MAX_HR',
-    'ALERT_VIBRATION', 'ALERT_SOUND',
     'RFB_ENABLED',
     'HRV_SHOW_DEBUG',
 ]);
 const RESONANCE_HIDDEN_GROUPS = new Set([
-    'Active Thresholds', 'Recovery Limits', 'Target Zone', 'Alerts', 'HRV Reading',
+    'Active Thresholds', 'Recovery Limits', 'Target Zone', 'HRV Reading',
 ]);
 
 // Fields shown in the settings panel when HRV Reading is selected.
 const HRV_SHOWN_KEYS = new Set([
     'MAX_HR', 'RESTING_HR', 'RESTING_HR_BANDWIDTH',
+    'ALERT_VIBRATION', 'ALERT_SOUND',
     'HRV_SHOW_DEBUG',
 ]);
 const HRV_SHOWN_GROUPS = new Set([
-    'Heart Rate Range', 'Resting HR', 'HRV Reading',
+    'Heart Rate Range', 'Resting HR', 'Alerts', 'HRV Reading',
 ]);
 
 // Fields always hidden for standard (non-built-in) activities.
@@ -547,9 +547,9 @@ document.addEventListener('DOMContentLoaded', () => {
             else if (isHRV) { row.style.display = HRV_SHOWN_KEYS.has(key)         ? ''     : 'none'; }
             else            { row.style.display = DEFAULT_HIDDEN_KEYS.has(key)     ? 'none' : ''; }
         });
-        // Hide display rows (no data-key, e.g. breathing rate) for non-RFB activity types
+        // Hide display rows (no data-key, e.g. breathing rate) only for HRV Reading
         document.querySelectorAll('.sg-row:not([data-key])').forEach(row => {
-            row.style.display = (isRB && !isHRV) ? '' : 'none';
+            row.style.display = isHRV ? 'none' : '';
         });
         // Toggle group headers
         document.querySelectorAll('.sg-group[data-group]').forEach(g => {
