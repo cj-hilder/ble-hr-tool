@@ -172,10 +172,6 @@ function generateId() {
     return 'act_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
 }
 
-function escHtml(s) {
-    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
 function loadActivities() {
     try {
         const raw = localStorage.getItem(ACTIVITIES_KEY);

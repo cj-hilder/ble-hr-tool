@@ -410,7 +410,7 @@ function updateSpeedometer(hr) {
 let bluetoothDevice;
 let isSessionRunning = false, isReconnecting = false, isManualDisconnect = false;
 let reconnectAttempts = 0;
-const MAX_RECONNECT_ATTEMPTS = 10;
+const MAX_RECONNECT_ATTEMPTS = 30;
 let currentState = 'stopped';
 let sessionInterval, wakeLock = null, heartbeatTimeout;
 
@@ -508,15 +508,6 @@ function log(message, isError = false) {
     logElement.innerHTML = message;
     if (isError) logElement.classList.add('error'); else logElement.classList.remove('error');
 }
-function formatTime(s) {
-    s = Math.max(0, Math.round(s));
-    if (s >= 3600) {
-        return String(Math.floor(s/3600)).padStart(2,'0') + ':' +
-               String(Math.floor((s%3600)/60)).padStart(2,'0') + ':' +
-               String(s%60).padStart(2,'0');
-    }
-    return String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0');
-}
 function setTimerDisplay(el, seconds) {
     el.innerText = formatTime(seconds);
     el.classList.toggle('long-time', seconds >= 3600);
@@ -580,6 +571,11 @@ function saveSession() {
             sessionTotalBeats, sessionSensorArtifacts, sessionPhysioArtifacts,
             currentHRVIndex,
             activityLimitTriggered,
+            // Pack the HR recording so it survives a disconnect/reconnect without
+            // exhausting localStorage. Packing reduces ~10KB of JSON to ~1KB binary.
+            hrRecordingPacked: sessionHrRecording.length > 0
+                ? packHrRecording(sessionHrRecording, sessionSeconds)
+                : null,
         }));
     } catch (e) {}
 }
@@ -613,6 +609,8 @@ function restoreSession() {
         sessionSensorArtifacts  = s.sessionSensorArtifacts  || 0;
         sessionPhysioArtifacts  = s.sessionPhysioArtifacts  || 0;
         currentHRVIndex       = s.currentHRVIndex       ?? null;
+        // Restore the HR recording so the PDF graph survives a reconnect
+        sessionHrRecording = s.hrRecordingPacked ? unpackHrRecording(s.hrRecordingPacked) : [];
         // Apply the restored activity's settings
         if (currentActivityId && window.activitiesAPI) {
             window.activitiesAPI.applySettings(currentActivityId);
@@ -1454,7 +1452,7 @@ if (currentState === 'reset' && rfbOnNow && rfbWallStartTime > 0) {
             }
         }
 
-        // Resonance Breathing sessions stay in reset state throughout —
+        // Resonance Breathing and HRV Reading sessions stay in reset state throughout —
         // no HR-driven transitions apply.
         // During pause with recovery tracking active: monitor resting band and
         // stop recovery timer once HR is stable in zone (15 consecutive beats).
@@ -1467,7 +1465,7 @@ if (currentState === 'reset' && rfbOnNow && rfbWallStartTime > 0) {
             }
         }
 
-        if (!isResonanceBreathing) {
+        if (!isResonanceBreathing && !isHRVReading) {
             if (currentState === 'active') {
                 if (currentHeartRate >= ACTIVE_THRESHOLD_UPPER) { activeToRestCount++; activeToResetCount = 0; }
                 else if (currentHeartRate < BRADYCARDIA_THRESHOLD) { activeToResetCount++; activeToRestCount = 0; }
@@ -1689,40 +1687,6 @@ function isQuotaError(e) {
                  e.code === 22 || e.code === 1014);
 }
 
-// Pack 1Hz HR recording into a compact binary format for localStorage.
-// Scheme: 12 bits per sample (9-bit HR + 3-bit state), 2 samples per 3 bytes, Base64 encoded.
-// Dense array indexed by second; missing seconds stored as HR=0 (sentinel).
-function packHrRecording(samples, sessionLengthSec) {
-    const STATE_CODE = { active: 0, rest: 1, reset: 2, pause: 3, stopped: 4 };
-    const len = Math.max(sessionLengthSec + 1, samples.length > 0 ? samples[samples.length - 1].t + 1 : 1);
-
-    // Build dense slot array [hr, stateCode] per second, 0/0 = no data
-    const slots = new Array(len).fill(null).map(() => [0, 0]);
-    for (const s of samples) {
-        if (s.t >= 0 && s.t < len && s.hr > 0) {
-            slots[s.t] = [Math.min(511, Math.max(1, Math.round(s.hr))), STATE_CODE[s.state] ?? 0];
-        }
-    }
-
-    // Pack pairs of 12-bit samples into 3 bytes
-    // Byte layout: [HR0:8][HR0:1|state0:3|HR1:4][HR1:5|state1:3]
-    const paddedLen = slots.length % 2 === 0 ? slots.length : slots.length + 1; // even count
-    const bytes = new Uint8Array((paddedLen / 2) * 3);
-    for (let i = 0; i < paddedLen; i += 2) {
-        const [hr0, st0] = slots[i] || [0, 0];
-        const [hr1, st1] = slots[i + 1] || [0, 0];
-        const base = (i / 2) * 3;
-        bytes[base]     = (hr0 >> 1) & 0xFF;
-        bytes[base + 1] = ((hr0 & 1) << 7) | ((st0 & 7) << 4) | ((hr1 >> 5) & 0xF);
-        bytes[base + 2] = ((hr1 & 0x1F) << 3) | (st1 & 7);
-    }
-
-    // Base64 encode
-    let binary = '';
-    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-    return { fmt: 'p1', b64: btoa(binary), len: slots.length };
-}
-
 function saveSessionToHistory(summary, notes) {
     try {
         const raw = localStorage.getItem(HISTORY_KEY);
@@ -1909,7 +1873,7 @@ async function attemptReconnect() {
         document.getElementById('toggleSessionBtn').classList.remove('running');
         document.getElementById('manualResetBtn').style.display = 'none';
         document.body.classList.remove('connected');
-        log('❌ Could not reconnect after 10 attempts. Session ended.', true);
+        log('❌ Could not reconnect after 30 attempts. Session ended.', true);
         switchState('stopped', true);
         if (wakeLock !== null) wakeLock.release().then(() => { wakeLock = null; });
         return;
