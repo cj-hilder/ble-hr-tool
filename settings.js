@@ -5,11 +5,11 @@
 (function () {
 
 const DEFAULTS = {
-    MAX_HR:                 170,
+    MAX_HR:                 180,
     RESTING_HR:             65,
     RESTING_HR_BANDWIDTH:   10,
     TARGET_MIN_HR:          70,
-    TARGET_MAX_HR:          90,
+    TARGET_MAX_HR:          80,
     ACTIVE_THRESHOLD_UPPER: 80,
     ACTIVE_THRESHOLD_LOWER: 77,
     BRADYCARDIA_THRESHOLD:  55,
@@ -35,7 +35,7 @@ const HRV_READING_ID_S = 'hrv_reading';
 
 // Defaults for the built-in HRV Reading activity.
 const HRV_DEFAULTS = {
-    MAX_HR:               170,
+    MAX_HR:               180,
     RESTING_HR:           65,
     RESTING_HR_BANDWIDTH: 10,
     TARGET_MIN_HR:        60,
@@ -47,7 +47,7 @@ const HRV_DEFAULTS = {
 // Defaults for the built-in Resonance Breathing activity.
 // RFB_ENABLED is always 1 here and is not user-editable.
 const RB_DEFAULTS = {
-    MAX_HR:                 170,
+    MAX_HR:                 180,
     RESTING_HR:             65,
     RESTING_HR_BANDWIDTH:   10,
     TARGET_MIN_HR:          60,
@@ -64,7 +64,7 @@ const RB_DEFAULTS = {
     RFB_ENABLED:            1,   // always on — not user-editable
     RFB_INHALE_SEC:         4.0,
     RFB_EXHALE_SEC:         6.0,
-    RFB_DURATION:           10.0, // session length in minutes
+    RFB_DURATION:           3.0, // session length in minutes
     RFB_SOUND:              1,
     RFB_VIBRATION:          1,
     RFB_SHOW_DEBUG:         0,
@@ -120,14 +120,19 @@ const FIELDS = [
       desc: 'If HR exceeds this during activity it will trigger "Rest or pull back". If you are unsure, the safe choice is resting HR + 15.' },
     { key: 'ACTIVE_THRESHOLD_LOWER', label: 'Lower threshold', unit: 'bpm',
       desc: 'HR must fall below this to transition back to "Continue activity". Usually set just below the upper threshold.' },
-    { key: 'ACTIVE_TIME_LIMIT', label: 'Activity time limit', unit: 'min',
-      desc: 'Total time allowed per session in minutes before a HR reset is triggered. Set to 0 for no limit.' },
-    { key: 'BUDGET_USING', label: 'Budget using', type: 'select',
+    { key: 'ACTIVE_TIME_LIMIT', label: 'Time limit', unit: 'min',
+      desc: 'Total time allowed per session (minutes). This is either time in Continue Activity, or time above Target Min HR. Set to 0 for no limit.' },
+    { key: 'BUDGET_USING', label: 'Budget with', type: 'select',
       options: [
           { value: 0, label: 'Active time' },
           { value: 1, label: 'Target time' },
       ],
-      desc: 'Active time: limit applies to time spent in Continue Activity. Target time: limit applies to time at or above the target min HR — appropriate when you ease off rather than stop.' },
+      desc: 'Active time: limit applies to time spent in Continue Activity. Target time: limit applies to time at or above Target Min HR — appropriate when you ease off rather than stop.' },
+    { group: 'Target Zone' },
+    { key: 'TARGET_MIN_HR', label: 'Target min', unit: 'bpm',
+      desc: 'Lower edge of the target zone shown on the speedometer. Purely a guide unless you are budgeting with target time.' },
+    { key: 'TARGET_MAX_HR', label: 'Target max', unit: 'bpm',
+      desc: 'Upper edge of the target zone.' },
     { group: 'Recovery Limits' },
     { key: 'MAX_RECOVERY_PERIOD', label: 'Max recovery period', unit: 's',
       desc: 'Maximum time allowed in the "Rest or pull back" state before a forced HR reset is triggered.' },
@@ -135,11 +140,7 @@ const FIELDS = [
       desc: 'If HR has not started falling within this many seconds of "Rest or pull back", a HR reset is forced.' },
     { key: 'NUM_RESETS_B4_WARN', label: 'Resets before warning', unit: '',
       desc: 'Number of HR resets allowed before the app shows a prominent warning to end the session.' },
-    { group: 'Target Zone' },
-    { key: 'TARGET_MIN_HR', label: 'Target min', unit: 'bpm',
-      desc: 'Lower edge of the target zone shown on the speedometer. Purely a guide.' },
-    { key: 'TARGET_MAX_HR', label: 'Target max', unit: 'bpm',
-      desc: 'Upper edge of the target zone.' },
+
     { group: 'Alerts' },
     { key: 'ALERT_VIBRATION', label: 'Vibration', type: 'select', options: ALERT_OPTIONS,
       desc: 'Subtle: two short pulses. Intense: rapid triple burst — designed to cut through background noise.' },

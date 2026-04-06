@@ -598,7 +598,7 @@ function updateBudgetTimerDisplay() {
     const timerEl  = document.getElementById('totalActiveTimerDisplay');
     const labelEl  = document.getElementById('activeTotalLabel');
     if (timerEl) setTimerDisplay(timerEl, byTarget ? totalTargetSeconds : totalActiveSeconds);
-    if (labelEl) labelEl.innerText = byTarget ? 'TARGET TOTAL' : 'ACTIVE TOTAL';
+    if (labelEl) labelEl.innerText = byTarget ? '𖣠 TARGET TOTAL' : 'ACTIVE TOTAL';
 }
 function arrAvg(arr) {
     return arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : 0;
@@ -1401,17 +1401,23 @@ function updateTimers(increment) {
 
     if (currentState === 'active') {
         totalActiveSeconds += increment;
-        // Accumulate target time while in active state and HR is at or above the target floor
-        if (latestHR > 0 && latestHR >= targetMin) {
-            totalTargetSeconds += increment;
-        }
-        // Trigger the activity limit using whichever timer the user has budgeted against
-        const timerToCheck = byTarget ? totalTargetSeconds : totalActiveSeconds;
-        if (limitSec > 0 && !activityLimitTriggered && timerToCheck >= limitSec) {
+        // Active time limit
+        if (!byTarget && limitSec > 0 && !activityLimitTriggered && totalActiveSeconds >= limitSec) {
             activityLimitTriggered = true;
             switchState('reset', false);
             const descEl = document.getElementById('stateDescription');
-            if (descEl) descEl.innerText = byTarget ? 'Target time reached' : 'Activity limit reached';
+            if (descEl) descEl.innerText = 'Activity limit reached';
+        }
+    }
+
+    // Target time accumulates whenever HR >= TARGET_MIN_HR, regardless of state
+    if (latestHR > 0 && latestHR >= targetMin) {
+        totalTargetSeconds += increment;
+        if (byTarget && limitSec > 0 && !activityLimitTriggered && totalTargetSeconds >= limitSec) {
+            activityLimitTriggered = true;
+            switchState('reset', false);
+            const descEl = document.getElementById('stateDescription');
+            if (descEl) descEl.innerText = 'Target time reached';
         }
     }
     updateBudgetTimerDisplay();
@@ -1764,7 +1770,7 @@ function showSummaryModal(summary) {
     // Active section total time: show active total or target total according to budget setting
     set('s-totalActive', fmtT(byTarget ? summary.totalTargetSec : summary.totalActiveSec));
     const totalActiveLabel = document.getElementById('s-totalActiveLabel');
-    if (totalActiveLabel) totalActiveLabel.innerText = byTarget ? 'Target time' : 'Total time';
+    if (totalActiveLabel) totalActiveLabel.innerText = byTarget ? '𖣠 Target time' : 'Total time';
     set('s-pctActive',      summary.numActivePeriods > 0 ? summary.pctActive + '%' : '--');
     set('s-numActive',      fmtN(summary.numActivePeriods));
     set('s-longestActive',  fmtT(summary.longestActiveSec));
