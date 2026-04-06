@@ -305,8 +305,14 @@ function recordRrHistory(rrValuesMs, notifTs) {
         sessionTotalBeats++;
 
         // ── Tier 1: sensor artifact — physiologically impossible or gross dropout ──
+                // Relative deviation alone over-classifies large-swing beats at low HR:
+        // a legitimate 20 bpm RFB oscillation at 50 bpm baseline spans ~240 ms,
+        // which clears the 50% relative threshold. Requiring both deviation ≥ 0.5
+        // AND absolute delta > 250 ms prevents those beats being wrongly suppressed
+        // while still catching genuine dropouts (which are always large in both senses).
+        const absDiff = lastCleanRr > 0 ? Math.abs(rr - lastCleanRr) : 0;
         const isSensorArtifact = rr < 250 || rr > 2000 ||
-            (lastCleanRr > 0 && Math.abs(rr - lastCleanRr) / lastCleanRr >= 0.5);
+            (lastCleanRr > 0 && Math.abs(rr - lastCleanRr) / lastCleanRr >= 0.5 && absDiff > 250);
 
         if (isSensorArtifact) {
             sessionSensorArtifacts++;
@@ -1080,7 +1086,7 @@ function updateCoherenceDisplay() {
 
         if (r === null || !r.validRate) {
             coherVal.textContent = `0 ${starsHtml(0, false)}`;
-            if (showDebug) dbg.textContent = 'collecting data...';
+            if (showDebug) dbg.textContent = 'collecting data…';
         } else {
             const riPct  = Math.round(r.ri * 100);
             const level  = riPct >= 50 ? 3 : riPct >= 30 ? 2 : riPct >= 15 ? 1 : 0;
