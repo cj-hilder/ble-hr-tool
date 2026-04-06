@@ -207,6 +207,51 @@ Two minutes of comfortable, high-quality breathing is vastly superior to ten min
 
 ---
 
+## HRV Reading
+
+An HRV Reading gives you a single number that summarises your heart rate variability. It is comparable across sessions, making it useful as a longitudinal recovery signal.
+
+Select **"HRV Reading"** from the activity drop-down menu to start a new reading.
+
+### During the session
+
+- **The status dot turns purple** for the duration of the reading.
+- A countdown timer shows time remaining.
+- The HRV appears as a live number updating as data accumulates.
+- The session runs for 3 minutes. You can end it early, but the full 3 minutes of required for an accurate reading.
+- Sit or lie still. Avoid speaking, moving, or changing posture during the reading. Any significant movement will affect the result.
+
+### The HRV number
+
+This section is a little technical. Skip it of you just want to get your HRV.
+
+The HRV is calculated from  RMSSD and SDNN with further adjustment from anomalies (ectopic heart beats)
+
+- **RMSSD** (root mean square of successive RR differences) is the primary measure of parasympathetic (vagal) activity — the component most relevant to ANS recovery.
+- **SDNN** (standard deviation of RR intervals) reflects total autonomic variability, including both parasympathetic and sympathetic contributions.
+
+The index is computed as:
+
+> **HRV Index = ln(RMSSD) × 15 × balanceFactor × qualityFactor**
+
+- **ln(RMSSD) × 15** is the core vagal tone signal, scaled to produce values in a practical range (roughly 0–100 for typical adults).
+- **balanceFactor** (0–1) penalises sympathetic dominance. It is derived from the RMSSD/SDNN ratio: a healthy ANS produces relatively high RMSSD for its total variability. When the sympathetic system dominates — as it often does in dysautonomia — SDNN is elevated while RMSSD stays low, reducing the index.
+- **qualityFactor** (0–1) adjusts for sessions with a high rate of ectopic beats (PACs, PVCs).
+
+The HRV index is most meaningful as a **relative trend** tracked over time. There is no 'correct' HRV that you should aim for, but as your autonomic health improves your HRV is expected to also improve. This makes it a potentially useful way to track your recovery.
+
+### What to expect
+
+A healthy adult at rest typically scores in the range of 40–70. With active dysautonomia, scores of 10–25 are common and are not cause for alarm — they reflect the current state of the ANS, not a permanent ceiling. Scores below 10 suggest significant sympathetic dominance or ANS depletion.
+
+Consistent morning readings — taken at the same time each day, before getting up, after a few minutes of quiet rest — will give the most comparable longitudinal data.
+
+### Hardware requirement
+
+Like the RFB resonance score, the HRV Index requires a sensor that exposes raw RR intervals. The **Polar H10** chest strap is strongly recommended. Optical wrist sensors and most sports watches that report only a rolling-averaged HR will produce a `--` result regardless of your actual HRV.
+
+---
+
 ## Settings
 
 You must adjust the settings to suit your personal situation. Changes take effect immediately and are saved per activity type. The defaults correspond to an 80 BPM upper threshold protocol, which is a reasonable starting point for many people with post-concussion or ME/CFS-related dysautonomia, but individual variation is significant and you should expect some trial and error.
@@ -250,6 +295,7 @@ The key parameters and their purpose:
 - **Multiple activity profiles** — Different threshold sets for different activities (e.g. walking, cycling, housework), switchable at session start.
 - **Activity time limit** — Optional per-session cap on total active time. When reached, the app transitions to the heart rate Reset state automatically.
 - **Resonance Frequency Breathing** — Integrated breath pacer, sound and vibration guides, resonance scoring, and extended RFB phase during the Reset state. See dedicated section above.
+- **HRV Reading** — A dedicated 3-minute resting measurement that produces a single HRV Index from RMSSD, SDNN, and beat quality. It is designed for consistent longitudinal tracking of ANS recovery. Requires a Polar H10 or equivalent RR-capable sensor.
 - **Session HR recording and graph export** — Every session records 1Hz heart rate data alongside state transitions. Saved sessions can be exported as a landscape A4 PDF graph showing HR over time with colour-coded state background bands, axes, and a resting HR reference line.
 - **Session history and trend graphs** — Each session can be saved with notes. History graphs allow you to track recovery metrics over time.
 - **Response lag and HR overshoot tracking** — Per-session statistics on recovery lag, HR peak during rest, and active/recovery time ratios.
@@ -267,8 +313,8 @@ The graph shows:
 - **Resting HR** as a dashed blue reference line (from the activity settings used in that session)
 - **Time axis** in mm:ss with auto-scaled gridlines
 - **HR axis** in bpm with auto-scaled gridlines
-- **Session metadata** in the header: date, time, activity type, duration, and average HR
-- **Legend** showing only the states that actually occurred in the session
+- **Session metadata** in the header: date, time, activity type, duration, average HR, etc
+- **Legend** showing the states that occurred in the session
 
 ---
 
@@ -289,11 +335,11 @@ Because this app uses the **Web Bluetooth API**, it requires a compatible browse
 
 ### Recommended Hardware
 
-Any BLE heart rate monitor that implements the standard Heart Rate Measurement characteristic will work for basic pacing. For the **RFB coherence score** and higher-resolution HR graphing, a device that exposes raw RR intervals is required. The **Polar H10** chest strap is strongly recommended — it is the most widely used research-grade consumer device for this purpose and reliably exposes RR data via the standard BLE characteristic without requiring a proprietary app or API.
+Any BLE heart rate monitor that implements the standard Heart Rate Measurement characteristic will work for basic pacing. For the **RFB resonance score**, **HRV Reading**, and higher-resolution HR graphing, a device that exposes raw RR intervals is required. The **Polar H10** chest strap is strongly recommended — it is the most widely used research-grade consumer device for this purpose and reliably exposes RR data via the standard BLE characteristic without requiring a proprietary app or API.
 
 ### Common Bluetooth Troubleshooting
 
-Bluetooth LE can be finicky, especially on Android. If the app connects but freezes without showing your heart rate, your phone and watch are likely in a "half-paired" state.
+Bluetooth LE can be finicky, especially on Android web apps. If the app connects but freezes without showing your heart rate, your phone and watch are likely in a "half-paired" state.
 
 To fix this:
 1. Close the watch or HR monitor's companion app on your phone (e.g. Polar Flow).
@@ -312,8 +358,6 @@ To fix this:
 ## Author
 
 **Chris Hilder** — [github.com/cj-hilder](https://github.com/cj-hilder)
-
-Built out of personal necessity as someone managing a post-concussion condition with dysautonomia. Feedback, suggestions, and contributions are welcome.
 
 ## Licence
 
