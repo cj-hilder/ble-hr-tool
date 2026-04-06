@@ -1062,7 +1062,7 @@ function updateCoherenceDisplay() {
 
         if (r === null || !r.validRate) {
             coherVal.textContent = `0 ${starsHtml(0, false)}`;
-            if (showDebug) dbg.textContent = 'coherence:--% stability:--% rfb lag:--';
+            if (showDebug) dbg.textContent = 'collecting data…';
         } else {
             const riPct  = Math.round(r.ri * 100);
             const level  = riPct >= 50 ? 3 : riPct >= 30 ? 2 : riPct >= 15 ? 1 : 0;
@@ -1070,7 +1070,7 @@ function updateCoherenceDisplay() {
             if (showDebug) {
                 const relLagSec = r.phaseDiffDeg != null ? (r.phaseDiffDeg / 360 * (rfbBreathPeriodMs() / 1000)) : null;
                 const lagStr = relLagSec != null ? `${relLagSec >= 0 ? '+' : ''}${relLagSec.toFixed(1)}s` : '--';
-                dbg.textContent = `cohere:${Math.round(r.coherence * 100)}% ampl:${r.amplitudeBpm.toFixed(1)} stability:${Math.round(r.stability * 100)}% lag:${lagStr}`;
+                dbg.textContent = `coherence:${Math.round(r.coherence * 100)}% ampl:${r.amplitudeBpm.toFixed(1)} stability:${Math.round(r.stability * 100)}% lag:${lagStr}`;
             }
             // Collect all raw components for post-session analysis
             if (isSessionRunning) rfbCoherenceRecording.push({
