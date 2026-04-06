@@ -14,6 +14,7 @@ const DEFAULTS = {
     ACTIVE_THRESHOLD_LOWER: 77,
     BRADYCARDIA_THRESHOLD:  55,
     ACTIVE_TIME_LIMIT:      0,   // minutes; 0 = no limit
+    BUDGET_USING:           0,   // 0=active time, 1=target time
     MAX_RECOVERY_PERIOD:    240,
     MAX_RESPONSE_LAG:       60,
     NUM_RESETS_B4_WARN:     3,
@@ -73,7 +74,7 @@ const RB_DEFAULTS = {
 // Fields hidden in the settings panel when Resonance Breathing is selected.
 const RESONANCE_HIDDEN_KEYS = new Set([
     'BRADYCARDIA_THRESHOLD',
-    'ACTIVE_THRESHOLD_UPPER', 'ACTIVE_THRESHOLD_LOWER', 'ACTIVE_TIME_LIMIT',
+    'ACTIVE_THRESHOLD_UPPER', 'ACTIVE_THRESHOLD_LOWER', 'ACTIVE_TIME_LIMIT', 'BUDGET_USING',
     'MAX_RECOVERY_PERIOD', 'MAX_RESPONSE_LAG', 'NUM_RESETS_B4_WARN',
     'TARGET_MIN_HR', 'TARGET_MAX_HR',
     'RFB_ENABLED',
@@ -120,7 +121,13 @@ const FIELDS = [
     { key: 'ACTIVE_THRESHOLD_LOWER', label: 'Lower threshold', unit: 'bpm',
       desc: 'HR must fall below this to transition back to "Continue activity". Usually set just below the upper threshold.' },
     { key: 'ACTIVE_TIME_LIMIT', label: 'Activity time limit', unit: 'min',
-      desc: 'Total active time allowed per session in minutes. When reached the app transitions to reset state. Set to 0 for no limit.' },
+      desc: 'Total time allowed per session in minutes before a HR reset is triggered. Set to 0 for no limit.' },
+    { key: 'BUDGET_USING', label: 'Budget using', type: 'select',
+      options: [
+          { value: 0, label: 'Active time' },
+          { value: 1, label: 'Target time' },
+      ],
+      desc: 'Active time: limit applies to time spent in Continue Activity. Target time: limit applies to time at or above the target min HR — appropriate when you ease off rather than stop.' },
     { group: 'Recovery Limits' },
     { key: 'MAX_RECOVERY_PERIOD', label: 'Max recovery period', unit: 's',
       desc: 'Maximum time allowed in the "Rest or pull back" state before a forced HR reset is triggered.' },

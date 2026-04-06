@@ -558,7 +558,7 @@ const LAST_ACTIVITY_KEY = 'hrPacerLastActivity';
 const HR_RECORDING_MAX_SAMPLES = 10800; // 3 hours at 1 Hz — hard cap to protect memory
 
 let sessionStartTime = 0, sessionSeconds = 0, stateSeconds = 0;
-let recoverySeconds = 0, totalActiveSeconds = 0, resetCount = 0;
+let recoverySeconds = 0, totalActiveSeconds = 0, totalTargetSeconds = 0, resetCount = 0;
 let rfbActiveSeconds = 0;    // real clock of actual RFB time (increments while rfbPhase is true)
 let rbSessionEndSeconds = 0; // sessionSeconds snapshot at the moment the RB timer hits zero
 let activeToRestCount = 0, activeToResetCount = 0, restToActiveCount = 0, resetToActiveCount = 0;
@@ -590,6 +590,15 @@ function log(message, isError = false) {
 function setTimerDisplay(el, seconds) {
     el.innerText = formatTime(seconds);
     el.classList.toggle('long-time', seconds >= 3600);
+}
+// Update the budget timer (active total or target total) and its label
+// according to the current BUDGET_USING setting.
+function updateBudgetTimerDisplay() {
+    const byTarget = (typeof BUDGET_USING !== 'undefined') && BUDGET_USING === 1;
+    const timerEl  = document.getElementById('totalActiveTimerDisplay');
+    const labelEl  = document.getElementById('activeTotalLabel');
+    if (timerEl) setTimerDisplay(timerEl, byTarget ? totalTargetSeconds : totalActiveSeconds);
+    if (labelEl) labelEl.innerText = byTarget ? 'TARGET TOTAL' : 'ACTIVE TOTAL';
 }
 function arrAvg(arr) {
     return arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : 0;
@@ -635,7 +644,7 @@ function saveSession() {
     try {
         localStorage.setItem(SESSION_KEY, JSON.stringify({
             sessionStartTime, sessionSeconds, stateSeconds, recoverySeconds,
-            totalActiveSeconds, resetCount, isRecoveryState, maxHrInRest, timeOfMaxHrInRest, currentState,
+            totalActiveSeconds, totalTargetSeconds, resetCount, isRecoveryState, maxHrInRest, timeOfMaxHrInRest, currentState,
             activePeriods, recoveryPeriods,
             currentPeriodType, currentPeriodStart,
             sessionHrMin: sessionHrSamples.length ? Math.min(...sessionHrSamples) : 0,
@@ -666,7 +675,8 @@ function restoreSession() {
         const s = JSON.parse(raw);
         sessionStartTime = s.sessionStartTime; sessionSeconds = s.sessionSeconds;
         stateSeconds = s.stateSeconds; recoverySeconds = s.recoverySeconds;
-        totalActiveSeconds = s.totalActiveSeconds; resetCount = s.resetCount;
+        totalActiveSeconds = s.totalActiveSeconds; totalTargetSeconds = s.totalTargetSeconds || 0;
+        resetCount = s.resetCount;
         isRecoveryState = s.isRecoveryState; maxHrInRest = s.maxHrInRest;
         timeOfMaxHrInRest = s.timeOfMaxHrInRest; currentState = s.currentState;
         activePeriods = s.activePeriods || []; recoveryPeriods = s.recoveryPeriods || [];
@@ -707,7 +717,7 @@ function restoreSessionUI() {
     setRbDisplayMode(isResonanceBreathing || isHRVReading);
     setTimerDisplay(document.getElementById('stateTimerDisplay'),       stateSeconds);
     setTimerDisplay(document.getElementById('sessionTimerDisplay'),     sessionSeconds);
-    setTimerDisplay(document.getElementById('totalActiveTimerDisplay'), totalActiveSeconds);
+    updateBudgetTimerDisplay();
     if (maxHrInRest > 0) {
         document.getElementById('maxHrDisplay').innerText = maxHrInRest;
         setTimerDisplay(document.getElementById('lagDisplay'), timeOfMaxHrInRest);
@@ -1384,18 +1394,27 @@ function switchState(newState, isManual) {
 function updateTimers(increment) {
     sessionSeconds += increment; stateSeconds += increment;
     if (isRecoveryState) recoverySeconds += increment;
+
+    const byTarget  = (typeof BUDGET_USING !== 'undefined') && BUDGET_USING === 1;
+    const limitSec  = (typeof ACTIVE_TIME_LIMIT !== 'undefined') ? ACTIVE_TIME_LIMIT * 60 : 0;
+    const targetMin = (typeof TARGET_MIN_HR !== 'undefined') ? TARGET_MIN_HR : 70;
+
     if (currentState === 'active') {
         totalActiveSeconds += increment;
-        setTimerDisplay(document.getElementById('totalActiveTimerDisplay'), totalActiveSeconds);
-        // Activity time limit check
-        const limitSec = (typeof ACTIVE_TIME_LIMIT !== 'undefined') ? ACTIVE_TIME_LIMIT * 60 : 0;
-        if (limitSec > 0 && !activityLimitTriggered && totalActiveSeconds >= limitSec) {
+        // Accumulate target time while in active state and HR is at or above the target floor
+        if (latestHR > 0 && latestHR >= targetMin) {
+            totalTargetSeconds += increment;
+        }
+        // Trigger the activity limit using whichever timer the user has budgeted against
+        const timerToCheck = byTarget ? totalTargetSeconds : totalActiveSeconds;
+        if (limitSec > 0 && !activityLimitTriggered && timerToCheck >= limitSec) {
             activityLimitTriggered = true;
             switchState('reset', false);
             const descEl = document.getElementById('stateDescription');
-            if (descEl) { descEl.innerText = 'Activity limit reached'; }
+            if (descEl) descEl.innerText = byTarget ? 'Target time reached' : 'Activity limit reached';
         }
     }
+    updateBudgetTimerDisplay();
     if (currentState === 'rest') {
         if (stateSeconds > MAX_RECOVERY_PERIOD) switchState('reset', false);
         else if (timeOfMaxHrInRest > MAX_RESPONSE_LAG) switchState('reset', false);
@@ -1696,6 +1715,8 @@ function computeSessionSummary() {
         activityId:   currentActivityId   || '',
         activitySettings: window.activitiesAPI ? window.activitiesAPI.getSettingsSnapshot() : {},
         totalActiveSec:   aStats.total,
+        totalTargetSec:   totalTargetSeconds,
+        budgetUsing:      (typeof BUDGET_USING !== 'undefined') ? BUDGET_USING : 0,
         pctActive: sessionSeconds > 0 ? Math.round(aStats.total / sessionSeconds * 100) : 0,
         numActivePeriods:  aStats.count,
         longestActiveSec:  aStats.longest,
@@ -1739,7 +1760,11 @@ function showSummaryModal(summary) {
     const set = (id, val) => { const el = document.getElementById(id); if (el) el.innerText = val; };
     const fmtT = s => s > 0 ? formatTime(s) : '--';
     const fmtN = n => n > 0 ? n : '--';
-    set('s-totalActive',    fmtT(summary.totalActiveSec));
+    const byTarget = summary.budgetUsing === 1;
+    // Active section total time: show active total or target total according to budget setting
+    set('s-totalActive', fmtT(byTarget ? summary.totalTargetSec : summary.totalActiveSec));
+    const totalActiveLabel = document.getElementById('s-totalActiveLabel');
+    if (totalActiveLabel) totalActiveLabel.innerText = byTarget ? 'Target time' : 'Total time';
     set('s-pctActive',      summary.numActivePeriods > 0 ? summary.pctActive + '%' : '--');
     set('s-numActive',      fmtN(summary.numActivePeriods));
     set('s-longestActive',  fmtT(summary.longestActiveSec));
@@ -1913,7 +1938,7 @@ function setRbDisplayMode(isRb) {
 
 function startSession() {
     isSessionRunning = true; sessionSeconds = 0; sessionStartTime = Date.now();
-    stateSeconds = 0; totalActiveSeconds = 0; resetCount = 0; recoverySeconds = 0;
+    stateSeconds = 0; totalActiveSeconds = 0; totalTargetSeconds = 0; resetCount = 0; recoverySeconds = 0;
     activePeriods = []; recoveryPeriods = []; currentPeriodType = null; sessionHrSamples = [];
     rfbSessionClockStart = 0; activityLimitTriggered = false; sessionHrRecording = []; rfbCoherenceRecording = [];
     rfbActiveSeconds = 0; rbSessionEndSeconds = 0;
@@ -1931,7 +1956,7 @@ function startSession() {
     document.getElementById('homeBtn').style.display = 'none';
     setTimerDisplay(document.getElementById('sessionTimerDisplay'), 0);
     setTimerDisplay(document.getElementById('stateTimerDisplay'), 0);
-    setTimerDisplay(document.getElementById('totalActiveTimerDisplay'), 0);
+    updateBudgetTimerDisplay();
     document.getElementById('maxHrDisplay').innerText = '--';
     document.getElementById('lagDisplay').innerText = '--';
     document.getElementById('toggleSessionBtn').classList.add('running');
