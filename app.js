@@ -35,9 +35,11 @@ class HRVProcessor {
         this.lastCoherenceTime = 0;    // ms epoch of last _ema call
         // Time-domain peak offset tracking (replaces FFT phase)
         this._currentCycleMaxHr = 0;        // highest HR seen in current exhale phase
+        this._currentCycleMinHr = Infinity; // lowest HR seen in current exhale phase
         this._lastHrMaxTs       = 0;        // wall-clock timestamp of that peak
         this._lastInhaleEndTs   = 0;        // wall-clock timestamp of last inhale→exhale turn
         this._lagHistory        = []; // ring buffer of finalised per-cycle lag values (seconds)
+        this._amplitudeHistory  = []; // ring buffer of finalised per-cycle peak-to-trough (bpm)
         this._LAG_HISTORY_SIZE  = 5;  // number of cycles to average (~50 s at 10 bpm)
     }
     addRR(rrInterval, timestamp) {
@@ -193,9 +195,9 @@ class HRVProcessor {
     reset() {
         this.buffer = []; this.timestamps = [];
         this.lastCoherence = 0; this.lastCoherenceTime = 0;
-        this._currentCycleMaxHr = 0;
+        this._currentCycleMaxHr = 0; this._currentCycleMinHr = Infinity;
         this._lastHrMaxTs = 0; this._lastInhaleEndTs = 0;
-        this._lagHistory = [];
+        this._lagHistory = []; this._amplitudeHistory = [];
     }
 }
 
@@ -305,8 +307,14 @@ function recordRrHistory(rrValuesMs, notifTs) {
         sessionTotalBeats++;
 
         // ── Tier 1: sensor artifact — physiologically impossible or gross dropout ──
+        // Relative deviation alone over-classifies large-swing beats at low HR:
+        // a legitimate 20 bpm RFB oscillation at 50 bpm baseline spans ~240 ms,
+        // which clears the 50% relative threshold. Requiring both deviation ≥ 0.5
+        // AND absolute delta > 250 ms prevents those beats being wrongly suppressed
+        // while still catching genuine dropouts (which are always large in both senses).
+        const absDiff = lastCleanRr > 0 ? Math.abs(rr - lastCleanRr) : 0;
         const isSensorArtifact = rr < 250 || rr > 2000 ||
-            (lastCleanRr > 0 && Math.abs(rr - lastCleanRr) / lastCleanRr >= 0.5);
+            (lastCleanRr > 0 && Math.abs(rr - lastCleanRr) / lastCleanRr >= 0.5 && absDiff > 250);
 
         if (isSensorArtifact) {
             sessionSensorArtifacts++;
@@ -963,42 +971,16 @@ function computeResonance() {
     }
 
     // Amplitude gate: low RSA oscillation amplitude means the coherence signal is
-    // unreliable regardless of spectral shape — coherence computed on a near-flat
-    // HR signal measures noise pattern, not genuine vagal modulation.
-    //
-    // Amplitude is estimated from instantaneous beat-to-beat HR values in rrHistory
-    // (computed as 60000/RR, not the BLE-averaged HR integer which is attenuated by
-    // the sensor's internal smoothing). The window is sliced into 20-second blocks;
-    // max-min is computed per block and the results averaged. This captures local
-    // oscillation amplitude while remaining immune to slow HR drift that would
-    // inflate a single window-wide max-min.
-    //
-    // Threshold: 7.5 bpm = 50% of the Hirsch & Bishop (1981) healthy adult floor
-    // (~15 bpm peak-to-trough at controlled tidal volume, breathing <6 cycles/min).
-    // This is conservative — well below what a healthy person following the pacer
-    // should produce — so the gate only fires when signal is genuinely absent.
-    //   amplitudeMult = clamp(amplitudeBpm / 7.5, 0, 1)
-    const RFB_MIN_AMPLITUDE = 7.5;
+    // weak regardless of spectral shape. Amplitude is the RMS of per-cycle
+    // peak-to-trough measurements (same cycle finalisation used for lag), which is
+    // immune to slow HR drift that would distort a window-wide max-min estimate.
+    //   amplitudeMult = clamp(rmsAmplitudeBpm / 7.5, 0, 1)
+    //   5 bpm RMS p-t → full coherence retained; below → linearly discounted.
+    const RFB_MIN_AMPLITUDE = 5.0;
     let amplitudeBpm = 0;
-    {
-        const BLOCK_MS = 20000;
-        const now = Date.now();
-        const windowStart = now - hrvProcessor.windowSeconds * 1000;
-        const relevant = rrHistory.filter(p => p.ts >= windowStart);
-        if (relevant.length >= 4) {
-            const earliest = relevant[0].ts;
-            const latest   = relevant[relevant.length - 1].ts;
-            const blockAmplitudes = [];
-            for (let t = earliest; t < latest; t += BLOCK_MS) {
-                const block = relevant.filter(p => p.ts >= t && p.ts < t + BLOCK_MS);
-                if (block.length < 3) continue;
-                const hrs = block.map(p => p.hr);
-                blockAmplitudes.push(Math.max(...hrs) - Math.min(...hrs));
-            }
-            if (blockAmplitudes.length > 0) {
-                amplitudeBpm = blockAmplitudes.reduce((a, b) => a + b, 0) / blockAmplitudes.length;
-            }
-        }
+    if (hrvProcessor._amplitudeHistory.length > 0) {
+        const sumSq = hrvProcessor._amplitudeHistory.reduce((s, a) => s + a * a, 0);
+        amplitudeBpm = Math.sqrt(sumSq / hrvProcessor._amplitudeHistory.length);
     }
     const amplitudeMult  = Math.min(1, Math.max(0, amplitudeBpm / RFB_MIN_AMPLITUDE));
     const coherenceGated = result.coherence * amplitudeMult;
@@ -1068,7 +1050,7 @@ function updateCoherenceDisplay() {
 
         if (r === null || !r.validRate) {
             coherVal.textContent = `0 ${starsHtml(0, false)}`;
-            if (showDebug) dbg.textContent = 'collecting data...';
+            if (showDebug) dbg.textContent = 'coherence:--% stability:--% rfb lag:--';
         } else {
             const riPct  = Math.round(r.ri * 100);
             const level  = riPct >= 50 ? 3 : riPct >= 30 ? 2 : riPct >= 15 ? 1 : 0;
@@ -1076,7 +1058,7 @@ function updateCoherenceDisplay() {
             if (showDebug) {
                 const relLagSec = r.phaseDiffDeg != null ? (r.phaseDiffDeg / 360 * (rfbBreathPeriodMs() / 1000)) : null;
                 const lagStr = relLagSec != null ? `${relLagSec >= 0 ? '+' : ''}${relLagSec.toFixed(1)}s` : '--';
-                dbg.textContent = `coherence:${Math.round(r.coherence * 100)}% ampl:${r.amplitudeBpm.toFixed(1)} stability:${Math.round(r.stability * 100)}% lag:${lagStr}`;
+                dbg.textContent = `cohere:${Math.round(r.coherence * 100)}% ampl:${r.amplitudeBpm.toFixed(1)} stability:${Math.round(r.stability * 100)}% lag:${lagStr}`;
             }
             // Collect all raw components for post-session analysis
             if (isSessionRunning) rfbCoherenceRecording.push({
@@ -1538,8 +1520,21 @@ if (currentState === 'reset' && rfbOnNow && rfbWallStartTime > 0) {
                     hrvProcessor._lagHistory.shift();
                 }
             }
+            // Finalise per-cycle peak-to-trough amplitude for the completed exhale phase.
+            // Using cycle-local max and min avoids the HR-drift distortion that would
+            // affect a window-wide max-min estimate.
+            if (hrvProcessor._currentCycleMaxHr > 0 &&
+                hrvProcessor._currentCycleMinHr < Infinity &&
+                hrvProcessor._currentCycleMaxHr > hrvProcessor._currentCycleMinHr) {
+                const cycleAmplitude = hrvProcessor._currentCycleMaxHr - hrvProcessor._currentCycleMinHr;
+                hrvProcessor._amplitudeHistory.push(cycleAmplitude);
+                if (hrvProcessor._amplitudeHistory.length > hrvProcessor._LAG_HISTORY_SIZE) {
+                    hrvProcessor._amplitudeHistory.shift();
+                }
+            }
             hrvProcessor._lastInhaleEndTs   = Date.now();
-            hrvProcessor._currentCycleMaxHr = 0;
+            hrvProcessor._currentCycleMaxHr = 0;        // reset peak tracker for new exhale phase
+            hrvProcessor._currentCycleMinHr = Infinity; // reset trough tracker for new exhale phase
             // Do NOT update _lastHrMaxTs on the crossing beat — it shares the same
             // millisecond as _lastInhaleEndTs, making > comparison fail and blocking
             // finalisation next cycle. Only non-crossing beats update _lastHrMaxTs.
@@ -1548,8 +1543,15 @@ if (currentState === 'reset' && rfbOnNow && rfbWallStartTime > 0) {
             // after _lastInhaleEndTs, so finalisation will succeed next crossing.
             hrvProcessor._currentCycleMaxHr = currentHeartRate;
             hrvProcessor._lastHrMaxTs       = Date.now();
+            // Also track lowest HR seen in this exhale phase for trough measurement.
+            if (currentHeartRate < hrvProcessor._currentCycleMinHr) {
+                hrvProcessor._currentCycleMinHr = currentHeartRate;
+            }
         } else {
-            // HR is below current cycle max — no action needed for lag tracking.
+            // HR is below current cycle max — still update the trough tracker.
+            if (currentHeartRate < hrvProcessor._currentCycleMinHr) {
+                hrvProcessor._currentCycleMinHr = currentHeartRate;
+            }
         }
     }
 
