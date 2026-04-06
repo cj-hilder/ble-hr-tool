@@ -34,10 +34,12 @@ class HRVProcessor {
         this.emaTau            = 8;    // seconds — time constant for coherence smoothing
         this.lastCoherenceTime = 0;    // ms epoch of last _ema call
         // Time-domain peak offset tracking (replaces FFT phase)
-        this._currentCycleMaxHr = 0;  // highest HR seen in current breath cycle
-        this._lastHrMaxTs       = 0;  // wall-clock timestamp of that peak
-        this._lastInhaleEndTs   = 0;  // wall-clock timestamp of last inhale→exhale turn
+        this._currentCycleMaxHr = 0;        // highest HR seen in current exhale phase
+        this._currentCycleMinHr = Infinity; // lowest HR seen in current exhale phase
+        this._lastHrMaxTs       = 0;        // wall-clock timestamp of that peak
+        this._lastInhaleEndTs   = 0;        // wall-clock timestamp of last inhale→exhale turn
         this._lagHistory        = []; // ring buffer of finalised per-cycle lag values (seconds)
+        this._amplitudeHistory  = []; // ring buffer of finalised per-cycle peak-to-trough (bpm)
         this._LAG_HISTORY_SIZE  = 5;  // number of cycles to average (~50 s at 10 bpm)
     }
     addRR(rrInterval, timestamp) {
@@ -86,12 +88,21 @@ class HRVProcessor {
         }
     }
     _removeArtifacts(rrs, timestamps) {
+        // Compare each interval against the last CLEAN beat, not the immediate predecessor.
+        // This is critical for correct ectopic detection:
+        //   PVC: short beat (~-25%) followed by compensatory pause (~+25%). Comparing
+        //        the pause to the short beat gives ~+67% deviation (sensor-artifact range),
+        //        but comparing it to the clean baseline correctly identifies it as physio.
+        //   PAC: short beat (~-25%) followed by a normal beat. The normal beat compares
+        //        cleanly to the baseline and is correctly passed through.
         const outRrs = [], outTs = [];
+        let lastClean = 0;
         for (let i = 0; i < rrs.length; i++) {
-            const prev = rrs[i - 1] || rrs[i];
-            if (Math.abs(rrs[i] - prev) / prev < 0.2) {
+            const ref = lastClean || rrs[i];
+            if (Math.abs(rrs[i] - ref) / ref < 0.2) {
                 outRrs.push(rrs[i]);
                 outTs.push(timestamps[i]);
+                lastClean = rrs[i];
             }
         }
         return { rrs: outRrs, timestamps: outTs };
@@ -157,15 +168,22 @@ class HRVProcessor {
         this.lastCoherenceTime = now;
         return this.lastCoherence;
     }
-    // Compute RMSSD, SDNN, mean RR from the raw buffer (sensor artifacts already excluded
-    // during ingestion). Physiological artifacts (ectopy) are intentionally included —
-    // their effect on RMSSD is discounted by the quality factor in calculateHRVIndex.
+    // Compute RMSSD, SDNN, mean RR from the clean buffer.
+    // All artifacts (sensor and physiological) are removed via _removeArtifacts before
+    // computing metrics — a single ectopic pair contributes two outlier successive
+    // differences that can inflate RMSSD by an order of magnitude.
+    // The buffer should already contain only clean beats (physio artifacts are excluded
+    // at ingestion in recordRrHistory), but _removeArtifacts is applied here as a
+    // safety net and to ensure waveform and time-domain analysis use identical data.
     computeHRVMetrics(windowMs = 180000) {
         if (this.buffer.length < 5) return null;
         const cutoff = Date.now() - windowMs;
         let startIdx = 0;
         while (startIdx < this.timestamps.length && this.timestamps[startIdx] < cutoff) startIdx++;
-        const rrs = this.buffer.slice(startIdx);
+        const rawRrs = this.buffer.slice(startIdx);
+        const rawTs  = this.timestamps.slice(startIdx);
+        if (rawRrs.length < 5) return null;
+        const { rrs } = this._removeArtifacts(rawRrs, rawTs);
         if (rrs.length < 5) return null;
         const meanRR = rrs.reduce((a, b) => a + b, 0) / rrs.length;
         const sdnn   = Math.sqrt(rrs.reduce((s, x) => s + (x - meanRR) ** 2, 0) / rrs.length);
@@ -177,8 +195,9 @@ class HRVProcessor {
     reset() {
         this.buffer = []; this.timestamps = [];
         this.lastCoherence = 0; this.lastCoherenceTime = 0;
-        this._currentCycleMaxHr = 0; this._lastHrMaxTs = 0;
-        this._lastInhaleEndTs = 0; this._lagHistory = [];
+        this._currentCycleMaxHr = 0; this._currentCycleMinHr = Infinity;
+        this._lastHrMaxTs = 0; this._lastInhaleEndTs = 0;
+        this._lagHistory = []; this._amplitudeHistory = [];
     }
 }
 
@@ -222,7 +241,7 @@ function recordRrHistory(rrValuesMs, notifTs) {
         hrvProcessor.reset();
         peakFreqHistory.length = 0;
         lastRrTimestamp = 0;
-        recordRrHistory._lastAcceptedRr = 0;
+        recordRrHistory._lastCleanRr = 0;
         rrHistory.length = 0;
     }
     const pairs = [];
@@ -249,45 +268,99 @@ function recordRrHistory(rrValuesMs, notifTs) {
         lastRrTimestamp = notifTs;
     }
 
-    // Two-tier artifact classification:
+    // ── Artifact classification ───────────────────────────────────────────────
     //
-    // Sensor artifact (dropped from everything — graph, HRV analysis, RFB analysis):
-    //   • RR < 250 ms or > 2000 ms — physiologically impossible rate
-    //   • >50% deviation from previous accepted beat — sensor dropout/malfunction
-    //   These imply a hardware problem, not real cardiac events.
+    // All comparisons are made against lastCleanRr — the last beat confirmed clean —
+    // NOT the immediate predecessor. This is essential for correct ectopic handling:
     //
-    // Physiological artifact (kept in graph + HRV analysis, counted for quality factor):
-    //   • 20–50% deviation from previous accepted beat — real ectopic beat or ANS irregularity
-    //   These are genuine heartbeats; their influence on RMSSD is discounted by the
-    //   quality factor inside calculateHRVIndex rather than being removed from the data.
-    let prevRr = recordRrHistory._lastAcceptedRr || 0;
+    //   PVC (premature ventricular contraction):
+    //     The SA node keeps firing on schedule. The premature beat fires early
+    //     (short RR, e.g. 750 ms at 1000 ms baseline), then the ventricles are
+    //     refractory when the SA fires on schedule, so the next beat is the one
+    //     after (compensatory pause, e.g. 1250 ms). Short + long ≈ 2× baseline.
+    //     Both beats deviate ~25% from the 1000 ms baseline → both are physio artifacts.
+    //     If we compared the pause to the short beat (750 ms), the 67% deviation
+    //     would wrongly flag it as a sensor artifact.
+    //
+    //   PAC (premature atrial contraction):
+    //     The ectopic fires from within the atria, resetting the SA node. The
+    //     premature beat is short (~750 ms), but the following beat is roughly
+    //     normal (~1000 ms) because the SA node restarted from the ectopic.
+    //     Short + normal ≈ 1.75× baseline (no full compensatory pause).
+    //     Only the short beat is a physio artifact; the normal beat is clean.
+    //
+    //   Sensor artifact:
+    //     >50% deviation from clean baseline, or outside physiological range.
+    //     Implies hardware dropout/double-count, not a real cardiac event.
+    //
+    // Routing summary:
+    //   Sensor artifact  → interpolated synthetic point in graph; excluded from HRV
+    //   Physio artifact  → real HR value in graph (user sees PVC/PAC spikes); excluded from HRV
+    //   Clean beat       → graph + HRV processor
+    //
+    // sessionPhysioArtifacts is populated for all session types (used in HRV calculations
+    // only for HRV Reading sessions, but tracked universally for data completeness).
+
+    let lastCleanRr = recordRrHistory._lastCleanRr || 0;
 
     for (const { rr, ts: t } of pairs) {
         sessionTotalBeats++;
 
-        // Tier 1: sensor artifact check
+        // ── Tier 1: sensor artifact — physiologically impossible or gross dropout ──
         const isSensorArtifact = rr < 250 || rr > 2000 ||
-            (prevRr > 0 && Math.abs(rr - prevRr) / prevRr >= 0.5);
+            (lastCleanRr > 0 && Math.abs(rr - lastCleanRr) / lastCleanRr >= 0.5);
 
         if (isSensorArtifact) {
             sessionSensorArtifacts++;
-            // Drop entirely — do not update prevRr, graph, or processors
+            // Interpolate a synthetic beat at baseline HR to keep the graph line
+            // smooth — a raw gap looks alarming and obscures real physiology.
+            if (lastCleanRr > 0) {
+                const syntheticHr = Math.round(60000 / lastCleanRr);
+                if (syntheticHr >= 24 && syntheticHr <= 240) {
+                    rrHistory.push({ hr: syntheticHr, state: currentState, ts: t });
+                }
+            }
+            // lastCleanRr is NOT updated — baseline must survive sensor dropouts.
             continue;
         }
 
-        // Tier 2: physiological artifact check (20–50% deviation)
-        const isPhysioArtifact = prevRr > 0 && Math.abs(rr - prevRr) / prevRr >= 0.2;
-        if (isPhysioArtifact) sessionPhysioArtifacts++;
+        // ── Tier 2: physiological artifact — ectopic beat (PVC or PAC) ──────────
+        // Deviation is measured from lastCleanRr so the compensatory pause of a PVC
+        // (~+25% from baseline) is correctly classified as physio rather than sensor.
+        const deviation = lastCleanRr > 0 ? Math.abs(rr - lastCleanRr) / lastCleanRr : 0;
+        const isPhysioArtifact = lastCleanRr > 0 && deviation >= 0.2;
 
-        // All non-sensor beats: add to graph display and HRV processor
-        prevRr = rr;
+        if (isPhysioArtifact) {
+            // Direction indicates PVC vs PAC (both counted together):
+            //   rr < lastCleanRr → premature beat (short RR = HR spike up)
+            //                      could be PVC premature OR PAC premature
+            //   rr > lastCleanRr → compensatory pause (long RR = HR spike down)
+            //                      only occurs after a PVC premature beat
+            sessionPhysioArtifacts++;
+
+            // Include in graph: the user sees the physiological spike as real data.
+            // PVC appears as a down-up spike pair; PAC as a single up spike.
+            const instantHr = Math.round(60000 / rr);
+            if (instantHr >= 24 && instantHr <= 240) {
+                rrHistory.push({ hr: instantHr, state: currentState, ts: t });
+            }
+            // lastCleanRr is NOT updated — the clean baseline must be preserved
+            // so the beat after the ectopic pair is evaluated against it, not
+            // against the distorted ectopic interval.
+            // Do NOT add to hrvProcessor — excluded from RMSSD, SDNN, and all
+            // waveform analysis (coherence, stability, phase).
+            continue;
+        }
+
+        // ── Clean beat ────────────────────────────────────────────────────────────
+        lastCleanRr = rr;
         hrvProcessor.addRR(rr, t);
         const instantHr = Math.round(60000 / rr);
         if (instantHr >= 24 && instantHr <= 240) {
             rrHistory.push({ hr: instantHr, state: currentState, ts: t });
         }
     }
-    recordRrHistory._lastAcceptedRr = prevRr;
+    recordRrHistory._lastCleanRr = lastCleanRr;
 
     rrHistory.sort((a, b) => a.ts - b.ts);
     const cutoff = notifTs - HR_HISTORY_MS;
@@ -863,7 +936,7 @@ function updateHRVDisplay() {
 
     if (showDebug) {
         dbg.textContent =
-            `RMSSD:${metrics.rmssd}ms  balance:${Math.round(result.balanceFactor * 100)}%  anomalies:${Math.round(result.qualityFactor * 100)}%`;
+            `RMSSD:${metrics.rmssd}ms  balance:${Math.round(result.balanceFactor * 100)}%  anomalies:${Math.round((1 - result.qualityFactor) * 100)}%`;
     }
 }
 function computeResonance() {
@@ -891,13 +964,30 @@ function computeResonance() {
         phaseDiffDeg = Math.round(rawPhaseDeg - 72);
     }
 
-    const ri = computeResonanceIndex(result.coherence, stability, phaseDiffDeg);
+    // Amplitude gate: low RSA oscillation amplitude means the coherence signal is
+    // weak regardless of spectral shape. Amplitude is the RMS of per-cycle
+    // peak-to-trough measurements (same cycle finalisation used for lag), which is
+    // immune to slow HR drift that would distort a window-wide max-min estimate.
+    //   amplitudeMult = clamp(rmsAmplitudeBpm / 7.5, 0, 1)
+    //   5 bpm RMS p-t → full coherence retained; below → linearly discounted.
+    const RFB_MIN_AMPLITUDE = 5.0;
+    let amplitudeBpm = 0;
+    if (hrvProcessor._amplitudeHistory.length > 0) {
+        const sumSq = hrvProcessor._amplitudeHistory.reduce((s, a) => s + a * a, 0);
+        amplitudeBpm = Math.sqrt(sumSq / hrvProcessor._amplitudeHistory.length);
+    }
+    const amplitudeMult  = Math.min(1, Math.max(0, amplitudeBpm / RFB_MIN_AMPLITUDE));
+    const coherenceGated = result.coherence * amplitudeMult;
+
+    const ri = computeResonanceIndex(coherenceGated, stability, phaseDiffDeg);
     return {
         ri,
-        coherence:   result.coherence,
+        coherence:    result.coherence,   // raw, for display
+        coherenceGated,                   // amplitude-adjusted, fed into RI
+        amplitudeBpm,
         stability,
         phaseDiffDeg,
-        validRate:   result.validBreathingRate,
+        validRate:    result.validBreathingRate,
     };
 }
 
@@ -962,7 +1052,7 @@ function updateCoherenceDisplay() {
             if (showDebug) {
                 const relLagSec = r.phaseDiffDeg != null ? (r.phaseDiffDeg / 360 * (rfbBreathPeriodMs() / 1000)) : null;
                 const lagStr = relLagSec != null ? `${relLagSec >= 0 ? '+' : ''}${relLagSec.toFixed(1)}s` : '--';
-                dbg.textContent = `coherence:${Math.round(r.coherence * 100)}% stability:${Math.round(r.stability * 100)}% lag:${lagStr}`;
+                dbg.textContent = `cohere:${Math.round(r.coherence * 100)}% ampl:${r.amplitudeBpm.toFixed(1)} stability:${Math.round(r.stability * 100)}% lag:${lagStr}`;
             }
             // Collect all raw components for post-session analysis
             if (isSessionRunning) rfbCoherenceRecording.push({
@@ -971,6 +1061,7 @@ function updateCoherenceDisplay() {
                 ri:   riPct,
                 stab: Math.round(r.stability * 100),
                 ph:   r.phaseDiffDeg ?? null,
+                amp:  Math.round(r.amplitudeBpm * 10) / 10,
             });
         }
         coherVal.style.color = stateColor;
@@ -1423,8 +1514,21 @@ if (currentState === 'reset' && rfbOnNow && rfbWallStartTime > 0) {
                     hrvProcessor._lagHistory.shift();
                 }
             }
+            // Finalise per-cycle peak-to-trough amplitude for the completed exhale phase.
+            // Using cycle-local max and min avoids the HR-drift distortion that would
+            // affect a window-wide max-min estimate.
+            if (hrvProcessor._currentCycleMaxHr > 0 &&
+                hrvProcessor._currentCycleMinHr < Infinity &&
+                hrvProcessor._currentCycleMaxHr > hrvProcessor._currentCycleMinHr) {
+                const cycleAmplitude = hrvProcessor._currentCycleMaxHr - hrvProcessor._currentCycleMinHr;
+                hrvProcessor._amplitudeHistory.push(cycleAmplitude);
+                if (hrvProcessor._amplitudeHistory.length > hrvProcessor._LAG_HISTORY_SIZE) {
+                    hrvProcessor._amplitudeHistory.shift();
+                }
+            }
             hrvProcessor._lastInhaleEndTs   = Date.now();
-            hrvProcessor._currentCycleMaxHr = 0; // reset peak tracker for new exhale phase
+            hrvProcessor._currentCycleMaxHr = 0;        // reset peak tracker for new exhale phase
+            hrvProcessor._currentCycleMinHr = Infinity; // reset trough tracker for new exhale phase
             // Do NOT update _lastHrMaxTs on the crossing beat — it shares the same
             // millisecond as _lastInhaleEndTs, making > comparison fail and blocking
             // finalisation next cycle. Only non-crossing beats update _lastHrMaxTs.
@@ -1433,6 +1537,15 @@ if (currentState === 'reset' && rfbOnNow && rfbWallStartTime > 0) {
             // after _lastInhaleEndTs, so finalisation will succeed next crossing.
             hrvProcessor._currentCycleMaxHr = currentHeartRate;
             hrvProcessor._lastHrMaxTs       = Date.now();
+            // Also track lowest HR seen in this exhale phase for trough measurement.
+            if (currentHeartRate < hrvProcessor._currentCycleMinHr) {
+                hrvProcessor._currentCycleMinHr = currentHeartRate;
+            }
+        } else {
+            // HR is below current cycle max — still update the trough tracker.
+            if (currentHeartRate < hrvProcessor._currentCycleMinHr) {
+                hrvProcessor._currentCycleMinHr = currentHeartRate;
+            }
         }
     }
 
