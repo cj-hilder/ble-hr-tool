@@ -461,7 +461,7 @@ function buildSessionCard(s, realIndex) {
             <div class="stat-group">
                 <div class="stat-group-label active-label">🟢 Active Periods</div>
                 <div class="stat-row">
-                    ${statItem(fmtT(s.budgetUsing === 1 ? s.totalTargetSec : s.totalActiveSec), s.budgetUsing === 1 ? '𖣠 Target time' : 'Total')}
+                    ${statItem(fmtT(s.budgetUsing === 1 ? s.totalTargetSec : s.totalActiveSec) + (s.budgetUsing === 1 ? ' 𖣠' : ''), s.budgetUsing === 1 ? 'Target time' : 'Total')}
                     ${statItem((s.pctActive || '--') + (s.pctActive ? '%' : ''), '% session')}
                     ${statItem(fmtN(s.numActivePeriods), 'Count')}
                 </div>

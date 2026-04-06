@@ -598,7 +598,9 @@ function updateBudgetTimerDisplay() {
     const timerEl  = document.getElementById('totalActiveTimerDisplay');
     const labelEl  = document.getElementById('activeTotalLabel');
     if (timerEl) setTimerDisplay(timerEl, byTarget ? totalTargetSeconds : totalActiveSeconds);
-    if (labelEl) labelEl.innerText = byTarget ? '𖣠 TARGET TOTAL' : 'ACTIVE TOTAL';
+    if (labelEl) labelEl.innerText = byTarget ? 'TARGET TOTAL' : 'ACTIVE TOTAL';
+    const iconEl = document.getElementById('targetTimerIcon');
+    if (iconEl) iconEl.style.display = byTarget ? '' : 'none';
 }
 function arrAvg(arr) {
     return arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : 0;
@@ -1768,9 +1770,9 @@ function showSummaryModal(summary) {
     const fmtN = n => n > 0 ? n : '--';
     const byTarget = summary.budgetUsing === 1;
     // Active section total time: show active total or target total according to budget setting
-    set('s-totalActive', fmtT(byTarget ? summary.totalTargetSec : summary.totalActiveSec));
+    set('s-totalActive', fmtT(byTarget ? summary.totalTargetSec : summary.totalActiveSec) + (byTarget ? ' 𖣠' : ''));
     const totalActiveLabel = document.getElementById('s-totalActiveLabel');
-    if (totalActiveLabel) totalActiveLabel.innerText = byTarget ? '𖣠 Target time' : 'Total time';
+    if (totalActiveLabel) totalActiveLabel.innerText = byTarget ? 'Target time' : 'Total time';
     set('s-pctActive',      summary.numActivePeriods > 0 ? summary.pctActive + '%' : '--');
     set('s-numActive',      fmtN(summary.numActivePeriods));
     set('s-longestActive',  fmtT(summary.longestActiveSec));
