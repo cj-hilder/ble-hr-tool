@@ -249,51 +249,68 @@ function renderCharts(history) {
     activeCharts = [];
     if (history.length === 0) return;
 
-    // Each chart type is filtered to only the sessions that are relevant to it,
-    // so sparse or mixed history does not show misleading zero data points.
+    // Each chart type is filtered to only sessions relevant to it.
+    // Charts with no data are hidden entirely (including their card wrapper).
+    // Uses canvas.closest('.chart-card') so no extra IDs are needed in the HTML.
 
-    // % Active, Avg Lag, Avg Peak HR — sessions that had active-state time
-    const activeOnly  = history.filter(s => (s.totalActiveSec || 0) > 0);
+    function mountChart(canvasId, labels, data, color, unit) {
+        const canvas = document.getElementById(canvasId);
+        if (!canvas) return;
+        const card = canvas.closest('.chart-card');
+        if (!data || data.every(v => v == null || v === 0)) {
+            if (card) card.style.display = 'none';
+            return;
+        }
+        if (card) card.style.display = '';
+        activeCharts.push(new Chart(canvas, buildChartConfig(labels, data, color, unit)));
+    }
+
     // Session length — all sessions
     const allLabels   = history.map(s => shortLabel(s.date));
     const sessionMins = history.map(s => s.sessionLengthSec ? Math.round(s.sessionLengthSec / 60) : 0);
-    activeCharts.push(new Chart(document.getElementById('chartSessionLen'), buildChartConfig(allLabels, sessionMins, '#6c757d', ' min')));
+    mountChart('chartSessionLen', allLabels, sessionMins, '#6c757d', ' min');
 
+    // % Active, Avg Lag, Avg Peak HR — sessions that had active-state time
+    const activeOnly = history.filter(s => (s.totalActiveSec || 0) > 0);
     if (activeOnly.length > 0) {
-        const aLabels   = activeOnly.map(s => shortLabel(s.date));
-        const pctActive = activeOnly.map(s => s.pctActive || 0);
-        const avgLag    = activeOnly.map(s => s.avgLagSec || 0);
-        const avgPeakHr = activeOnly.map(s => s.avgPeakHr || 0);
-        activeCharts.push(new Chart(document.getElementById('chartPctActive'), buildChartConfig(aLabels, pctActive,   '#28a745', '%')));
-        activeCharts.push(new Chart(document.getElementById('chartAvgLag'),    buildChartConfig(aLabels, avgLag,      '#17a2b8', 's')));
-        activeCharts.push(new Chart(document.getElementById('chartAvgPeak'),   buildChartConfig(aLabels, avgPeakHr,   '#fd7e14', ' bpm')));
+        const aLabels = activeOnly.map(s => shortLabel(s.date));
+        mountChart('chartPctActive', aLabels, activeOnly.map(s => s.pctActive || 0),  '#28a745', '%');
+        mountChart('chartAvgLag',    aLabels, activeOnly.map(s => s.avgLagSec || 0),  '#17a2b8', 's');
+        mountChart('chartAvgPeak',   aLabels, activeOnly.map(s => s.avgPeakHr || 0),  '#fd7e14', ' bpm');
+    } else {
+        ['chartPctActive', 'chartAvgLag', 'chartAvgPeak'].forEach(id => {
+            const c = document.getElementById(id);
+            if (c) { const card = c.closest('.chart-card'); if (card) card.style.display = 'none'; }
+        });
     }
 
-    // Avg Resonance Index — sessions that have RFB coherence data
-    const rfbCanvas = document.getElementById('chartAvgRfb');
+    // Avg Resonance Index — sessions with RFB coherence data
     const rfbCard   = document.getElementById('chartAvgRfbCard');
+    const rfbCanvas = document.getElementById('chartAvgRfb');
     if (rfbCanvas && rfbCard) {
         const rfbOnly = history.filter(s => (s.rfbTotalSec || 0) > 0);
         if (rfbOnly.length > 0) {
-            const rfbLabels = rfbOnly.map(s => shortLabel(s.date));
-            const rfbVals   = rfbOnly.map(s => s.rfbAvgRI ?? s.rfbAvgCoherence ?? null);
             rfbCard.style.display = '';
-            activeCharts.push(new Chart(rfbCanvas, buildChartConfig(rfbLabels, rfbVals, '#1a7fff', '')));
+            activeCharts.push(new Chart(rfbCanvas, buildChartConfig(
+                rfbOnly.map(s => shortLabel(s.date)),
+                rfbOnly.map(s => s.rfbAvgRI ?? s.rfbAvgCoherence ?? null),
+                '#1a7fff', '')));
         } else {
             rfbCard.style.display = 'none';
         }
     }
 
     // HRV Index — HRV Reading sessions with a valid index only
-    const hrvCanvas = document.getElementById('chartHrvIndex');
     const hrvCard   = document.getElementById('chartHrvIndexCard');
+    const hrvCanvas = document.getElementById('chartHrvIndex');
     if (hrvCanvas && hrvCard) {
         const hrvOnly = history.filter(s => s.activityId === 'hrv_reading' && s.hvIndexFinal != null);
         if (hrvOnly.length > 0) {
-            const hrvLabels = hrvOnly.map(s => shortLabel(s.date));
-            const hrvVals   = hrvOnly.map(s => s.hvIndexFinal);
             hrvCard.style.display = '';
-            activeCharts.push(new Chart(hrvCanvas, buildChartConfig(hrvLabels, hrvVals, '#7c3aed', '')));
+            activeCharts.push(new Chart(hrvCanvas, buildChartConfig(
+                hrvOnly.map(s => shortLabel(s.date)),
+                hrvOnly.map(s => s.hvIndexFinal),
+                '#7c3aed', '')));
         } else {
             hrvCard.style.display = 'none';
         }
@@ -792,15 +809,20 @@ function generateSessionPDF(session) {
         doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(90, 90, 90);
         const rfbAvgRI  = session.rfbAvgRI  ?? session.rfbAvgCoherence;
         const rfbPeakRI = session.rfbPeakRI ?? session.rfbPeakCoherence;
-        const rfbMeta = [
+        // Split meta into two lines to avoid overflow; use ASCII-only chars for jsPDF compat.
+        // U+2265 (>=) and U+2605 (star) are outside Helvetica's Latin-1 range and corrupt.
+        const rfbMetaLine1 = [
             dateStr,
             session.activityName ? `Activity: ${session.activityName}` : null,
-            rfbAvgRI  != null ? `Avg RI: ${rfbAvgRI}`              : null,
-            rfbPeakRI != null ? `Peak RI: ${rfbPeakRI}`            : null,
-            session.rfbPctAboveStar1 != null ? `Time ≥★: ${session.rfbPctAboveStar1}%` : null,
+        ].filter(Boolean).join('   ·   ');
+        const rfbMetaLine2 = [
+            rfbAvgRI  != null ? `Avg RI: ${rfbAvgRI}`                            : null,
+            rfbPeakRI != null ? `Peak RI: ${rfbPeakRI}`                          : null,
+            session.rfbPctAboveStar1 != null ? `Time >=*: ${session.rfbPctAboveStar1}%` : null,
             session.rfbTotalSec      != null ? `RFB duration: ${formatTime(session.rfbTotalSec)}` : null,
         ].filter(Boolean).join('   ·   ');
-        doc.text(rfbMeta, C_PX, 18);
+        doc.text(rfbMetaLine1, C_PX, 18);
+        if (rfbMetaLine2) doc.text(rfbMetaLine2, C_PX, 25);
     }
 
     // ── Save ──────────────────────────────────────────────────────────────────

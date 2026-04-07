@@ -564,6 +564,47 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         // Reset-to-defaults button label
         document.getElementById('settingsResetBtn').textContent = 'Reset to defaults';
+
+        // ── Context-sensitive field descriptions ──────────────────────────────
+        // Some descriptions differ between dedicated HRV/RFB sessions and
+        // standard activities because the setting plays a different role.
+        const restingHrDesc = document.querySelector('.sg-row[data-key="RESTING_HR"] .sg-desc');
+        if (restingHrDesc) restingHrDesc.textContent = (isRB || isHRV)
+            ? 'Your typical resting heart rate. Used to display a visual guide — not used in the calculation'
+            : 'Your typical resting heart rate. Used as the target to return to during a heart rate reset.';
+
+        const bwDesc = document.querySelector('.sg-row[data-key="RESTING_HR_BANDWIDTH"] .sg-desc');
+        if (bwDesc) bwDesc.textContent = (isRB || isHRV)
+            ? 'Width of the resting HR window.'
+            : 'Width of the acceptable resting HR window. HR must stay within this band for 15 consecutive seconds before a HR reset is considered complete.';
+
+        const rfbDurDesc = document.querySelector('.sg-row[data-key="RFB_DURATION"] .sg-desc');
+        if (rfbDurDesc) rfbDurDesc.textContent = isRB
+            ? 'Duration of resonance breathing session'
+            : 'Extra minutes to spend in resonance breathing after heart rate returns to resting.';
+
+        // ── RFB sub-field visibility ───────────────────────────────────────────
+        updateRfbSubVisibility(act, isRB, isHRV);
+    }
+
+    // ── RFB sub-field visibility ──────────────────────────────────────────────
+    // When RFB_ENABLED is toggled off in a standard activity, all the resonance
+    // breathing settings below the toggle are hidden (they are irrelevant).
+    // Not called for RB or HRV activities — their visibility is fully controlled
+    // by RESONANCE_HIDDEN_KEYS and HRV_SHOWN_KEYS respectively.
+    const RFB_DEP_KEYS = ['RFB_INHALE_SEC', 'RFB_EXHALE_SEC', 'RFB_DURATION',
+                          'RFB_SOUND', 'RFB_VIBRATION', 'RFB_SHOW_DEBUG'];
+    function updateRfbSubVisibility(act, isRB, isHRV) {
+        if (isRB || isHRV) return; // handled by activity-level logic
+        const rfbOn = !!(act.settings && act.settings.RFB_ENABLED);
+        RFB_DEP_KEYS.forEach(key => {
+            const row = document.querySelector(`.sg-row[data-key="${key}"]`);
+            if (row) row.style.display = rfbOn ? '' : 'none';
+        });
+        // Breathing rate display row (no data-key attribute)
+        document.querySelectorAll('.sg-row:not([data-key])').forEach(row => {
+            row.style.display = rfbOn ? '' : 'none';
+        });
     }
 
     function updateRfbRateDisplay() {
@@ -664,6 +705,9 @@ document.addEventListener('DOMContentLoaded', () => {
             // Resonance Breathing always has RFB_ENABLED = 1
             if (act.id === RESONANCE_BREATHING_ID && item.key === 'RFB_ENABLED') { v = 1; }
             act.settings[item.key] = v;
+            if (item.key === 'RFB_ENABLED') {
+                updateRfbSubVisibility(act, act.id === RESONANCE_BREATHING_ID, act.id === HRV_READING_ID_S);
+            }
             persistActivities();
             const sessionRunning = (typeof isSessionRunning !== 'undefined') && isSessionRunning;
             const sameActivity   = (typeof currentActivityId !== 'undefined') && currentActivityId === selectedActivityId;
