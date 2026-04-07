@@ -248,34 +248,52 @@ function renderCharts(history) {
     activeCharts.forEach(c => c.destroy());
     activeCharts = [];
     if (history.length === 0) return;
-    const labels      = history.map(s => shortLabel(s.date));
-    const pctActive   = history.map(s => s.pctActive || 0);
-    const avgLag      = history.map(s => s.avgLagSec || 0);
-    const avgPeakHr   = history.map(s => s.avgPeakHr || 0);
+
+    // Each chart type is filtered to only the sessions that are relevant to it,
+    // so sparse or mixed history does not show misleading zero data points.
+
+    // % Active, Avg Lag, Avg Peak HR — sessions that had active-state time
+    const activeOnly  = history.filter(s => (s.totalActiveSec || 0) > 0);
+    // Session length — all sessions
+    const allLabels   = history.map(s => shortLabel(s.date));
     const sessionMins = history.map(s => s.sessionLengthSec ? Math.round(s.sessionLengthSec / 60) : 0);
-    activeCharts.push(new Chart(document.getElementById('chartPctActive'),  buildChartConfig(labels, pctActive,   '#28a745', '%')));
-    activeCharts.push(new Chart(document.getElementById('chartAvgLag'),     buildChartConfig(labels, avgLag,      '#17a2b8', 's')));
-    activeCharts.push(new Chart(document.getElementById('chartAvgPeak'),    buildChartConfig(labels, avgPeakHr,   '#fd7e14', ' bpm')));
-    activeCharts.push(new Chart(document.getElementById('chartSessionLen'), buildChartConfig(labels, sessionMins, '#6c757d', ' min')));
+    activeCharts.push(new Chart(document.getElementById('chartSessionLen'), buildChartConfig(allLabels, sessionMins, '#6c757d', ' min')));
+
+    if (activeOnly.length > 0) {
+        const aLabels   = activeOnly.map(s => shortLabel(s.date));
+        const pctActive = activeOnly.map(s => s.pctActive || 0);
+        const avgLag    = activeOnly.map(s => s.avgLagSec || 0);
+        const avgPeakHr = activeOnly.map(s => s.avgPeakHr || 0);
+        activeCharts.push(new Chart(document.getElementById('chartPctActive'), buildChartConfig(aLabels, pctActive,   '#28a745', '%')));
+        activeCharts.push(new Chart(document.getElementById('chartAvgLag'),    buildChartConfig(aLabels, avgLag,      '#17a2b8', 's')));
+        activeCharts.push(new Chart(document.getElementById('chartAvgPeak'),   buildChartConfig(aLabels, avgPeakHr,   '#fd7e14', ' bpm')));
+    }
+
+    // Avg Resonance Index — sessions that have RFB coherence data
     const rfbCanvas = document.getElementById('chartAvgRfb');
     const rfbCard   = document.getElementById('chartAvgRfbCard');
     if (rfbCanvas && rfbCard) {
-        const rfbCoherence = history.map(s => s.rfbAvgRI ?? s.rfbAvgCoherence ?? null);
-        if (rfbCoherence.some(v => v != null)) {
+        const rfbOnly = history.filter(s => (s.rfbTotalSec || 0) > 0);
+        if (rfbOnly.length > 0) {
+            const rfbLabels = rfbOnly.map(s => shortLabel(s.date));
+            const rfbVals   = rfbOnly.map(s => s.rfbAvgRI ?? s.rfbAvgCoherence ?? null);
             rfbCard.style.display = '';
-            activeCharts.push(new Chart(rfbCanvas, buildChartConfig(labels, rfbCoherence, '#1a7fff', '')));
+            activeCharts.push(new Chart(rfbCanvas, buildChartConfig(rfbLabels, rfbVals, '#1a7fff', '')));
         } else {
             rfbCard.style.display = 'none';
         }
     }
 
+    // HRV Index — HRV Reading sessions with a valid index only
     const hrvCanvas = document.getElementById('chartHrvIndex');
     const hrvCard   = document.getElementById('chartHrvIndexCard');
     if (hrvCanvas && hrvCard) {
-        const hrvVals = history.map(s => (s.activityId === 'hrv_reading' && s.hvIndexFinal != null) ? s.hvIndexFinal : null);
-        if (hrvVals.some(v => v != null)) {
+        const hrvOnly = history.filter(s => s.activityId === 'hrv_reading' && s.hvIndexFinal != null);
+        if (hrvOnly.length > 0) {
+            const hrvLabels = hrvOnly.map(s => shortLabel(s.date));
+            const hrvVals   = hrvOnly.map(s => s.hvIndexFinal);
             hrvCard.style.display = '';
-            activeCharts.push(new Chart(hrvCanvas, buildChartConfig(labels, hrvVals, '#7c3aed', '')));
+            activeCharts.push(new Chart(hrvCanvas, buildChartConfig(hrvLabels, hrvVals, '#7c3aed', '')));
         } else {
             hrvCard.style.display = 'none';
         }

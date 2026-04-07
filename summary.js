@@ -26,23 +26,29 @@
         return `<div class="stat-item"><span>${escHtml(String(value))}</span><label>${escHtml(label)}</label></div>`;
     }
 
+    // ─── Session type helpers ─────────────────────────────────────────────────
+    function isHRVSession(s)  { return s.activityId === 'hrv_reading' || !!s.activityIsHRV; }
+    function isRFBSession(s)  { return s.activityId === 'resonance_breathing'; }
+    function hasTargetZone(s) { return s.budgetUsing === 1 && (s.totalTargetSec || 0) > 0; }
+
     // ─── Stat groups HTML ─────────────────────────────────────────────────────
     // Returns all the stat-group sections for a summary object.
     // Shared between the end-of-session modal tile and history card tiles.
     function buildStatGroupsHTML(s) {
-        const isHRV = s.activityId === 'hrv_reading' || !!s.activityIsHRV;
+        const isHRV = isHRVSession(s);
+        const isRFB = isRFBSession(s);
+        const byTarget = hasTargetZone(s);
         let html = '';
 
-        if (!isHRV) {
-            // ── Active Periods ────────────────────────────────────────────────
-            const activeTotal = fmtT(s.budgetUsing === 1 ? s.totalTargetSec : s.totalActiveSec)
-                              + (s.budgetUsing === 1 ? ' 𖣠' : '');
-            const activeTotalLabel = s.budgetUsing === 1 ? 'Target time' : 'Total';
+        // ── Active Periods (standard activities only, not HRV or RFB) ─────────
+        if (!isHRV && !isRFB) {
+            // Always show active-state time in this section, regardless of budget mode.
+            // If budgeting by target, the target-zone data gets its own section below.
             html += `
             <div class="stat-group">
                 <div class="stat-group-label active-label">🟢 Active Periods</div>
                 <div class="stat-row">
-                    ${statItem(activeTotal, activeTotalLabel)}
+                    ${statItem(fmtT(s.totalActiveSec), 'Total')}
                     ${statItem((s.pctActive || '--') + (s.pctActive ? '%' : ''), '% session')}
                     ${statItem(fmtN(s.numActivePeriods), 'Count')}
                 </div>
@@ -56,6 +62,19 @@
                     <div></div><div></div>
                 </div>
             </div>`;
+
+            // ── Target Zone (only when budgeting by target time) ──────────────
+            if (byTarget) {
+                html += `
+                <div class="stat-group">
+                    <div class="stat-group-label target-label">🎯 Target Zone</div>
+                    <div class="stat-row">
+                        ${statItem(fmtT(s.totalTargetSec), 'Target time')}
+                        ${statItem((s.pctTarget || '--') + (s.pctTarget ? '%' : ''), '% session')}
+                        ${statItem(fmtN(s.avgHrTarget), 'Avg HR')}
+                    </div>
+                </div>`;
+            }
 
             // ── Recovery Periods ──────────────────────────────────────────────
             html += `
@@ -109,7 +128,7 @@
             </div>
         </div>`;
 
-        // ── HRV Reading (HRV sessions only) ───────────────────────────────────
+        // ── HRV Index (HRV Reading sessions only) ─────────────────────────────
         if (isHRV) {
             const hrvVal    = s.hvIndexFinal != null ? String(Math.round(s.hvIndexFinal)) : '--';
             const shortNote = s.hrvSessionTooShort
@@ -119,41 +138,22 @@
             <div class="stat-group">
                 <div class="stat-group-label hrv-label">💜 HRV Index</div>
                 <div class="stat-row">
-                    ${statItem(hrvVal,                'HRV')}
+                    ${statItem(hrvVal,                   'HRV')}
                     ${statItem(fmtT(s.sessionLengthSec), 'Duration')}
-                    ${statItem(fmtN(s.avgHr),         'Avg HR')}
+                    ${statItem(fmtN(s.avgHr),            'Avg HR')}
                 </div>
                 ${shortNote}
             </div>`;
         }
 
-        // ── Activity settings (if present) ────────────────────────────────────
-        if (s.activitySettings && Object.keys(s.activitySettings).length > 0) {
-            const ss = s.activitySettings;
-            // For HRV Reading sessions only show the resting HR setting —
-            // active thresholds, bradycardia, recovery and lag limits are irrelevant.
-            const lines = isHRV
-                ? [`Resting HR: ${ss.RESTING_HR || '--'} ±${ss.RESTING_HR_BANDWIDTH || '--'}`]
-                : [
-                    `Max HR: ${ss.MAX_HR || '--'} · Resting HR: ${ss.RESTING_HR || '--'} ±${ss.RESTING_HR_BANDWIDTH || '--'}`,
-                    `Active: ${ss.ACTIVE_THRESHOLD_LOWER || '--'}–${ss.ACTIVE_THRESHOLD_UPPER || '--'} bpm · Brady: ${ss.BRADYCARDIA_THRESHOLD || '--'}`,
-                    `Max recovery: ${ss.MAX_RECOVERY_PERIOD || '--'}s · Max lag: ${ss.MAX_RESPONSE_LAG || '--'}s`,
-                ];
-            html += `
-            <div class="stat-group">
-                <div class="stat-group-label settings-label">⚙️ Session Settings</div>
-                <div class="settings-summary">${lines.map(l => escHtml(l)).join('<br>')}</div>
-            </div>`;
-        }
-
-        // ── Resonance Breathing (if RFB data present; not for HRV Reading) ────
-        if (!isHRV && s.rfbTotalSec > 0) {
+        // ── Resonance Breathing stats (dedicated RFB sessions) ────────────────
+        if (isRFB && s.rfbTotalSec > 0) {
             const rfbAvg  = (s.rfbAvgRI  ?? s.rfbAvgCoherence)  ?? '--';
             const rfbPeak = (s.rfbPeakRI ?? s.rfbPeakCoherence) ?? '--';
             const rfbPct  = s.rfbPctAboveStar1 != null ? s.rfbPctAboveStar1 + '%' : '--';
             html += `
             <div class="stat-group">
-                <div class="stat-group-label rfb-label">💙 Resonance Breathing</div>
+                <div class="stat-group-label rfb-label">💙 Resonance Index</div>
                 <div class="stat-row">
                     ${statItem(rfbAvg,  'Avg RI')}
                     ${statItem(rfbPeak, 'Peak RI')}
@@ -166,17 +166,79 @@
             </div>`;
         }
 
+        // ── Activity settings ─────────────────────────────────────────────────
+        if (s.activitySettings && Object.keys(s.activitySettings).length > 0) {
+            const ss = s.activitySettings;
+            let lines;
+
+            if (isHRV) {
+                // HRV Reading: only resting HR is relevant
+                lines = [
+                    `Resting HR: ${ss.RESTING_HR || '--'} \u00b1${ss.RESTING_HR_BANDWIDTH || '--'}`,
+                ];
+            } else if (isRFB) {
+                // Resonance Breathing: breathing parameters only
+                const inhale  = ss.RFB_INHALE_SEC || '--';
+                const exhale  = ss.RFB_EXHALE_SEC || '--';
+                const rateBpm = (inhale !== '--' && exhale !== '--')
+                    ? (60 / (inhale + exhale)).toFixed(1) + ' bpm'
+                    : '--';
+                lines = [
+                    `Max HR: ${ss.MAX_HR || '--'} \u00b7 Resting HR: ${ss.RESTING_HR || '--'} \u00b1${ss.RESTING_HR_BANDWIDTH || '--'}`,
+                    `Inhale: ${inhale}s \u00b7 Exhale: ${exhale}s \u00b7 Rate: ${rateBpm}`,
+                ];
+            } else {
+                // Standard activity
+                lines = [
+                    `Max HR: ${ss.MAX_HR || '--'} \u00b7 Resting HR: ${ss.RESTING_HR || '--'} \u00b1${ss.RESTING_HR_BANDWIDTH || '--'}`,
+                    `Active: ${ss.ACTIVE_THRESHOLD_LOWER || '--'}\u2013${ss.ACTIVE_THRESHOLD_UPPER || '--'} bpm \u00b7 Brady: ${ss.BRADYCARDIA_THRESHOLD || '--'}`,
+                    `Max recovery: ${ss.MAX_RECOVERY_PERIOD || '--'}s \u00b7 Max lag: ${ss.MAX_RESPONSE_LAG || '--'}s`,
+                ];
+                if (byTarget) {
+                    lines.push(`Target zone: ${ss.TARGET_MIN_HR || '--'}\u2013${ss.TARGET_MAX_HR || '--'} bpm`);
+                }
+            }
+
+            html += `
+            <div class="stat-group">
+                <div class="stat-group-label settings-label">⚙️ Session Settings</div>
+                <div class="settings-summary">${lines.map(l => escHtml(l)).join('<br>')}</div>
+            </div>`;
+        }
+
+        // ── Resonance Breathing (embedded in standard activity sessions) ──────
+        // Show when RFB data is present but session is NOT a dedicated RFB session.
+        if (!isHRV && !isRFB && s.rfbTotalSec > 0) {
+            const rfbAvg  = (s.rfbAvgRI  ?? s.rfbAvgCoherence)  ?? '--';
+            const rfbPeak = (s.rfbPeakRI ?? s.rfbPeakCoherence) ?? '--';
+            const rfbPct  = s.rfbPctAboveStar1 != null ? s.rfbPctAboveStar1 + '%' : '--';
+            html += `
+            <div class="stat-group">
+                <div class="stat-group-label rfb-label">💙 Resonance Breathing</div>
+                <div class="stat-row">
+                    ${statItem(rfbAvg,  'Avg RI')}
+                    ${statItem(rfbPeak, 'Peak RI')}
+                    ${statItem(rfbPct,  'Time \u2265\u2605')}
+                </div>
+                <div class="stat-row">
+                    ${statItem(fmtT(s.rfbTotalSec), 'Duration')}
+                    <div></div><div></div>
+                </div>
+            </div>`;
+        }
+
         return html;
     }
 
     // ─── Card header HTML ─────────────────────────────────────────────────────
-    // Returns the clickable header row (date, chips, chevron) for a card tile.
     function buildCardHeaderHTML(s, cardId) {
-        const isHRV       = s.activityId === 'hrv_reading' || !!s.activityIsHRV;
+        const isHRV       = isHRVSession(s);
+        const isRFB       = isRFBSession(s);
+        const byTarget    = hasTargetZone(s);
         const actName     = s.activityName || '';
         const durationMin = s.sessionLengthSec ? Math.round(s.sessionLengthSec / 60) : '--';
         const resets      = s.numRecoveryPeriods || 0;
-        const dateStr     = s.date ? `${fmtDate(s.date)} · ${fmtTime(s.date)}` : 'New session';
+        const dateStr     = s.date ? `${fmtDate(s.date)} \u00b7 ${fmtTime(s.date)}` : 'New session';
 
         let chips = '';
         if (isHRV) {
@@ -185,11 +247,21 @@
                 <span class="chip chip-hrv">HRV Reading</span>
                 <span class="chip chip-duration">${durationMin} min</span>
                 ${hrvVal ? `<span class="chip chip-hrv-index">HRV ${hrvVal}</span>` : ''}`;
+        } else if (isRFB) {
+            const rfbAvg = (s.rfbAvgRI ?? s.rfbAvgCoherence);
+            chips = `
+                <span class="chip chip-rfb">Resonance Breathing</span>
+                <span class="chip chip-duration">${durationMin} min</span>
+                ${rfbAvg != null ? `<span class="chip chip-rfb-index">${rfbAvg} avg RI</span>` : ''}`;
         } else {
+            // Standard activity — headline is target time or % active
+            const headlineChip = byTarget
+                ? `<span class="chip chip-target">${fmtT(s.totalTargetSec)} target</span>`
+                : `<span class="chip chip-active">${s.pctActive || '--'}% active</span>`;
             chips = `
                 ${actName ? `<span class="chip chip-activity">${escHtml(actName)}</span>` : ''}
                 <span class="chip chip-duration">${durationMin} min</span>
-                <span class="chip chip-active">${s.pctActive || '--'}% active</span>
+                ${headlineChip}
                 ${resets > 0 ? `<span class="chip chip-resets">${resets} recovery periods</span>` : ''}`;
         }
 
@@ -202,24 +274,24 @@
                 <div class="session-date">${escHtml(dateStr)}</div>
                 <div class="session-chips">${chips}</div>
             </div>
-            <span class="session-chevron" style="pointer-events:none">›</span>
+            <span class="session-chevron" style="pointer-events:none">\u203a</span>
         </div>`;
     }
 
     // ─── Full card HTML ───────────────────────────────────────────────────────
     // opts:
-    //   cardId      {string}  DOM id for the card element (required)
-    //   realIndex   {number|string}  used in data-index on buttons (for history actions)
-    //   notesHtml   {string}  pre-built notes row HTML; omit for modal
+    //   cardId      {string}  DOM id for the card element
+    //   realIndex   {number}  data-index on action buttons (history page)
+    //   notesHtml   {string}  pre-built notes container HTML; omit for modal
     //   showGraphBtn{boolean} show "View Session Graph (PDF)" button
     //   showDelete  {boolean} show "Delete this session" button
-    //   startOpen   {boolean} card starts expanded (default: false = collapsed)
+    //   startOpen   {boolean} card starts expanded (default: collapsed)
     function buildCardHTML(s, opts = {}) {
         const cardId    = opts.cardId || `card-${opts.realIndex}`;
         const openClass = opts.startOpen ? ' open' : '';
         const notesFrag = opts.notesHtml || '';
         const graphBtn  = opts.showGraphBtn
-            ? `<button class="session-graph-btn" data-action="view-graph" data-index="${opts.realIndex}">📈 View Session Graph (PDF)</button>`
+            ? `<button class="session-graph-btn" data-action="view-graph" data-index="${opts.realIndex}">\uD83D\uDCC8 View Session Graph (PDF)</button>`
             : '';
         const deleteBtn = opts.showDelete
             ? `<button class="session-delete-btn" data-action="delete-session" data-index="${opts.realIndex}">Delete this session</button>`
@@ -238,8 +310,6 @@
     }
 
     // ─── Generic toggle handler ───────────────────────────────────────────────
-    // Handles data-action="toggle-card" data-card-id="<id>" on any page.
-    // history.js delegates notes/delete/graph; this covers the toggle only.
     document.addEventListener('click', function (e) {
         const el = e.target.closest('[data-action="toggle-card"]');
         if (!el) return;

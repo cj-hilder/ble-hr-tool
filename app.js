@@ -577,6 +577,7 @@ const MIN_PERIOD_SEC = 5;  // periods shorter than this are excluded from all ca
 let currentPeriodStart = 0;
 let currentPeriodHrSamples = [];
 let sessionHrSamples = [];
+let targetHrSamples  = [];   // HR readings while latestHR >= TARGET_MIN_HR
 let pendingSummary = null;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -1439,6 +1440,7 @@ function updateTimers(increment) {
     // Target time accumulates whenever HR >= TARGET_MIN_HR, regardless of state
     if (latestHR > 0 && latestHR >= targetMin) {
         totalTargetSeconds += increment;
+        targetHrSamples.push(latestHR);
         if (byTarget && limitSec > 0 && !activityLimitTriggered && totalTargetSeconds >= limitSec) {
             activityLimitTriggered = true;
             switchState('reset', false);
@@ -1459,12 +1461,15 @@ function updateTimers(increment) {
         if (!rfbExtended) rfbSecondsRemaining -= increment;
         if (!rfbExtended && rfbSecondsRemaining <= 0) {
             if (isResonanceBreathing) {
-                // Time's up — alert the user (they may not be watching the screen),
-                // then snapshot the session clock before modal delay inflates it.
-                triggerNotification();
+                // Time's up — show modal and alert once; the condition stays true on
+                // every subsequent tick, so guard against re-firing with a visibility check.
                 rfbSecondsRemaining = 0;
-                rbSessionEndSeconds = sessionSeconds;
-                document.getElementById('rbTimeUpModal').classList.add('visible');
+                const modal = document.getElementById('rbTimeUpModal');
+                if (!modal.classList.contains('visible')) {
+                    rbSessionEndSeconds = sessionSeconds;
+                    triggerNotification();
+                    modal.classList.add('visible');
+                }
             } else {
                 rfbPhase = false;
                 switchState('active', false);
@@ -1751,6 +1756,9 @@ function computeSessionSummary() {
         highestPeakHr:  rStats.peaks.length ? Math.max(...rStats.peaks) : 0,
         avgPeakHr:      rStats.peaks.length ? arrAvg(rStats.peaks)      : 0,
         lowestPeakHr:   rStats.peaks.length ? Math.min(...rStats.peaks) : 0,
+        pctTarget:    sessionSeconds > 0 && totalTargetSeconds > 0
+                        ? Math.round(totalTargetSeconds / sessionSeconds * 100) : 0,
+        avgHrTarget:  targetHrSamples.length ? Math.round(arrAvg(targetHrSamples)) : 0,
         sessionLengthSec: (isResonanceBreathing && rbSessionEndSeconds > 0) ? rbSessionEndSeconds : sessionSeconds,
         highestHr: sessionHrSamples.length ? Math.max(...sessionHrSamples) : 0,
         avgHr:     sessionHrSamples.length ? arrAvg(sessionHrSamples)      : 0,
@@ -1907,7 +1915,7 @@ function setRbDisplayMode(isRb) {
 function startSession() {
     isSessionRunning = true; sessionSeconds = 0; sessionStartTime = Date.now();
     stateSeconds = 0; totalActiveSeconds = 0; totalTargetSeconds = 0; resetCount = 0; recoverySeconds = 0;
-    activePeriods = []; recoveryPeriods = []; currentPeriodType = null; sessionHrSamples = [];
+    activePeriods = []; recoveryPeriods = []; currentPeriodType = null; sessionHrSamples = []; targetHrSamples = [];
     rfbSessionClockStart = 0; activityLimitTriggered = false; sessionHrRecording = []; rfbCoherenceRecording = [];
     rfbActiveSeconds = 0; rbSessionEndSeconds = 0;
     // Flush HR graph history and RR pipeline so stale inter-session data

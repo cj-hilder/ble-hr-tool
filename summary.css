@@ -26,6 +26,9 @@
 .chip-activity   { background: #0e1e30; color: #4af; border: 1px solid #1a3a55; }
 .chip-hrv        { background: #1a0e2e; color: #a78bfa; border: 1px solid #3d1f7a; }
 .chip-hrv-index  { background: #1a0e2e; color: #7c3aed; border: 1px solid #3d1f7a; font-weight: 700; }
+.chip-rfb        { background: #0a1828; color: #4af; border: 1px solid #1a3a55; }
+.chip-rfb-index  { background: #0a1828; color: #1a7fff; border: 1px solid #1a3a55; font-weight: 700; }
+.chip-target     { background: #0d2010; color: #4caf50; border: 1px solid #1a4726; font-weight: 700; }
 
 /* ── Chevron toggle ── */
 .session-chevron { color: #555; font-size: 18px; transition: transform 0.2s; flex-shrink: 0; }
@@ -87,6 +90,7 @@
 .recovery-label { color: #fd7e14; }
 .lag-label      { color: #17a2b8; }
 .session-label  { color: #777; }
+.target-label   { color: #4caf50; }
 .settings-label { color: #888; }
 .rfb-label      { color: #1a7fff; }
 .hrv-label      { color: #7c3aed; }
