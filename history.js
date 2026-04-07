@@ -625,6 +625,8 @@ function generateSessionPDF(session) {
         session.activityName ? `Activity: ${session.activityName}` : null,
         session.sessionLengthSec ? `Duration: ${formatTime(session.sessionLengthSec)}` : null,
         session.avgHr ? `Avg HR: ${session.avgHr} bpm` : null,
+        (session.activityId === 'hrv_reading' && session.hvIndexFinal != null)
+            ? `HRV: ${Math.round(session.hvIndexFinal)}` : null,
     ].filter(Boolean).join('   ·   ');
     doc.text(meta, PX, 18);
 

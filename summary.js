@@ -111,7 +111,7 @@
 
         // ── HRV Reading (HRV sessions only) ───────────────────────────────────
         if (isHRV) {
-            const hrvVal    = s.hvIndexFinal != null ? s.hvIndexFinal.toFixed(1) : '--';
+            const hrvVal    = s.hvIndexFinal != null ? String(Math.round(s.hvIndexFinal)) : '--';
             const shortNote = s.hrvSessionTooShort
                 ? `<div class="hrv-card-short-note">⚠️ Short snapshot — less than 3 minutes. Result may be unreliable.</div>`
                 : '';
@@ -130,11 +130,15 @@
         // ── Activity settings (if present) ────────────────────────────────────
         if (s.activitySettings && Object.keys(s.activitySettings).length > 0) {
             const ss = s.activitySettings;
-            const lines = [
-                `Max HR: ${ss.MAX_HR || '--'} · Resting HR: ${ss.RESTING_HR || '--'} ±${ss.RESTING_HR_BANDWIDTH || '--'}`,
-                `Active: ${ss.ACTIVE_THRESHOLD_LOWER || '--'}–${ss.ACTIVE_THRESHOLD_UPPER || '--'} bpm · Brady: ${ss.BRADYCARDIA_THRESHOLD || '--'}`,
-                `Max recovery: ${ss.MAX_RECOVERY_PERIOD || '--'}s · Max lag: ${ss.MAX_RESPONSE_LAG || '--'}s`,
-            ];
+            // For HRV Reading sessions only show the resting HR setting —
+            // active thresholds, bradycardia, recovery and lag limits are irrelevant.
+            const lines = isHRV
+                ? [`Resting HR: ${ss.RESTING_HR || '--'} ±${ss.RESTING_HR_BANDWIDTH || '--'}`]
+                : [
+                    `Max HR: ${ss.MAX_HR || '--'} · Resting HR: ${ss.RESTING_HR || '--'} ±${ss.RESTING_HR_BANDWIDTH || '--'}`,
+                    `Active: ${ss.ACTIVE_THRESHOLD_LOWER || '--'}–${ss.ACTIVE_THRESHOLD_UPPER || '--'} bpm · Brady: ${ss.BRADYCARDIA_THRESHOLD || '--'}`,
+                    `Max recovery: ${ss.MAX_RECOVERY_PERIOD || '--'}s · Max lag: ${ss.MAX_RESPONSE_LAG || '--'}s`,
+                ];
             html += `
             <div class="stat-group">
                 <div class="stat-group-label settings-label">⚙️ Session Settings</div>
@@ -176,7 +180,7 @@
 
         let chips = '';
         if (isHRV) {
-            const hrvVal = s.hvIndexFinal != null ? s.hvIndexFinal.toFixed(1) : null;
+            const hrvVal = s.hvIndexFinal != null ? String(Math.round(s.hvIndexFinal)) : null;
             chips = `
                 <span class="chip chip-hrv">HRV Reading</span>
                 <span class="chip chip-duration">${durationMin} min</span>

@@ -947,7 +947,7 @@ function updateHRVDisplay() {
     }
 
     currentHRVIndex = result.index;
-    coherVal.textContent = result.index.toFixed(1);
+    coherVal.textContent = String(Math.round(result.index));
     coherVal.style.color = '#7c3aed';
 
     if (showDebug) {
@@ -1459,7 +1459,9 @@ function updateTimers(increment) {
         if (!rfbExtended) rfbSecondsRemaining -= increment;
         if (!rfbExtended && rfbSecondsRemaining <= 0) {
             if (isResonanceBreathing) {
-                // Time's up — snapshot the session clock before modal delay inflates it
+                // Time's up — alert the user (they may not be watching the screen),
+                // then snapshot the session clock before modal delay inflates it.
+                triggerNotification();
                 rfbSecondsRemaining = 0;
                 rbSessionEndSeconds = sessionSeconds;
                 document.getElementById('rbTimeUpModal').classList.add('visible');
@@ -1483,6 +1485,7 @@ function updateTimers(increment) {
         hrvSecondsRemaining -= increment;
         if (hrvSecondsRemaining <= 0) {
             hrvSecondsRemaining = 0;
+            triggerNotification();
             finishSession();
             return;
         }
