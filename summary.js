@@ -99,7 +99,7 @@
             // ── Lag & Peak HR ─────────────────────────────────────────────────
             html += `
             <div class="stat-group">
-                <div class="stat-group-label lag-label">📈 Lag & Peak HR</div>
+                <div class="stat-group-label lag-label">📈 Recovery Lag & Peak HR</div>
                 <div class="stat-row">
                     ${statItem(fmtT(s.longestLagSec),  'Longest lag')}
                     ${statItem(fmtT(s.avgLagSec),      'Avg lag')}

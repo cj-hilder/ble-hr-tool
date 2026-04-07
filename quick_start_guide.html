@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Autonomic HR Pacer - Quick Start Guide</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 40px 20px;
+            background-color: #faf8f5;
+        }
+        header {
+            margin-bottom: 30px;
+        }
+        .home-link {
+            text-decoration: none;
+            color: #0066cc;
+            font-weight: 600;
+            font-size: 1.1em;
+        }
+        .home-link:hover {
+            text-decoration: underline;
+        }
+        h1, h3 {
+            color: #2c3e50;
+        }
+        h1 {
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+            margin-bottom: 30px;
+        }
+        h3 {
+            margin-top: 30px;
+        }
+        .dot {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+        .dot-green { background-color: #2ecc71; }
+        .dot-orange { background-color: #f39c12; }
+        .dot-red { background-color: #e74c3c; }
+        .dot-blue { background-color: #3498db; }
+        .dot-grey { background-color: #95a5a6; }
+        
+        ul, ol {
+            padding-left: 20px;
+        }
+        li {
+            margin-bottom: 10px;
+        }
+        .warning-box {
+            background-color: #fff3cd;
+            border-left: 4px solid #ffeeba;
+            padding: 15px;
+            margin: 30px 0;
+            border-radius: 4px;
+            color: #856404;
+        }
+        footer {
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+            text-align: center;
+        }
+        footer a {
+            text-decoration: none;
+            color: #0066cc;
+        }
+        footer a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <a href="/" class="home-link">&larr; Home</a>
+    </header>
+
+    <h1>Autonomic HR Pacer: Quick Start Guide</h1>
+
+    <h3>1. What You Need Before Starting</h3>
+    <ul>
+        <li><strong>A Compatible Device:</strong> You must use an Android device running Google Chrome, or a Desktop running Chrome (Windows/Mac). Apple iOS and Safari are not currently supported.</li>
+        <li><strong>A Chest Strap HR Monitor:</strong> A chest strap, such as the Polar H10, is mandatory. Optical wrist sensors (like Apple Watches or Fitbits) are not accurate enough to measure heart rate reliably in the presence of dysautonomia.</li>
+    </ul>
+
+    <h3>2. First-Time Setup</h3>
+    <ol>
+        <li><strong>Open the App:</strong> Navigate to <code>cj-hilder.github.io/ble-hr-tool/</code> on your compatible browser.</li>
+        <li><strong>Install It:</strong> Tap your browser's menu (the three dots) and select <strong>"Add to Home screen"</strong> or <strong>"Install App"</strong>.</li>
+        <li><strong>Launch:</strong> Open the newly installed app from your home screen.</li>
+        <li><strong>Connect:</strong> Put your chest strap into Bluetooth pairing/broadcasting mode, tap <strong>"Connect to HR monitor"</strong> in the app, and select your device.</li>
+    </ol>
+
+    <h3>3. Setting Your Limits (Crucial Step)</h3>
+    <p>Before you exercise, you need to configure your settings.</p>
+    <ul>
+        <li><strong>The Baseline Rule:</strong> A safe, conservative starting point for your "Upper threshold" is your <strong>Resting HR + 15 bpm</strong>.</li>
+        <li><strong>If you have PEM (Post-Exertional Malaise) or Chronic Fatigue:</strong> Treat this limit as a strict ceiling. Your goal is simply to stay under it, not to push past it.</li>
+        <li><strong>If you do not have PEM:</strong> Use Resting HR + 15 bpm as your starting point, but you can progressively raise this threshold over time as your nervous system recovers.</li>
+    </ul>
+
+    <h3>4. How to Use the App (Color Guide)</h3>
+    <p>Once you begin your activity, follow the colored dots on the screen. The app will vibrate and use sound alerts so you don't have to stare at your phone.</p>
+    <ul>
+        <li><span class="dot dot-green"></span> <strong>Green (Continue):</strong> Your heart rate is in a safe zone. Keep going!</li>
+        <li><span class="dot dot-orange"></span> <strong>Orange (Rest/Pull Back):</strong> You have hit your limit. Stop or significantly reduce your activity immediately so your heart rate can drop back down.</li>
+        <li><span class="dot dot-red"></span> <strong>Red (Reset):</strong> You pushed too far or didn't recover fast enough. Stop completely (sit down if needed) and wait for your heart rate to return to your resting level for 15 consecutive seconds.</li>
+        <li><span class="dot dot-blue"></span> <strong>Blue (Breathing Reset):</strong> This functions exactly like the Red reset, but indicates that you have "Resonance Frequency Breathing" turned on. The app will guide you through a breathing exercise (expanding on inhale, contracting on exhale) to help your nervous system recover.</li>
+        <li><span class="dot dot-grey"></span> <strong>Grey (Pause):</strong> You have manually paused the session to take a break.</li>
+    </ul>
+
+    <div class="warning-box">
+        <strong>Disclaimer:</strong> This app was built by a patient, not a doctor. Nothing in the app should be taken as medical advice, and you should always listen to your body—do not blindly follow the app if you feel unwell.
+    </div>
+
+    <footer>
+        <a href="about.html">full documentation</a>
+    </footer>
+</body>
+</html>
