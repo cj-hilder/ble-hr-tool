@@ -111,6 +111,19 @@ You are currently in the active state but want to rest voluntarily — not becau
 
 ---
 
+## The Live HR Graph
+
+A 90-second window of heart rate data scrolls continuously on screen. When connected to a sensor that exposes raw beat-to-beat RR intervals — such as the Polar H10 — this graph shows **unsmoothed, instantaneous heart rate** rather than the rolling average most commercial apps and devices use. That averaging is deliberate on most platforms: it produces a cleaner, less alarming line. Here it is switched off, because seeing the raw signal is the point.
+
+One consequence is that you will see **ectopic heart beats** if any occur. Ectopics are beats that fire outside the normal cardiac rhythm. There are two common types:
+
+- **PVC (premature ventricular contraction):** A beat that fires early from the ventricles. On the graph it appears as a **sharp spike upward, immediately followed by a smaller spike downward**. The early beat shortens that RR interval; the ventricles are then refractory when the SA node fires on schedule, so the next beat is delayed — producing the characteristic double-spike shape.
+- **PAC (premature atrial contraction):** A beat that fires early from somewhere in the atria, which resets the SA node. On the graph it appears as a **spike upward with no corresponding downward spike** — the following beat is roughly normal because the SA node restarts from the ectopic.
+
+Occasional ectopics are completely normal. Healthy adults commonly experience them at a rate of up to once every three minutes or so, often without noticing. Seeing one on the graph is not a cause for concern — this is the app doing exactly what it says: showing you your cardiac data rather than hiding it. It may be worth mentioning to a clinician if you are seeing more than roughly three per minute consistently, though even that can be benign in isolation. The key question is whether the rate is new, increasing, or accompanied by symptoms.
+
+---
+
 ## Resonance Frequency Breathing (RFB)
 
 Resonance Frequency Breathing is a biofeedback technique. Regular RFB practice has evidence of increasing vagal tone over time.
@@ -268,15 +281,25 @@ The key parameters and their purpose:
 **Active thresholds**
 - *Upper threshold* — The ceiling for the Active state. If unsure, resting HR + 15 is a conservative starting point.
 - *Lower threshold* — HR must fall below this to transition from 'Rest or pull back' to 'Active'. Usually set just below the upper threshold.
-- *Activity time limit* — Total active time allowed per session, in minutes. When reached, the app transitions to the heart rate Reset state and the state description reads "Activity limit reached". The session does not end automatically — you may choose to continue or end voluntarily. Set to 0 to disable.
 
 **Recovery limits**
 - *Max recovery period* — The total time allowed in 'Rest or pull back' before a forced heart rate Reset.
 - *Max response lag* — How long HR is allowed to keep rising after entering 'Rest or pull back' before a heart rate Reset is forced. This specifically targets the delayed-recovery pattern.
 - *Resets before warning* — How many heart rate Resets trigger the end-session advisory.
 
+**Activity limit and budget**
+
+The activity time limit and the budget setting work together to define how you count your daily exercise allowance. The right choice depends on how well your HR is regulated.
+
+When your HR is **dysregulated**, the appropriate response to 'Rest or pull back' is to stop completely — not to ease off, but to fully stop. You only accrue exercise credit while the app is in the active state. Set *Budget with* to **Active time**, and your limit will count only the time your HR is actually in the Continue activity zone.
+
+When your HR is **regulated**, it becomes possible to stay active during 'Rest or pull back' by reducing effort slightly — a gentle walk rather than a stop. In this case, meaningful exercise is happening whenever your HR is at or above your target minimum, regardless of which state the app has triggered. Set *Budget with* to **Target time**, and your limit will count any second your HR is at or above *Target min*, across all states.
+
+- *Budget with* — Selects what counts toward your daily budget. **Active time** counts seconds in the Continue activity state. **Target time** counts seconds at or above Target Min HR, regardless of state.
+- *Activity time limit* — Total budget allowed per session, in minutes. When reached, the app transitions to the heart rate Reset state. Set to 0 to disable. The session does not end automatically — you may choose to continue or finish.
+
 **Target zone**
-- *Target min / max* — A visual guide shown on the speedometer. Purely informational, does not affect state transitions.
+- *Target min / max* — The HR range used for target time budgeting. When *Budget with* is set to Target time, any second your HR is at or above *Target min* counts toward your limit, regardless of which state the app is in. The zone is also shown as a visual guide on the speedometer in all modes.
 
 **Alerts**
 - *Vibration / Sound* — Intensity of the state-transition alerts (Off / Subtle / Intense).
