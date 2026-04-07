@@ -345,67 +345,12 @@ body.connected #trainingUI {
     font-weight: 700;
 }
 
-.summary-section {
-    background: #1a1a1a;
-    border-radius: 12px;
-    padding: 10px 12px 12px;
+/* summaryCardContainer holds the injected session-card tile */
+#summaryCardContainer .session-card {
+    /* Slightly larger stat text in modal context for readability */
+    --modal-stat-font: 16px;
 }
-
-.summary-section-header {
-    font-size: 13px;
-    font-weight: 700;
-    letter-spacing: 0.05em;
-    margin-bottom: 10px;
-    padding-bottom: 6px;
-    border-bottom: 1px solid #2a2a2a;
-}
-.active-header   { color: #28a745; }
-.recovery-header { color: #fd7e14; }
-.lag-header      { color: #17a2b8; }
-.session-header  { color: #aaa; }
-.rfb-header      { color: #1a7fff; }
-.hrv-header      { color: #7c3aed; }
-
-.hrv-short-note {
-    font-size: 12px;
-    color: #a78bfa;
-    margin-top: 10px;
-    padding-top: 8px;
-    border-top: 1px solid #2a2a2a;
-    text-align: center;
-    line-height: 1.5;
-}
-
-.summary-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    gap: 8px 4px;
-}
-
-.summary-stat {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-}
-.summary-stat span {
-    font-family: monospace;
-    font-size: 18px;
-    color: #ddd;
-    line-height: 1.2;
-}
-.summary-stat label {
-    font-size: 10px;
-    color: #666;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    margin-top: 2px;
-}
-
-/* Wide cell that spans full row in a 3-col grid (used for lone Avg HR cell) */
-.summary-stat-wide {
-    grid-column: 1 / -1;
-}
+#summaryCardContainer .stat-item span { font-size: 16px; }
 
 #summaryNotes {
     width: 100%;

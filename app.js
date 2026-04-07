@@ -1769,69 +1769,22 @@ function computeSessionSummary() {
 let summarySaveState = null; // tracks state of the summary modal save flow
 
 function showSummaryModal(summary) {
-    const set = (id, val) => { const el = document.getElementById(id); if (el) el.innerText = val; };
-    const fmtT = s => s > 0 ? formatTime(s) : '--';
-    const fmtN = n => n > 0 ? n : '--';
-    const byTarget = summary.budgetUsing === 1;
-    // Active section total time: show active total or target total according to budget setting
-    set('s-totalActive', fmtT(byTarget ? summary.totalTargetSec : summary.totalActiveSec) + (byTarget ? ' 𖣠' : ''));
-    const totalActiveLabel = document.getElementById('s-totalActiveLabel');
-    if (totalActiveLabel) totalActiveLabel.innerText = byTarget ? 'Target time' : 'Total time';
-    set('s-pctActive',      summary.numActivePeriods > 0 ? summary.pctActive + '%' : '--');
-    set('s-numActive',      fmtN(summary.numActivePeriods));
-    set('s-longestActive',  fmtT(summary.longestActiveSec));
-    set('s-avgActive',      fmtT(summary.avgActiveSec));
-    set('s-shortestActive', fmtT(summary.shortestActiveSec));
-    set('s-avgHrActive',    fmtN(summary.avgHrActive));
-    set('s-totalRecovery',    fmtT(summary.totalRecoverySec));
-    set('s-pctRecovery',      summary.numRecoveryPeriods > 0 ? summary.pctRecovery + '%' : '--');
-    set('s-numRecovery',      fmtN(summary.numRecoveryPeriods));
-    set('s-longestRecovery',  fmtT(summary.longestRecoverySec));
-    set('s-avgRecovery',      fmtT(summary.avgRecoverySec));
-    set('s-shortestRecovery', fmtT(summary.shortestRecoverySec));
-    set('s-avgHrRecovery',    fmtN(summary.avgHrRecovery));
-    set('s-longestLag',  fmtT(summary.longestLagSec));
-    set('s-avgLag',      fmtT(summary.avgLagSec));
-    set('s-shortestLag', fmtT(summary.shortestLagSec));
-    set('s-highestPeak', fmtN(summary.highestPeakHr));
-    set('s-avgPeak',     fmtN(summary.avgPeakHr));
-    set('s-lowestPeak',  fmtN(summary.lowestPeakHr));
-    set('s-sessionLength', fmtT(summary.sessionLengthSec));
-    set('s-highestHr',     fmtN(summary.highestHr));
-    set('s-avgHr',         fmtN(summary.avgHr));
-    set('s-lowestHr',      fmtN(summary.lowestHr));
-    // Show/hide sections based on session type
-    const isHRV = summary.activityIsHRV || summary.activityId === HRV_READING_ID;
-    ['s-activeSection', 's-recoverySection', 's-lagSection'].forEach(id => {
-        const el = document.getElementById(id); if (el) el.style.display = isHRV ? 'none' : '';
-    });
-
-    // HRV Reading section
-    const hrvSection = document.getElementById('s-hrvSection');
-    if (hrvSection) {
-        hrvSection.style.display = isHRV ? '' : 'none';
-        if (isHRV) {
-            set('s-hrvIndex', summary.hvIndexFinal != null ? summary.hvIndexFinal.toFixed(1) : '--');
-            const shortNote = document.getElementById('s-hrvShortNote');
-            if (shortNote) shortNote.style.display = summary.hrvSessionTooShort ? '' : 'none';
-        }
+    // Build and inject the session tile using the shared SummaryCard builder.
+    // The tile starts collapsed — the user can tap the header to expand the
+    // full stat groups, or proceed directly to Save / Discard.
+    // No delete button and no graph button are shown in the modal context.
+    const container = document.getElementById('summaryCardContainer');
+    if (container) {
+        container.innerHTML = window.SummaryCard.buildCardHTML(summary, {
+            cardId:       'card-modal',
+            showDelete:   false,
+            showGraphBtn: false,
+        });
     }
 
-    // RFB section — show only if coherence data was collected
-    const rfbSection = document.getElementById('s-rfbSection');
-    if (rfbSection) {
-        const hasRfb = summary.rfbTotalSec > 0;
-        rfbSection.style.display = hasRfb ? '' : 'none';
-        if (hasRfb) {
-            set('s-rfbAvg',      (summary.rfbAvgRI  ?? summary.rfbAvgCoherence));
-            set('s-rfbPeak',     (summary.rfbPeakRI ?? summary.rfbPeakCoherence));
-            set('s-rfbPctAbove', summary.rfbPctAboveStar1 + '%');
-            set('s-rfbTotal',    fmtT(summary.rfbTotalSec));
-        }
-    }
     document.getElementById('summaryNotes').value = '';
     const errEl = document.getElementById('summaryError');
-    if (errEl) { errEl.className = ''; }
+    if (errEl) errEl.className = '';
     const saveBtn = document.getElementById('summarySaveBtn');
     if (saveBtn) saveBtn.textContent = 'Save session';
     summarySaveState = null;

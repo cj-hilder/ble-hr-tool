@@ -9,6 +9,7 @@
     <link rel="icon" href="icon.png" type="image/png">
     <link rel="apple-touch-icon" href="icon.png">
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="summary.css">
 </head>
 <body>
 
@@ -36,7 +37,7 @@
         <div id="stateDescription"></div>
         <div id="coherenceDisplay" style="display:none;">
             <div id="coherenceRow">
-                <span class="coherence-label"></span>
+                <span class="coherence-label"></span>
                 <span id="coherenceValue" class="coherence-value">--%</span>
             </div>
         </div>
@@ -117,73 +118,8 @@
         <div id="summaryModalBox">
             <h2 class="summary-title">Session Summary</h2>
 
-            <div class="summary-section" id="s-activeSection">
-                <div class="summary-section-header active-header">🟢 Active Periods</div>
-                <div class="summary-grid">
-                    <div class="summary-stat"><span id="s-totalActive">--</span><label id="s-totalActiveLabel">Total time</label></div>
-                    <div class="summary-stat"><span id="s-pctActive">--</span><label>% of session</label></div>
-                    <div class="summary-stat"><span id="s-numActive">--</span><label>Count</label></div>
-                    <div class="summary-stat"><span id="s-longestActive">--</span><label>Longest</label></div>
-                    <div class="summary-stat"><span id="s-avgActive">--</span><label>Average</label></div>
-                    <div class="summary-stat"><span id="s-shortestActive">--</span><label>Shortest</label></div>
-                    <div class="summary-stat summary-stat-wide"><span id="s-avgHrActive">--</span><label>Avg HR</label></div>
-                </div>
-            </div>
-
-            <div class="summary-section" id="s-recoverySection">
-                <div class="summary-section-header recovery-header">🟠 Recovery Periods</div>
-                <div class="summary-grid">
-                    <div class="summary-stat"><span id="s-totalRecovery">--</span><label>Total time</label></div>
-                    <div class="summary-stat"><span id="s-pctRecovery">--</span><label>% of session</label></div>
-                    <div class="summary-stat"><span id="s-numRecovery">--</span><label>Count</label></div>
-                    <div class="summary-stat"><span id="s-longestRecovery">--</span><label>Longest</label></div>
-                    <div class="summary-stat"><span id="s-avgRecovery">--</span><label>Average</label></div>
-                    <div class="summary-stat"><span id="s-shortestRecovery">--</span><label>Shortest</label></div>
-                    <div class="summary-stat summary-stat-wide"><span id="s-avgHrRecovery">--</span><label>Avg HR</label></div>
-                </div>
-            </div>
-
-            <div class="summary-section" id="s-lagSection">
-                <div class="summary-section-header lag-header">📈 Recovery Lag & Peak HR</div>
-                <div class="summary-grid">
-                    <div class="summary-stat"><span id="s-longestLag">--</span><label>Longest lag</label></div>
-                    <div class="summary-stat"><span id="s-avgLag">--</span><label>Avg lag</label></div>
-                    <div class="summary-stat"><span id="s-shortestLag">--</span><label>Shortest lag</label></div>
-                    <div class="summary-stat"><span id="s-highestPeak">--</span><label>Highest peak</label></div>
-                    <div class="summary-stat"><span id="s-avgPeak">--</span><label>Avg peak</label></div>
-                    <div class="summary-stat"><span id="s-lowestPeak">--</span><label>Lowest peak</label></div>
-                </div>
-            </div>
-
-            <div class="summary-section">
-                <div class="summary-section-header session-header">📊 Session</div>
-                <div class="summary-grid">
-                    <div class="summary-stat"><span id="s-sessionLength">--</span><label>Duration</label></div>
-                    <div class="summary-stat"><span id="s-highestHr">--</span><label>Highest HR</label></div>
-                    <div class="summary-stat"><span id="s-avgHr">--</span><label>Avg HR</label></div>
-                    <div class="summary-stat summary-stat-wide"><span id="s-lowestHr">--</span><label>Lowest HR</label></div>
-                </div>
-            </div>
-
-            <div class="summary-section" id="s-hrvSection" style="display:none;">
-                <div class="summary-section-header hrv-header">💜 HRV Reading</div>
-                <div class="summary-grid">
-                    <div class="summary-stat summary-stat-wide"><span id="s-hrvIndex">--</span><label>HRV</label></div>
-                </div>
-                <div id="s-hrvShortNote" style="display:none;" class="hrv-short-note">
-                    ⚠️ Short snapshot — less than 3 minutes. Result may be unreliable.
-                </div>
-            </div>
-
-            <div class="summary-section" id="s-rfbSection" style="display:none;">
-                <div class="summary-section-header rfb-header">💙 Resonance Breathing</div>
-                <div class="summary-grid">
-                    <div class="summary-stat"><span id="s-rfbAvg">--</span><label>Avg RI</label></div>
-                    <div class="summary-stat"><span id="s-rfbPeak">--</span><label>Peak RI</label></div>
-                    <div class="summary-stat"><span id="s-rfbPctAbove">--</span><label>Time ≥★</label></div>
-                    <div class="summary-stat summary-stat-wide"><span id="s-rfbTotal">--</span><label>RFB duration</label></div>
-                </div>
-            </div>
+            <!-- Summary tile injected here by showSummaryModal() via SummaryCard.buildCardHTML() -->
+            <div id="summaryCardContainer"></div>
 
             <textarea id="summaryNotes" placeholder="Notes (optional)…" rows="3"></textarea>
 
@@ -199,6 +135,7 @@
     <button id="homeBtn" style="display:none;">&#8962;</button>
 
     <script src="utils.js"></script>
+    <script src="summary.js"></script>
     <script src="settings.js"></script>
     <script src="app.js?v=4"></script>
 </body>

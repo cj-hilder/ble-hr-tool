@@ -24,15 +24,7 @@ let activeCharts = [];
 let activeFilters = new Set();
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-function fmtDate(iso) {
-    const d = new Date(iso);
-    return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
-}
-function fmtTime(iso) {
-    return new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-}
-function fmtT(s) { return s > 0 ? formatTime(s) : '--'; }
-function fmtN(n) { return n > 0 ? n : '--'; }
+// fmtDate, fmtTime, fmtT, fmtN are provided by summary.js (window.SummaryCard)
 function shortLabel(iso) {
     const d = new Date(iso);
     return `${d.getMonth() + 1}/${d.getDate()}`;
@@ -360,8 +352,6 @@ document.addEventListener('click', function (e) {
             localStorage.setItem(HISTORY_KEY, JSON.stringify(allHistory));
             renderPage();
         } catch (err) { showToast('Failed to delete session', 'error'); }
-    } else if (action === 'toggle-card' && !isNaN(idx)) {
-        document.getElementById(`card-${idx}`).classList.toggle('open');
     } else if (action === 'view-graph' && !isNaN(idx)) {
         e.stopPropagation();
         generateSessionPDF(allHistory[idx]);
@@ -369,16 +359,10 @@ document.addEventListener('click', function (e) {
 });
 
 // ── Card builder ──────────────────────────────────────────────────────────────
-function statItem(value, label) {
-    return `<div class="stat-item"><span>${escHtml(String(value))}</span><label>${escHtml(label)}</label></div>`;
-}
+// statItem is provided by window.SummaryCard.statItem (summary.js)
 
 function buildSessionCard(s, realIndex) {
-    const resets      = s.numRecoveryPeriods || 0;
-    const durationMin = s.sessionLengthSec ? Math.round(s.sessionLengthSec / 60) : '--';
-    const actName     = s.activityName || '';
-    const notes       = s.notes || '';
-    const isHRV       = s.activityId === 'hrv_reading';
+    const notes = s.notes || '';
 
     const notesHtml = `
         <div class="notes-row">
@@ -386,151 +370,17 @@ function buildSessionCard(s, realIndex) {
             <button class="notes-edit-btn" data-action="edit-notes" data-index="${realIndex}" title="Edit notes">✏️</button>
         </div>`;
 
-    let settingsHtml = '';
-    if (s.activitySettings && Object.keys(s.activitySettings).length > 0) {
-        const ss = s.activitySettings;
-        const lines = [
-            `Max HR: ${ss.MAX_HR || '--'} · Resting HR: ${ss.RESTING_HR || '--'} ±${ss.RESTING_HR_BANDWIDTH || '--'}`,
-            `Active: ${ss.ACTIVE_THRESHOLD_LOWER || '--'}–${ss.ACTIVE_THRESHOLD_UPPER || '--'} bpm · Brady: ${ss.BRADYCARDIA_THRESHOLD || '--'}`,
-            `Max recovery: ${ss.MAX_RECOVERY_PERIOD || '--'}s · Max lag: ${ss.MAX_RESPONSE_LAG || '--'}s`,
-        ];
-        settingsHtml = `<div class="stat-group">
-            <div class="stat-group-label settings-label">⚙️ Session Settings</div>
-            <div class="settings-summary">${lines.map(l => escHtml(l)).join('<br>')}</div>
-        </div>`;
-    }
+    // The notes container div wraps notesHtml so renderNotesDisplay() can
+    // update it in-place without rebuilding the whole card.
+    const notesContainerHtml = `<div id="notes-container-${realIndex}">${notesHtml}</div>`;
 
-    // ── HRV Reading card ─────────────────────────────────────────────────────
-    if (isHRV) {
-        const hrvVal   = s.hvIndexFinal != null ? s.hvIndexFinal.toFixed(1) : '--';
-        const shortNote = s.hrvSessionTooShort
-            ? `<div class="hrv-card-short-note">⚠️ Short snapshot — less than 3 minutes. Result may be unreliable.</div>`
-            : '';
-        return `
-    <div class="session-card" id="card-${realIndex}">
-        <div class="session-card-header" data-action="toggle-card" data-index="${realIndex}">
-            <div class="session-header-left" style="pointer-events:none">
-                <div class="session-date">${fmtDate(s.date)} · ${fmtTime(s.date)}</div>
-                <div class="session-chips">
-                    <span class="chip chip-hrv">HRV Reading</span>
-                    <span class="chip chip-duration">${durationMin} min</span>
-                    ${s.hvIndexFinal != null ? `<span class="chip chip-hrv-index">HRV ${hrvVal}</span>` : ''}
-                </div>
-            </div>
-            <span class="session-chevron" style="pointer-events:none">›</span>
-        </div>
-        <div class="session-detail">
-            <div id="notes-container-${realIndex}">${notesHtml}</div>
-
-            <div class="stat-group">
-                <div class="stat-group-label hrv-label">💜 HRV Index</div>
-                <div class="stat-row">
-                    ${statItem(hrvVal, 'HRV')}
-                    ${statItem(fmtT(s.sessionLengthSec), 'Duration')}
-                    ${statItem(fmtN(s.avgHr), 'Avg HR')}
-                </div>
-                ${shortNote}
-            </div>
-
-            ${hasHrRecording(s)
-                ? `<button class="session-graph-btn" data-action="view-graph" data-index="${realIndex}">📈 View HR Graph (PDF)</button>`
-                : ''}
-            <button class="session-delete-btn" data-action="delete-session" data-index="${realIndex}">Delete this session</button>
-        </div>
-    </div>`;
-    }
-
-    // ── Standard activity card ────────────────────────────────────────────────
-    return `
-    <div class="session-card" id="card-${realIndex}">
-        <div class="session-card-header" data-action="toggle-card" data-index="${realIndex}">
-            <div class="session-header-left" style="pointer-events:none">
-                <div class="session-date">${fmtDate(s.date)} · ${fmtTime(s.date)}</div>
-                <div class="session-chips">
-                    ${actName ? `<span class="chip chip-activity">${escHtml(actName)}</span>` : ''}
-                    <span class="chip chip-duration">${durationMin} min</span>
-                    <span class="chip chip-active">${s.pctActive || '--'}% active</span>
-                    ${resets > 0 ? `<span class="chip chip-resets">${resets} recovery periods</span>` : ''}
-                </div>
-            </div>
-            <span class="session-chevron" style="pointer-events:none">›</span>
-        </div>
-        <div class="session-detail">
-            <div id="notes-container-${realIndex}">${notesHtml}</div>
-
-            <div class="stat-group">
-                <div class="stat-group-label active-label">🟢 Active Periods</div>
-                <div class="stat-row">
-                    ${statItem(fmtT(s.budgetUsing === 1 ? s.totalTargetSec : s.totalActiveSec) + (s.budgetUsing === 1 ? ' 𖣠' : ''), s.budgetUsing === 1 ? 'Target time' : 'Total')}
-                    ${statItem((s.pctActive || '--') + (s.pctActive ? '%' : ''), '% session')}
-                    ${statItem(fmtN(s.numActivePeriods), 'Count')}
-                </div>
-                <div class="stat-row">
-                    ${statItem(fmtT(s.longestActiveSec), 'Longest')}
-                    ${statItem(fmtT(s.avgActiveSec), 'Average')}
-                    ${statItem(fmtT(s.shortestActiveSec), 'Shortest')}
-                </div>
-                <div class="stat-row">${statItem(fmtN(s.avgHrActive), 'Avg HR')}<div></div><div></div></div>
-            </div>
-
-            <div class="stat-group">
-                <div class="stat-group-label recovery-label">🟠 Recovery Periods</div>
-                <div class="stat-row">
-                    ${statItem(fmtT(s.totalRecoverySec), 'Total')}
-                    ${statItem((s.pctRecovery || '--') + (s.pctRecovery ? '%' : ''), '% session')}
-                    ${statItem(fmtN(s.numRecoveryPeriods), 'Count')}
-                </div>
-                <div class="stat-row">
-                    ${statItem(fmtT(s.longestRecoverySec), 'Longest')}
-                    ${statItem(fmtT(s.avgRecoverySec), 'Average')}
-                    ${statItem(fmtT(s.shortestRecoverySec), 'Shortest')}
-                </div>
-                <div class="stat-row">${statItem(fmtN(s.avgHrRecovery), 'Avg HR')}<div></div><div></div></div>
-            </div>
-
-            <div class="stat-group">
-                <div class="stat-group-label lag-label">📈 Lag & Peak HR</div>
-                <div class="stat-row">
-                    ${statItem(fmtT(s.longestLagSec), 'Longest lag')}
-                    ${statItem(fmtT(s.avgLagSec), 'Avg lag')}
-                    ${statItem(fmtT(s.shortestLagSec), 'Shortest lag')}
-                </div>
-                <div class="stat-row">
-                    ${statItem(fmtN(s.highestPeakHr), 'Highest peak')}
-                    ${statItem(fmtN(s.avgPeakHr), 'Avg peak')}
-                    ${statItem(fmtN(s.lowestPeakHr), 'Lowest peak')}
-                </div>
-            </div>
-
-            <div class="stat-group">
-                <div class="stat-group-label session-label">📊 Session</div>
-                <div class="stat-row">
-                    ${statItem(fmtT(s.sessionLengthSec), 'Duration')}
-                    ${statItem(fmtN(s.highestHr), 'Highest HR')}
-                    ${statItem(fmtN(s.avgHr), 'Avg HR')}
-                </div>
-                <div class="stat-row">${statItem(fmtN(s.lowestHr), 'Lowest HR')}<div></div><div></div></div>
-            </div>
-
-            ${settingsHtml}
-
-            ${s.rfbTotalSec > 0 ? `
-            <div class="stat-group">
-                <div class="stat-group-label rfb-label">💙 Resonance Breathing</div>
-                <div class="stat-row">
-                    ${statItem(((s.rfbAvgRI ?? s.rfbAvgCoherence) ?? '--') + ((s.rfbAvgRI ?? s.rfbAvgCoherence) != null ? '' : ''), 'Avg RI')}
-                    ${statItem(((s.rfbPeakRI ?? s.rfbPeakCoherence) ?? '--') + ((s.rfbPeakRI ?? s.rfbPeakCoherence) != null ? '' : ''), 'Peak RI')}
-                    ${statItem((s.rfbPctAboveStar1 ?? '--') + (s.rfbPctAboveStar1 != null ? '%' : ''), 'Time ≥★')}
-                </div>
-                <div class="stat-row">${statItem(fmtT(s.rfbTotalSec), 'Duration')}<div></div><div></div></div>
-            </div>` : ''}
-
-            ${hasHrRecording(s)
-                ? `<button class="session-graph-btn" data-action="view-graph" data-index="${realIndex}">📈 View Session Graph (PDF)</button>`
-                : ''}
-            <button class="session-delete-btn" data-action="delete-session" data-index="${realIndex}">Delete this session</button>
-        </div>
-    </div>`;
+    return window.SummaryCard.buildCardHTML(s, {
+        cardId:       `card-${realIndex}`,
+        realIndex,
+        notesHtml:    notesContainerHtml,
+        showGraphBtn: hasHrRecording(s),
+        showDelete:   true,
+    });
 }
 
 // ── Filter chips ──────────────────────────────────────────────────────────────
