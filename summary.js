@@ -8,6 +8,11 @@
     // ─── Formatting helpers ───────────────────────────────────────────────────
     function fmtT(s) { return s > 0 ? formatTime(s) : '--'; }
     function fmtN(n) { return n > 0 ? n : '--'; }
+    // Lag times can legitimately be zero (instant recovery). Show '--' only when
+    // there were no recovery periods at all; otherwise use formatTime so zero => '00:00'.
+    function fmtLag(sec, numRecoveryPeriods) {
+        return numRecoveryPeriods > 0 ? formatTime(sec) : '--';
+    }
 
     function fmtDate(iso) {
         const d = new Date(iso);
@@ -101,9 +106,9 @@
             <div class="stat-group">
                 <div class="stat-group-label lag-label">📈 Recovery Lag & Peak HR</div>
                 <div class="stat-row">
-                    ${statItem(fmtT(s.longestLagSec),  'Longest lag')}
-                    ${statItem(fmtT(s.avgLagSec),      'Avg lag')}
-                    ${statItem(fmtT(s.shortestLagSec), 'Shortest lag')}
+                    ${statItem(fmtLag(s.longestLagSec,  s.numRecoveryPeriods), 'Longest lag')}
+                    ${statItem(fmtLag(s.avgLagSec,      s.numRecoveryPeriods), 'Avg lag')}
+                    ${statItem(fmtLag(s.shortestLagSec, s.numRecoveryPeriods), 'Shortest lag')}
                 </div>
                 <div class="stat-row">
                     ${statItem(fmtN(s.highestPeakHr), 'Highest peak')}
@@ -256,7 +261,7 @@
         } else {
             // Standard activity — headline is target time or % active
             const headlineChip = byTarget
-                ? `<span class="chip chip-target">${fmtT(s.totalTargetSec)} target</span>`
+                ? `<span class="chip chip-target">${Math.round((s.totalTargetSec || 0) / 60)} min in target</span>`
                 : `<span class="chip chip-active">${s.pctActive || '--'}% active</span>`;
             chips = `
                 ${actName ? `<span class="chip chip-activity">${escHtml(actName)}</span>` : ''}
