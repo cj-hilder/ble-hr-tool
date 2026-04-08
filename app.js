@@ -1962,7 +1962,7 @@ function showNoRrWarningAndEnd() {
     });
 }
 
-
+function startSession() {
     isSessionRunning = true; sessionSeconds = 0; sessionStartTime = Date.now();
     stateSeconds = 0; totalActiveSeconds = 0; totalTargetSeconds = 0; resetCount = 0; recoverySeconds = 0;
     activePeriods = []; recoveryPeriods = []; currentPeriodType = null; sessionHrSamples = []; targetHrSamples = [];
