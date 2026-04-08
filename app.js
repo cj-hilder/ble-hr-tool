@@ -20,6 +20,10 @@ const HR_HISTORY_MS = 90000;
 // --- Beat-to-beat RR history (from H10 or compatible sensor) ---
 const rrHistory = [];   // { hr: instantaneous bpm, state, ts } — used for graph display
 let hasRrData = false;  // true once valid RR intervals have been received
+// True once the connected device has sent at least one RR-containing packet.
+// Unlike hasRrData this is NOT reset on session start — it reflects hardware capability.
+// Reset only on disconnect. Used to gate sine-wave guide and HRV session start.
+let deviceSupportsRR = false;
 
 // ─── HRV Pipeline (HRVProcessor) ─────────────────────────────────────────────
 // Spectral coherence: interpolates RR to 4 Hz, Hanning-windowed FFT,
@@ -433,8 +437,11 @@ function drawHrGraph() {
     }
 
     // ── RFB breathing guide overlay ───────────────────────────────────────────
+    // Only drawn when connected to a device that provides beat-to-beat RR data
+    // (e.g. Polar H10).  A watch-type sensor without RR would show a flat HR
+    // line that bears no relationship to the guide, which is misleading.
     const rfbResting = (typeof RESTING_HR !== 'undefined') ? RESTING_HR : 65;
-    if (currentState === 'reset' && (typeof RFB_ENABLED !== 'undefined') && RFB_ENABLED && rfbWallStartTime > 0) {
+    if (currentState === 'reset' && (typeof RFB_ENABLED !== 'undefined') && RFB_ENABLED && rfbWallStartTime > 0 && deviceSupportsRR) {
         const breathPeriodMs = rfbBreathPeriodMs();
         const inhaleFrac     = rfbGetInhaleFrac();
         const amplitude = 8; // ±8 bpm visual range
@@ -1545,6 +1552,9 @@ function handleHeartRate(event) {
     const rrPresent      = (flags >> 4) & 0x01;
     const energyPresent  = (flags >> 3) & 0x01;
     if (rrPresent) {
+        // Mark device as RR-capable on first RR-containing packet.
+        // This persists until disconnect so session start checks are reliable.
+        deviceSupportsRR = true;
         let rrOffset = is16bit ? 3 : 2;          // skip flags + HR bytes
         if (energyPresent) rrOffset += 2;        // skip Energy Expended uint16
         const rrValuesMs = [];
@@ -1912,7 +1922,47 @@ function setRbDisplayMode(isRb) {
     if (desc) desc.classList.toggle('rb-mode', isRb);
 }
 
-function startSession() {
+// ─── No-RR warning ────────────────────────────────────────────────────────────
+// Shown when the user tries to start an HRV Reading on a device that has not
+// transmitted any RR interval data (e.g. a Polar watch rather than an H10).
+// Creates a minimal modal overlay inline so no new HTML is required.
+// Calls teardownSession() on OK — does NOT go through finishSession(), so no
+// summary modal appears for this zero-length, data-free session.
+function showNoRrWarningAndEnd() {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = [
+        'position:fixed', 'inset:0', 'background:rgba(0,0,0,0.75)', 'z-index:9999',
+        'display:flex', 'align-items:center', 'justify-content:center', 'padding:20px',
+    ].join(';');
+    overlay.innerHTML = `
+        <div style="background:#1a1a2e;border:1px solid #7c3aed;border-radius:14px;
+                    padding:28px 24px;max-width:320px;text-align:center;color:#f0f0f0;
+                    box-shadow:0 8px 32px rgba(0,0,0,0.6);">
+            <div style="font-size:2.2em;margin-bottom:12px;">⚠️</div>
+            <p style="margin:0 0 8px;font-size:1.05em;font-weight:600;color:#c4b5fd;">
+                Chest strap required
+            </p>
+            <p style="margin:0 0 20px;font-size:0.9em;line-height:1.55;color:#d1d5db;">
+                HRV Reading needs a chest strap heart rate monitor that transmits
+                beat-to-beat RR intervals, such as the&nbsp;<strong>Polar&nbsp;H10</strong>.
+                <br><br>
+                Your current device does not appear to support RR data.
+                Please reconnect with a compatible chest strap.
+            </p>
+            <button id="noRrOkBtn"
+                style="background:#7c3aed;color:white;border:none;border-radius:8px;
+                       padding:13px 0;font-size:1em;font-weight:600;cursor:pointer;width:100%;">
+                OK
+            </button>
+        </div>`;
+    document.body.appendChild(overlay);
+    document.getElementById('noRrOkBtn').addEventListener('click', () => {
+        overlay.remove();
+        teardownSession();
+    });
+}
+
+
     isSessionRunning = true; sessionSeconds = 0; sessionStartTime = Date.now();
     stateSeconds = 0; totalActiveSeconds = 0; totalTargetSeconds = 0; resetCount = 0; recoverySeconds = 0;
     activePeriods = []; recoveryPeriods = []; currentPeriodType = null; sessionHrSamples = []; targetHrSamples = [];
@@ -1956,6 +2006,12 @@ function startSession() {
         // HRV Reading: stay in reset state for the full 3-minute measurement window.
         switchState('reset', true);
         hrvSecondsRemaining = HRV_SESSION_DURATION_SEC;
+        if (!deviceSupportsRR) {
+            // Device has sent no RR data since connecting — almost certainly a watch,
+            // not a chest strap.  Defer the warning by one frame so the session UI
+            // renders first (gives the user visual context), then abort cleanly.
+            setTimeout(showNoRrWarningAndEnd, 50);
+        }
     } else {
         switchState('active', true);
     }
@@ -1966,6 +2022,7 @@ function startSession() {
 function handleDisconnect() {
     if (isManualDisconnect) { isManualDisconnect = false; return; }
     clearTimeout(heartbeatTimeout);
+    deviceSupportsRR = false; // reset — next connected device must prove RR capability
     if (isSessionRunning && !isReconnecting) startReconnect();
     else if (!isSessionRunning) {
         log('❌ Disconnected from device', true);
