@@ -992,12 +992,12 @@ function computeResonance() {
     // oscillation amplitude while remaining immune to slow HR drift that would
     // inflate a single window-wide max-min.
     //
-    // Threshold: 7.5 bpm = 50% of the Hirsch & Bishop (1981) healthy adult floor
+    // Threshold: 3.75 bpm = 25% of the Hirsch & Bishop (1981) healthy adult floor of 15 bpm
     // (~15 bpm peak-to-trough at controlled tidal volume, breathing <6 cycles/min).
     // This is conservative — well below what a healthy person following the pacer
     // should produce — so the gate only fires when signal is genuinely absent.
-    //   amplitudeMult = clamp(amplitudeBpm / 7.5, 0, 1)
-    const RFB_MIN_AMPLITUDE = 7.5;
+    //   amplitudeMult = clamp(amplitudeBpm / 3.75, 0, 1)
+    const RFB_MIN_AMPLITUDE = 3.75;
     let amplitudeBpm = 0;
     {
         const BLOCK_MS = 20000;
