@@ -261,7 +261,7 @@
         } else {
             // Standard activity — headline is target time or % active
             const headlineChip = byTarget
-                ? `<span class="chip chip-target">${Math.round((s.totalTargetSec || 0) / 60)} min in target</span>`
+                ? `<span class="chip chip-target">${Math.round((s.totalTargetSec || 0) / 60)} min ≥ target</span>`
                 : `<span class="chip chip-active">${s.pctActive || '--'}% active</span>`;
             chips = `
                 ${actName ? `<span class="chip chip-activity">${escHtml(actName)}</span>` : ''}
