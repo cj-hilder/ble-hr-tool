@@ -6,6 +6,8 @@ A specialised, web-based heart rate pacing app designed for individuals with dys
 
 This app is intended to help you visualise what your heart is doing and help you pace yourself during exercise. It is not intended for logging symptoms, nor does it analyse the data and offer advice. To use this app effectively you need to be aware of your symptoms, and understand how to pace your progress. 
 
+[Quick Start Guide](https://cj-hilder.github.io/ble-hr-tool/quick_start_guide.html)
+
 This app was built by a software developer managing their own post-concussion dysautonomia; not by a clinician or researcher. It is a best-effort personal project, grounded in published protocols and personal experience, that has worked well for its author. It may or may not work for you. Nothing here should be taken as medical advice, and it is no substitute for working with a qualified healthcare provider who understands your condition.
 
 > **Note:** Wrist based (optical) heart rate sensors are not usually suitable for measuring heart rate in the presence of dysautonomia. They are misled by irregular beats, weak pulse strength, and arm movement. They will often be significantly wrong by upwards of 30 bpm. A chest strap sensor, e.g. Polar H10, is mandatory for HR based pacing with dysautonomia.
@@ -113,7 +115,9 @@ You are currently in the active state but want to rest voluntarily — not becau
 
 ## The Live HR Graph
 
-A 90-second window of heart rate data scrolls continuously on screen. When connected to a sensor that exposes raw beat-to-beat RR intervals — such as the Polar H10 — this graph shows **unsmoothed, instantaneous heart rate** rather than the rolling average most commercial apps and devices use. That averaging is deliberate on most platforms: it produces a cleaner, less alarming line. Here it is switched off, because seeing the raw signal is the point.
+Your heart rate is graphed continuously on screen. The display shows the last 90 secs of data. 
+
+When connected to a sensor that exposes raw beat-to-beat RR intervals, such as the Polar H10, this graph shows **unsmoothed, instantaneous heart rate**. This is not the smoothed heart rate graph that most fitness apps show. It shows every little variation and will be quite jagged, especially when you are at rest. 
 
 One consequence is that you will see **ectopic heart beats** if any occur. Ectopics are beats that fire outside the normal cardiac rhythm. There are two common types:
 
@@ -130,7 +134,7 @@ Resonance Frequency Breathing is a biofeedback technique. Regular RFB practice h
 
 At a particular breathing rate respiratory and cardiac rhythms enter resonance. This is typically around 6 breaths per minute, but varying between individuals in the range of 4.5–7 bpm. The heart rate rises during each inhale and falls during each exhale. When breathing rate matches the body's resonance frequency the amplitude of these oscillations is maximised.
 
-The app integrates RFB directly into the Reset state, turning a  rest period into a structured, guided recovery practice.
+This app integrates RFB directly into the Reset state, turning a  rest period into a structured, guided recovery practice.
 
 It also allows you to practice resonance frequency breathing on its own, as an activity type. To do this, choose "Resonance Breathing" from the activity drop-down menu.
 
@@ -142,7 +146,7 @@ your breathing has settled down before attempting to follow the breathing guide,
 You can choose "Resonance Breathing" from the activity drop-down menu, or for any other activity you can enable it in settings, which transforms the heart rate Reset into resonance frequency breathing.
 
 - **The status dot turns blue** and **pulses in and out** as a breath pacer — expanding during inhale, contracting during exhale, with a subtle flash at each transition.
-- **A sine wave overlay** appears on the HR graph, showing the HR pattern your heart *should* produce if breathing is coupled to the breath pacer. This gives you a visual target for coherence.
+- **A sine wave overlay** appears on the HR graph, showing the HR pattern your heart *could* produce if breathing is well coupled to the breath pacer. This gives you a visual target for coherence.
 - **Sound guidance** — a rising filtered noise during each inhale, brightening in frequency as the inhale progresses, then falling silent during the exhale. Allows you to follow the breath without watching the screen.
 - **Vibration guidance** — an opening pulse at the start of each inhale, followed by a buzzing that accelerates in frequency through the inhale, and a closing pulse at the end. Provides a tactile breath guide.
 - **During heart rate Reset, once your HR has returned to your resting HR**, the app enters an extended RFB phase — shown as a countdown timer — before returning you to Continue activity. The default is 2 minutes. This promotes staying in the resonance breathing state after the HR has settled, deepening the  recovery before returning to exertion.
@@ -168,7 +172,7 @@ The resonance score is most meaningful as a longitudinal tool: tracking whether 
 
 Changes in the score during a session can be used to detect ANS fatigue and may be useful as a cue to stop for the day. This applies if you have achieved a stable score which then declines during the session or over the day.
 
-Polar and most other sports watches (as opposed to the Polar H10 chest strap) report rolling-averaged HR rather than beat-to-beat intervals, which will produce a zero resonance score regardless of actual resonance. The H10 is strongly recommended for this feature.
+Polar and most other sports watches (as opposed to the Polar H10 chest strap and most other chest straps) report rolling-averaged HR rather than beat-to-beat intervals, which will not give a resonance score.
 
 ### Finding your personal resonance frequency
 
@@ -208,7 +212,7 @@ The most common mistake is taking large, heavy breaths. Over-breathing blows off
 
 ### Knowing When to Stop
 
-Your nervous system is currently deconditioned, meaning it fatigues quickly. Pushing through that fatigue will backfire and produce a stress response. Stop the RFB session and consider it a success if you notice any of the following:
+If your nervous system is currently deconditioned, it will fatigue quickly. Pushing through that fatigue will backfire and produce a stress response. Stop the RFB session and consider it a success if you notice any of the following:
 
 **The resonance crash.** If your score has been sitting in the ★☆☆ or ★★☆ range and then suddenly drops to ☆☆☆ or near-zero, your autonomic nervous system has fatigued. This is the equivalent of muscular failure — time to stop for the day.
 
@@ -257,11 +261,11 @@ The HRV index is most meaningful as a **relative trend** tracked over time. Ther
 
 A healthy adult at rest typically scores in the range of 40–70. With active dysautonomia, scores of 10–25 are common and are not cause for alarm — they reflect the current state of the ANS, not a permanent ceiling. Scores below 10 suggest significant sympathetic dominance or ANS depletion.
 
-Consistent morning readings — taken at the same time each day, before getting up, after a few minutes of quiet rest — will give the most comparable longitudinal data.
+Consistent morning readings — taken at the same time each day, before getting up or after a few minutes of quiet rest — will give the most comparable longitudinal data.
 
 ### Hardware requirement
 
-Like the RFB resonance score, the HRV Index requires a sensor that exposes raw RR intervals. The **Polar H10** chest strap is strongly recommended. Optical wrist sensors and most sports watches that report only a rolling-averaged HR will produce a `--` result regardless of your actual HRV.
+Like the RFB resonance score, the HRV Index requires a sensor that exposes raw RR intervals. The **Polar H10** chest strap is strongly recommended. Optical wrist sensors and most sports watches that report only a rolling-averaged HR cannot be used for HRV readings.
 
 ---
 
