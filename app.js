@@ -496,7 +496,7 @@ let isSessionRunning = false, isReconnecting = false, isManualDisconnect = false
 let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 30;
 let currentState = 'stopped';
-let sessionInterval, wakeLock = null, heartbeatTimeout;
+let sessionInterval, wakeLock = null, wakeLockDesired = false, heartbeatTimeout;
 
 // ─── RFB (Resonance Frequency Breathing) ─────────────────────────────────────
 let rfbPhase = false;
@@ -782,19 +782,25 @@ function restoreSessionUI() {
 }
 
 // --- Updated Wake Lock Logic ---
+// wakeLockDesired tracks *intent* (should we be holding a lock), independent of
+// whether we currently hold one. The Screen Wake Lock API auto-releases the
+// lock whenever the page becomes hidden, so we can't use `wakeLock !== null`
+// as a signal to re-acquire — by the time visibilitychange fires on return,
+// the release event has already nulled it out.
 async function requestWakeLock() {
+    wakeLockDesired = true;
     // Only request if the API is supported and we don't already have an active lock
     if ('wakeLock' in navigator && wakeLock === null) {
         try {
             wakeLock = await navigator.wakeLock.request('screen');
-            
+
             // Log for debugging
             console.log('Wake Lock acquired');
 
             // Handle the case where the system releases the lock
             wakeLock.addEventListener('release', () => {
                 console.log('Wake Lock was released');
-                wakeLock = null; 
+                wakeLock = null;
             });
         } catch (err) {
             console.log('Wake Lock Error:', err);
@@ -802,11 +808,21 @@ async function requestWakeLock() {
     }
 }
 
-// --- Re-acquire lock when the app comes back to the foreground ---
+// --- Re-acquire lock and refresh graph when the app comes back to the foreground ---
 document.addEventListener('visibilitychange', async () => {
-    if (wakeLock !== null && document.visibilityState === 'visible') {
+    if (document.visibilityState !== 'visible') return;
+
+    // Re-acquire the wake lock if we wanted one. The API auto-released it when
+    // the page was hidden, so wakeLock is null here even though we still want it.
+    if (wakeLockDesired && wakeLock === null) {
         await requestWakeLock();
     }
+
+    // Force an immediate redraw of the HR graph. While hidden, requestAnimationFrame
+    // is paused and BLE handlers are throttled, so the canvas is still showing the
+    // last frame with its old windowStart — it looks frozen in the past until the
+    // next beat arrives. Redrawing now snaps the window to the current time.
+    drawHrGraph();
 });
 
 
@@ -1879,7 +1895,7 @@ function teardownSession() {
     currentActivityId = null; currentActivityName = null;
     updateActivityDisplay();
     switchState('stopped', true);
-    if (wakeLock !== null) wakeLock.release().then(() => { wakeLock = null; });
+    wakeLockDesired = false; if (wakeLock !== null) wakeLock.release().then(() => { wakeLock = null; });
 }
 
 // ─── Activity selection modal ─────────────────────────────────────────────────
@@ -2027,7 +2043,7 @@ function handleDisconnect() {
     else if (!isSessionRunning) {
         log('❌ Disconnected from device', true);
         document.body.classList.remove('connected');
-        if (wakeLock !== null) wakeLock.release().then(() => { wakeLock = null; });
+        wakeLockDesired = false; if (wakeLock !== null) wakeLock.release().then(() => { wakeLock = null; });
     }
 }
 
@@ -2052,7 +2068,7 @@ async function attemptReconnect() {
         document.body.classList.remove('connected');
         log('❌ Could not reconnect after 30 attempts. Session ended.', true);
         switchState('stopped', true);
-        if (wakeLock !== null) wakeLock.release().then(() => { wakeLock = null; });
+        wakeLockDesired = false; if (wakeLock !== null) wakeLock.release().then(() => { wakeLock = null; });
         return;
     }
     try {
