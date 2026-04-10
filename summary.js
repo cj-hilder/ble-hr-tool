@@ -169,6 +169,7 @@
                     ${statItem(pct,   'Rate')}
                     ${statItem(beats, 'Beats monitored')}
                 </div>
+                <div class="ectopic-note">This is not an ECG. The detection algorithm has not been clinically validated and may occasionally identify sensor noise as an ectopic beat, or miss genuine ectopics.</div>
             </div>`;
         }
 

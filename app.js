@@ -237,35 +237,38 @@ function recordRrHistory(rrValuesMs, notifTs) {
     const wallGap   = lastRrWallClock > 0 ? wallNow - lastRrWallClock : 0;
     lastRrWallClock = wallNow;
 
-    // Distinguish two gap scenarios:
+    // Read and immediately clear any pending deferred beat from the previous packet.
+    // Must happen before gap detection so that a detected gap can discard it cleanly.
+    let pendingBeat = recordRrHistory._pendingBeat || null;
+    recordRrHistory._pendingBeat = null;
+
+    // Distinguish two gap scenarios using lastHrWallClock, updated on every HR
+    // packet regardless of whether it contains RR data.
     //
-    //   Background gap: app was suspended. Both HR and RR packets stopped.
-    //   → Full flush: queued packets are about to flood in and would corrupt metrics.
+    //   Background gap: app suspended — both HR and RR stopped.
+    //   → Full flush. Pending beat also discarded (stale).
     //
-    //   Sensor RR interruption: device lost skin contact briefly (e.g. finger swipe).
-    //   HR packets kept arriving (averaged HR continues), only RR stopped.
-    //   → Soft reset only: clear pending beat and reseed the clock, but preserve
-    //     the processor buffers and lastCleanRr so metrics resume cleanly.
-    //
-    // lastHrWallClock is updated on every HR packet regardless of RR presence,
-    // so a small hrGap means the app was in the foreground throughout the RR gap.
-    const hrGap = lastHrWallClock > 0 ? wallNow - lastHrWallClock : wallGap;
+    //   Sensor RR interruption: skin contact lost briefly (e.g. finger swipe).
+    //   HR packets kept arriving; only RR stopped.
+    //   → Soft reset: reseed the clock only. Processor buffers preserved.
+    //   → Pending beat discarded — the RR gap means any deferred beat has no
+    //     valid successor to pair with.
+    const hrGap         = lastHrWallClock > 0 ? wallNow - lastHrWallClock : wallGap;
     const isBackgroundGap = wallGap > BACKGROUND_GAP_MS && hrGap > BACKGROUND_GAP_MS;
     const isSensorRrGap   = wallGap > BACKGROUND_GAP_MS && hrGap <= BACKGROUND_GAP_MS;
 
     if (isBackgroundGap) {
+        pendingBeat = null;
         hrvProcessor.reset();
         peakFreqHistory.length = 0;
         lastRrTimestamp = 0;
         recordRrHistory._lastCleanRr = 0;
-        recordRrHistory._pendingBeat = null;
         rrHistory.length = 0;
     } else if (isSensorRrGap) {
-        // Sensor contact was lost briefly — discard stale pending beat and
-        // reseed the timestamp clock, but keep processor state intact.
-        recordRrHistory._pendingBeat = null;
+        pendingBeat = null;
         lastRrTimestamp = 0;
     }
+
     const pairs = [];
     const totalRrMs = rrValuesMs.reduce((sum, val) => sum + val, 0);
 
@@ -290,34 +293,71 @@ function recordRrHistory(rrValuesMs, notifTs) {
         lastRrTimestamp = notifTs;
     }
 
+    // ── Pending beat cross-packet validation ──────────────────────────────────
+    //
+    // A short beat deferred from the previous packet is prepended here so it can
+    // be classified as part of a pair with the first new beat. Before prepending,
+    // we validate that the two packets are truly back-to-back with no sensor gap.
+    //
+    // The check uses BLE packet arrival times:
+    //   notifTs         — wall-clock arrival time of the current packet
+    //   pendingBeat.ts  — forward-clock timestamp of the deferred beat
+    //
+    // If the stream is continuous: notifTs ≈ pendingBeat.ts + totalRrMs
+    //   (the new packet arrived roughly as long after the deferred beat as the
+    //   sum of the new RR intervals, plus a small BLE transmission allowance).
+    //
+    // If a sensor gap occurred: notifTs will be substantially larger than that,
+    // because the sensor stopped transmitting for some period. In this case the
+    // deferred beat and the first new beat are NOT adjacent cardiac events and
+    // must not be paired — the deferred beat is classified as a sensor artifact.
+    if (pendingBeat) {
+        const CONSECUTIVE_TOL_MS = 1500; // generous BLE jitter allowance
+        if (notifTs - pendingBeat.ts <= totalRrMs + CONSECUTIVE_TOL_MS) {
+            // Packets are back-to-back — prepend for pair classification.
+            // alreadyCounted prevents a second sessionTotalBeats increment.
+            pairs.unshift({ ...pendingBeat, alreadyCounted: true });
+        } else {
+            // Gap detected — deferred beat cannot be part of a genuine ectopic pair.
+            // sessionTotalBeats was already incremented when it was first seen.
+            sessionSensorArtifacts++;
+            const baselineRr = recordRrHistory._lastCleanRr || 0;
+            if (baselineRr > 0) {
+                const synth = Math.round(60000 / baselineRr);
+                if (synth >= 24 && synth <= 240)
+                    rrHistory.push({ hr: synth, state: currentState, ts: pendingBeat.ts });
+            }
+        }
+    }
+
     // ── Artifact classification ───────────────────────────────────────────────
     //
     // All comparisons are made against lastCleanRr — the last beat confirmed clean.
     //
-    // Physiological artifact classification requires a recognised PAIR pattern.
-    // This prevents sensor contact artifacts (e.g. momentary finger pressure)
-    // from being miscounted as ectopics — those typically produce a single deviant
-    // interval not followed by the characteristic cardiac recovery behaviour.
+    // Physiological artifact classification requires a recognised consecutive PAIR.
+    // "Consecutive" means the two beats are adjacent cardiac events with no sensor
+    // gap between them — enforced by the timestamp check above for cross-packet
+    // pairs, and guaranteed by construction for beats within the same packet.
     //
-    // Two recognised pair patterns (±20% tolerance on each criterion):
+    // Two recognised pair patterns (±20% tolerance):
     //
     //   PVC (premature ventricular contraction):
     //     SA node keeps firing on schedule. Premature beat fires early (short RR),
-    //     ventricles are refractory for the next SA impulse → compensatory pause.
+    //     ventricles refractory for next SA impulse → compensatory pause (long RR).
     //     Criterion: rr1 short AND rr1 + rr2 ≈ 2 × lastCleanRr.
-    //     Both beats are excluded from HRV; counted as 1 ectopic event.
+    //     Both beats excluded from HRV; counted as 1 ectopic event.
     //
     //   PAC (premature atrial contraction):
     //     Ectopic fires from atria, resetting the SA node. Short premature beat
-    //     followed by a normal beat (SA node restarted from the ectopic).
+    //     followed immediately by a normal beat (SA node restarted from ectopic).
     //     Criterion: rr1 short AND rr2 ≈ lastCleanRr.
-    //     Only rr1 excluded from HRV; rr2 processed as clean. 1 ectopic event.
+    //     Only rr1 excluded from HRV; rr2 is clean. 1 ectopic event.
+    //
+    //   Short beat with no in-packet successor:
+    //     Deferred to _pendingBeat; validated against next packet's arrival time.
     //
     //   Short beat matching neither pattern → sensor artifact.
     //   Long beats with no preceding short beat → fall through to clean.
-    //
-    //   Edge case — short beat is last in packet:
-    //     Deferred via _pendingBeat; prepended to next packet with alreadyCounted:true.
     //
     // Routing:
     //   Sensor artifact  → synthetic interpolated graph point; excluded from HRV
@@ -325,23 +365,15 @@ function recordRrHistory(rrValuesMs, notifTs) {
     //   Clean beat       → graph + HRV processor
 
     let lastCleanRr = recordRrHistory._lastCleanRr || 0;
-
-    // Prepend any beat deferred from the previous packet.
-    const pendingBeat = recordRrHistory._pendingBeat || null;
-    recordRrHistory._pendingBeat = null;
-    if (pendingBeat) pairs.unshift({ ...pendingBeat, alreadyCounted: true });
-
-    const PAIR_TOL = 0.2;
+    const PAIR_TOL  = 0.2;
     let i = 0;
     while (i < pairs.length) {
         const { rr, ts: t, alreadyCounted } = pairs[i];
         if (!alreadyCounted) sessionTotalBeats++;
 
         // ── Tier 1: sensor artifact ───────────────────────────────────────────
-        // Relative deviation alone over-classifies large-swing beats at low HR:
-        // a 20 bpm RFB oscillation at 50 bpm baseline spans ~240 ms, clearing
-        // the 50% threshold. Requiring both deviation ≥ 50% AND absolute delta
-        // > 250 ms catches genuine dropouts while passing RFB beats.
+        // Require both relative deviation ≥ 50% AND absolute delta > 250 ms to
+        // avoid misclassifying large but legitimate RFB HR swings at low HR.
         const absDiff = lastCleanRr > 0 ? Math.abs(rr - lastCleanRr) : 0;
         const isSensorArtifact = rr < 250 || rr > 2000 ||
             (lastCleanRr > 0 && Math.abs(rr - lastCleanRr) / lastCleanRr >= 0.5 && absDiff > 250);
@@ -362,7 +394,8 @@ function recordRrHistory(rrValuesMs, notifTs) {
 
         if (isShort) {
             if (i + 1 >= pairs.length) {
-                // Defer — need the next beat to classify this one.
+                // No successor visible in this packet — defer for cross-packet
+                // validation against the next packet's arrival timestamp.
                 recordRrHistory._pendingBeat = { rr, ts: t };
                 i++; break;
             }
@@ -953,11 +986,10 @@ function computeResonanceIndex(coherence, stability, phaseDiffDeg) {
 //   rawIndex      = ln(RMSSD) × 15  — vagal tone, scaled to ~0–100 for typical adults
 //   balanceFactor ∈ [0,1]           — sympathovagal balance (RMSSD/SDNN ratio)
 //
-// Physiological artifact rate (ectopy) is intentionally not applied here.
-// In a 3-minute window (~200 beats) the ectopic count is dominated by Poisson
-// sampling noise — the same person could score differently across sessions with
-// no real change in ectopic burden. Ectopics are reported separately in the
-// session summary for longitudinal tracking over full-length sessions.
+// Physiological artifact rate (ectopy) is intentionally not penalised here.
+// In a 3-minute window (~200 beats) the count is dominated by Poisson sampling
+// noise. Ectopics are reported separately in the session summary for longitudinal
+// tracking across full-length sessions where sample sizes are meaningful.
 function calculateHRVIndex({ rmssd, sdnn, pSensor }) {
     const HEALTHY_BALANCE = 0.5;
     if (pSensor > 0.02 || rmssd <= 0 || sdnn <= 0) return null;
@@ -1849,9 +1881,8 @@ function computeSessionSummary() {
         hrvSessionTooShort: isHRVReading && sessionSeconds < HRV_SESSION_DURATION_SEC - 5,
         activityIsHRV:     isHRVReading,
         // Ectopic beat tracking — all session types.
-        // Reported as count + rate so the user can track ectopic burden longitudinally
-        // across full-length sessions where sample sizes are large enough to be meaningful.
-        // Omitted from the summary display when count is zero.
+        // Reported as count + rate for longitudinal monitoring across full sessions.
+        // Omitted from summary display when count is zero.
         totalBeats:   sessionTotalBeats,
         ectopicCount: sessionPhysioArtifacts,
         ectopicPct:   sessionTotalBeats > 0
@@ -2050,7 +2081,6 @@ function startSession() {
     lastRrTimestamp = 0;
     lastRrWallClock = 0;
     recordRrHistory._lastAcceptedRr = 0;
-    recordRrHistory._pendingBeat = null;
     peakFreqHistory.length = 0;
     hrvProcessor.reset();
     document.getElementById('homeBtn').style.display = 'none';
