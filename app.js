@@ -410,9 +410,9 @@ function recordRrHistory(rrValuesMs, notifTs) {
                 const hrPremature = Math.round(60000 / rr);
                 const hrPause     = Math.round(60000 / next.rr);
                 if (hrPremature >= 24 && hrPremature <= 240)
-                    rrHistory.push({ hr: hrPremature, state: currentState, ts: t });
+                    rrHistory.push({ hr: hrPremature, state: currentState, ts: t, ectopic: true });
                 if (hrPause >= 24 && hrPause <= 240)
-                    rrHistory.push({ hr: hrPause, state: currentState, ts: next.ts });
+                    rrHistory.push({ hr: hrPause, state: currentState, ts: next.ts, ectopic: true });
                 // lastCleanRr NOT updated — baseline preserved through ectopic pair.
                 i += 2; continue;
             }
@@ -421,7 +421,7 @@ function recordRrHistory(rrValuesMs, notifTs) {
                 sessionPhysioArtifacts++;
                 const hrPremature = Math.round(60000 / rr);
                 if (hrPremature >= 24 && hrPremature <= 240)
-                    rrHistory.push({ hr: hrPremature, state: currentState, ts: t });
+                    rrHistory.push({ hr: hrPremature, state: currentState, ts: t, ectopic: true });
                 // lastCleanRr NOT updated — next beat evaluated against original baseline.
                 i++; continue;
             }
@@ -1087,10 +1087,13 @@ function computeResonance() {
     // window. Before that the FFT peak bin jumps around due to short-window spectral
     // noise, not genuine breathing instability. Using 1.0 (neutral) during warmup
     // prevents a misleading early penalty on the resonance index.
-    const bufferSpanMs = hrvProcessor.timestamps.length >= 2
-        ? hrvProcessor.timestamps[hrvProcessor.timestamps.length - 1] - hrvProcessor.timestamps[0]
-        : 0;
-    const stabilityReady = bufferSpanMs >= hrvProcessor.windowSeconds * 1000;
+    // Stability is meaningful once enough in-band peaks have accumulated for
+    // computeStability to produce a reliable estimate. The sqrt(N_max/N) scaling
+    // corrects for estimation noise at partial history, so 30 samples (~30s of
+    // valid in-band readings) is sufficient to display a trustworthy value.
+    // The buffer-span check was unreliable because _trimBuffer keeps the span
+    // just below windowSeconds * 1000, so the condition was never met.
+    const stabilityReady = peakFreqHistory.length >= 30;
     const stabilityForIndex = stabilityReady ? stability : 1.0;
 
     // Phase alignment — time-domain peak offset method.
@@ -1125,7 +1128,7 @@ function computeResonance() {
         const BLOCK_MS = 20000;
         const now = Date.now();
         const windowStart = now - hrvProcessor.windowSeconds * 1000;
-        const relevant = rrHistory.filter(p => p.ts >= windowStart);
+        const relevant = rrHistory.filter(p => p.ts >= windowStart && !p.ectopic);
         if (relevant.length >= 4) {
             const earliest = relevant[0].ts;
             const latest   = relevant[relevant.length - 1].ts;
