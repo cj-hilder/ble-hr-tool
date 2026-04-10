@@ -156,9 +156,10 @@
         // picture of their normal ectopic burden.  Meaningful rate estimation
         // requires large samples (full-session RR streams), not the short HRV
         // measurement window, which is why quality is not penalised in the index.
-        if ((s.totalBeats || 0) > 0) {
-            const count  = s.ectopicCount != null ? String(s.ectopicCount)         : '--';
-            const pct    = s.ectopicPct   != null ? s.ectopicPct.toFixed(1) + '%'  : '--';
+        // Omitted entirely when count is zero — no noise, and a clean session needs no comment.
+        if ((s.ectopicCount || 0) > 0) {
+            const count  = String(s.ectopicCount);
+            const pct    = s.ectopicPct != null ? s.ectopicPct.toFixed(1) + '%' : '--';
             const beats  = String(s.totalBeats);
             html += `
             <div class="stat-group">
