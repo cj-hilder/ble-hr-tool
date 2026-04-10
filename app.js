@@ -72,7 +72,17 @@ class HRVProcessor {
         // has latched onto LF noise or slow HR drift, not a real breathing oscillation.
         const validBreathingRate = peakFreq >= 0.07 && peakFreq <= 0.12;
         const now      = this.timestamps.length ? this.timestamps[this.timestamps.length - 1] : Date.now();
-        const coherence = this._ema(coherenceRaw, now);
+        // Confidence ramp: with fewer samples the FFT has coarser bin resolution, and
+        // a short window spanning only 2–3 breathing cycles produces an artificially
+        // dominant spectral peak regardless of genuine coherence. Scale coherenceRaw by
+        // sqrt(bufferSec / windowSeconds) — a square-root ramp that reaches ~0.7 at
+        // half the full window (60s) and 1.0 at full window (120s). Applied before the
+        // EMA so early readings don't anchor the smoothed value too high.
+        const bufferSec    = this.timestamps.length >= 2
+            ? (this.timestamps[this.timestamps.length - 1] - this.timestamps[0]) / 1000
+            : 0;
+        const confidence   = Math.sqrt(Math.min(1, bufferSec / this.windowSeconds));
+        const coherence = this._ema(coherenceRaw * confidence, now);
         // Phase of the dominant RR oscillation at the START of the analysis window (n=0).
         // atan2(im, re) of the peak FFT bin: phase=0 means oscillation at maximum at t=0.
         // The Hanning window emphasises the window centre, so we also expose the centre
