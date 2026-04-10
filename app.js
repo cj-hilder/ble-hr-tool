@@ -1838,6 +1838,7 @@ function computeSessionSummary() {
         ];
         return {
             ...base,
+            lagCount: lagPool.length,
             lags:  lagPool.map(p => p.lagSec),
             peaks: lagPool.map(p => p.maxHr),
         };
@@ -1864,6 +1865,7 @@ function computeSessionSummary() {
         totalRecoverySec:   rStats.total,
         pctRecovery: sessionSeconds > 0 ? Math.round(rStats.total / sessionSeconds * 100) : 0,
         numRecoveryPeriods:  rStats.count,
+        numLagPeriods:       rStats.lagCount,
         longestRecoverySec:  rStats.longest,
         avgRecoverySec:      rStats.avg,
         shortestRecoverySec: rStats.shortest,
