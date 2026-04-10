@@ -903,22 +903,25 @@ function computeResonanceIndex(coherence, stability, phaseDiffDeg) {
 // ─── HRV Index ────────────────────────────────────────────────────────────────
 // Headline HRV index for the HRV Reading session type.
 // Returns null when pSensor > 2% (session data is unreliable — don't produce a number).
-// Otherwise: rawIndex × balanceFactor × qualityFactor
-//   rawIndex      = ln(RMSSD) × 15          — vagal tone, calibrated to ~healthy adult values
-//   balanceFactor ∈ [0,1]                   — sympathovagal balance; penalises sympathetic dominance
-//   qualityFactor ∈ [0,1]                   — discounts physiological irregularity (ectopy / dysautonomia)
-function calculateHRVIndex({ rmssd, sdnn, pSensor, pPhysio }) {
-    const HEALTHY_BALANCE  = 0.5;  // healthy RMSSD/SDNN ratio target
-    const ARTIFACT_CEILING = 0.05; // 5% physiological artifact rate → quality factor = 0
+// Otherwise: rawIndex × balanceFactor
+//   rawIndex      = ln(RMSSD) × 15  — vagal tone, calibrated to ~healthy adult values
+//   balanceFactor ∈ [0,1]           — sympathovagal balance; penalises sympathetic dominance
+//
+// Note: physiological artifact rate (ectopy) is intentionally NOT applied here.
+// In a 3-minute window (~200 beats) the ectopic count is dominated by Poisson
+// sampling noise — the same person could score 20% differently across sessions
+// with zero change in true ectopic burden.  Ectopics are instead reported as
+// raw count + percentage in the session summary for longitudinal tracking over
+// the full session length, where meaningful rate estimation becomes possible.
+function calculateHRVIndex({ rmssd, sdnn, pSensor }) {
+    const HEALTHY_BALANCE = 0.5;  // healthy RMSSD/SDNN ratio target
     if (pSensor > 0.02 || rmssd <= 0 || sdnn <= 0) return null;
     const rawIndex      = Math.log(rmssd) * 15;
     const balanceFactor = Math.min(Math.max((rmssd / sdnn) / HEALTHY_BALANCE, 0), 1);
-    const qualityFactor = Math.max(1 - pPhysio / ARTIFACT_CEILING, 0);
     return {
-        index:         Math.round(rawIndex * balanceFactor * qualityFactor * 10) / 10,
+        index:         Math.round(rawIndex * balanceFactor * 10) / 10,
         rawIndex:      Math.round(rawIndex * 10) / 10,
         balanceFactor: Math.round(balanceFactor * 1000) / 1000,
-        qualityFactor: Math.round(qualityFactor * 1000) / 1000,
     };
 }
 
@@ -951,7 +954,6 @@ function updateHRVDisplay() {
 
     const metrics = hrvProcessor.computeHRVMetrics(HRV_SESSION_DURATION_SEC * 1000);
     const pSensor = sessionTotalBeats > 0 ? sessionSensorArtifacts / sessionTotalBeats : 0;
-    const pPhysio = sessionTotalBeats > 0 ? sessionPhysioArtifacts / sessionTotalBeats : 0;
 
     if (!metrics || pSensor > 0.02) {
         coherVal.textContent = '--';
@@ -961,7 +963,7 @@ function updateHRVDisplay() {
         return;
     }
 
-    const result = calculateHRVIndex({ rmssd: metrics.rmssd, sdnn: metrics.sdnn, pSensor, pPhysio });
+    const result = calculateHRVIndex({ rmssd: metrics.rmssd, sdnn: metrics.sdnn, pSensor });
     if (!result) {
         coherVal.textContent = '--';
         coherVal.style.color = '#7c3aed';
@@ -976,7 +978,7 @@ function updateHRVDisplay() {
 
     if (showDebug) {
         dbg.textContent =
-            `RMSSD:${metrics.rmssd}ms  balance:${Math.round(result.balanceFactor * 100)}%  anomalies:${Math.round((1 - result.qualityFactor) * 100)}%`;
+            `RMSSD:${metrics.rmssd}ms  balance:${Math.round(result.balanceFactor * 100)}%`;
     }
 }
 function computeResonance() {
@@ -1800,6 +1802,16 @@ function computeSessionSummary() {
         hvIndexFinal:      isHRVReading ? currentHRVIndex : null,
         hrvSessionTooShort: isHRVReading && sessionSeconds < HRV_SESSION_DURATION_SEC - 5,
         activityIsHRV:     isHRVReading,
+        // Ectopic beat tracking — recorded for all session types.
+        // Reported as raw count + percentage so the user can track their normal
+        // ectopic burden longitudinally across full-length sessions, where sample
+        // sizes are large enough for meaningful rate estimation.
+        // Shown in summary whenever RR data was collected (totalBeats > 0).
+        totalBeats:    sessionTotalBeats,
+        ectopicCount:  sessionPhysioArtifacts,
+        ectopicPct:    sessionTotalBeats > 0
+            ? Math.round(sessionPhysioArtifacts / sessionTotalBeats * 1000) / 10
+            : null,
     };
 }
 

@@ -126,6 +126,8 @@ One consequence is that you will see **ectopic heart beats** if any occur. Ectop
 
 Occasional ectopics are completely normal. Healthy adults commonly experience them at a rate of up to once every three minutes or so, often without noticing. Seeing one on the graph is not a cause for concern — this is the app doing exactly what it says: showing you your cardiac data rather than hiding it. It may be worth mentioning to a clinician if you are seeing more than roughly three per minute consistently, though even that can be benign in isolation. The key question is whether the rate is new, increasing, or accompanied by symptoms.
 
+Every session recorded with an RR-capable sensor includes an **Ectopic Beats** section in the session summary, showing the total count and percentage for that session. Tracking this across sessions — particularly longer training sessions where sample sizes are large enough to be statistically meaningful — lets you observe your normal baseline rate and notice any genuine changes over time.
+
 ---
 
 ## Resonance Frequency Breathing (RFB)
@@ -146,7 +148,7 @@ your breathing has settled down before attempting to follow the breathing guide,
 You can choose "Resonance Breathing" from the activity drop-down menu, or for any other activity you can enable it in settings, which transforms the heart rate Reset into resonance frequency breathing.
 
 - **The status dot turns blue** and **pulses in and out** as a breath pacer — expanding during inhale, contracting during exhale, with a subtle flash at each transition.
-- **A sine wave overlay** appears on the HR graph, showing the HR pattern your heart *could* produce if breathing is well coupled to the breath pacer. This gives you a visual target for coherence.
+- **A sine wave overlay** appears on the HR graph, showing the HR pattern your heart *could* produce if breathing is well coupled to the breath pacer. This gives you a visual target for coherence. The overlay is only shown when connected to an RR-capable sensor such as the Polar H10 — a rolling-averaged HR signal from a watch cannot meaningfully track these oscillations.
 - **Sound guidance** — a rising filtered noise during each inhale, brightening in frequency as the inhale progresses, then falling silent during the exhale. Allows you to follow the breath without watching the screen.
 - **Vibration guidance** — an opening pulse at the start of each inhale, followed by a buzzing that accelerates in frequency through the inhale, and a closing pulse at the end. Provides a tactile breath guide.
 - **During heart rate Reset, once your HR has returned to your resting HR**, the app enters an extended RFB phase — shown as a countdown timer — before returning you to Continue activity. The default is 2 minutes. This promotes staying in the resonance breathing state after the HR has settled, deepening the  recovery before returning to exertion.
@@ -242,18 +244,17 @@ Select **"HRV Reading"** from the activity drop-down menu to start a new reading
 
 This section is a little technical. Skip it of you just want to get your HRV.
 
-The HRV is calculated from  RMSSD and SDNN with further adjustment from anomalies (ectopic heart beats)
+The HRV is calculated from RMSSD and SDNN.
 
 - **RMSSD** (root mean square of successive RR differences) is the primary measure of parasympathetic (vagal) activity — the component most relevant to ANS recovery.
 - **SDNN** (standard deviation of RR intervals) reflects total autonomic variability, including both parasympathetic and sympathetic contributions.
 
 The index is computed as:
 
-> **HRV Index = ln(RMSSD) × 15 × balanceFactor × qualityFactor**
+> **HRV Index = ln(RMSSD) × 15 × balanceFactor**
 
 - **ln(RMSSD) × 15** is the core vagal tone signal, scaled to produce values in a practical range (roughly 0–100 for typical adults).
 - **balanceFactor** (0–1) penalises sympathetic dominance. It is derived from the RMSSD/SDNN ratio: a healthy ANS produces relatively high RMSSD for its total variability. When the sympathetic system dominates — as it often does in dysautonomia — SDNN is elevated while RMSSD stays low, reducing the index.
-- **qualityFactor** (0–1) adjusts for sessions with a high rate of ectopic beats (PACs, PVCs).
 
 The HRV index is most meaningful as a **relative trend** tracked over time. There is no 'correct' HRV that you should aim for, but as your autonomic health improves your HRV is expected to also improve. This makes it a potentially useful way to track your recovery.
 
@@ -322,7 +323,8 @@ When your HR is **regulated**, it becomes possible to stay active during 'Rest o
 - **Multiple activity profiles** — Different threshold sets for different activities (e.g. walking, cycling, housework), switchable at session start.
 - **Activity time limit** — Optional per-session cap on total active time. When reached, the app transitions to the heart rate Reset state automatically.
 - **Resonance Frequency Breathing** — Integrated breath pacer, sound and vibration guides, resonance scoring, and extended RFB phase during the Reset state. See dedicated section above.
-- **HRV Reading** — A dedicated 3-minute resting measurement that produces a single HRV Index from RMSSD, SDNN, and beat quality. It is designed for consistent longitudinal tracking of ANS recovery. Requires a Polar H10 or equivalent RR-capable sensor.
+- **HRV Reading** — A dedicated 3-minute resting measurement that produces a single HRV Index from RMSSD and SDNN. It is designed for consistent longitudinal tracking of ANS recovery. Requires a Polar H10 or equivalent RR-capable sensor.
+- **Ectopic beat tracking** — Every session that uses an RR-capable sensor records the count and percentage of ectopic beats (PVCs, PACs). Reported in the session summary for all session types, enabling longitudinal monitoring of ectopic burden across full-length sessions where sample sizes are large enough for meaningful rate estimation.
 - **Session HR recording and graph export** — Every session records 1Hz heart rate data alongside state transitions. Saved sessions can be exported as a landscape A4 PDF graph showing HR over time with colour-coded state background bands, axes, and a resting HR reference line.
 - **Session history and trend graphs** — Each session can be saved with notes. History graphs allow you to track recovery metrics over time.
 - **Response lag and HR overshoot tracking** — Per-session statistics on recovery lag, HR peak during rest, and active/recovery time ratios.

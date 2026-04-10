@@ -165,7 +165,7 @@ const FIELDS = [
       desc: 'Display wave coherence, frequency stability, and phase lag — the components that are used to calculate the resonance index.' },
     { group: 'HRV Reading' },
     { key: 'HRV_SHOW_DEBUG', label: 'Display details', type: 'toggle',
-      desc: 'Display RMSSD, autonomic balance, and anomaly percentage during an HRV Reading session.' },
+      desc: 'Display RMSSD and autonomic balance during an HRV Reading session.' },
 ];
 
 const ACTIVITIES_KEY        = 'hrPacerActivities';

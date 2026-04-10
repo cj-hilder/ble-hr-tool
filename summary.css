@@ -94,6 +94,7 @@
 .settings-label { color: #888; }
 .rfb-label      { color: #1a7fff; }
 .hrv-label      { color: #7c3aed; }
+.ectopic-label  { color: #d97706; }
 
 .stat-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 4px; }
 .stat-item { display: flex; flex-direction: column; align-items: center; text-align: center; }
