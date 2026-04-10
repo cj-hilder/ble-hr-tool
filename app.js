@@ -41,8 +41,9 @@ class HRVProcessor {
         this._currentCycleMaxHr = 0;        // highest HR seen in current exhale phase
         this._lastHrMaxTs       = 0;        // wall-clock timestamp of that peak
         this._lastInhaleEndTs   = 0;        // wall-clock timestamp of last inhale→exhale turn
-        this._lagHistory        = []; // ring buffer of finalised per-cycle lag values (seconds)
-        this._LAG_HISTORY_SIZE  = 5;  // number of cycles to average (~50 s at 10 bpm)
+        this._lagHistory        = []; // kept for reset() symmetry — not used for averaging
+        this._lagEma            = null;  // EMA of per-cycle lag (seconds); null until first cycle
+        this._LAG_EMA_ALPHA     = 0.4;   // α=0.4 → time constant ≈ 2–3 cycles (~20–30s at 6 bpm)
     }
     addRR(rrInterval, timestamp) {
         if (!this._isValidRR(rrInterval)) return;
@@ -200,6 +201,7 @@ class HRVProcessor {
         this._currentCycleMaxHr = 0;
         this._lastHrMaxTs = 0; this._lastInhaleEndTs = 0;
         this._lagHistory = [];
+        this._lagEma     = null;
     }
 }
 
@@ -213,13 +215,23 @@ const peakFreqHistory = [];
 const PEAK_FREQ_MAX_HISTORY = 120; // ~1 Hz update rate → ~2 min of history
 
 // Returns a 0–1 stability value (1 = stable, 0 = wandering).
-// std dev thresholds: 0.005 Hz ≈ very stable; 0.02 Hz ≈ clearly drifting (~±1.2 bpm).
+// Thresholds are calibrated for the full PEAK_FREQ_MAX_HISTORY window:
+//   MIN_STD = 0.005 Hz ≈ very stable
+//   MAX_STD = 0.020 Hz ≈ clearly drifting (~±1.2 bpm)
+//
+// With fewer samples the sample std dev has more estimation noise, scaling as
+// √(N_max/N). Thresholds are widened by this factor so that a user breathing
+// perfectly steadily scores consistently from the first valid samples onward,
+// rather than showing an artificial low-to-high ramp during history warmup.
 function computeStability(history) {
     if (!history || history.length < 10) return 1; // insufficient data — assume stable
-    const mean = history.reduce((a, b) => a + b, 0) / history.length;
-    const variance = history.reduce((s, f) => { const d = f - mean; return s + d * d; }, 0) / history.length;
+    const N    = history.length;
+    const mean = history.reduce((a, b) => a + b, 0) / N;
+    const variance = history.reduce((s, f) => { const d = f - mean; return s + d * d; }, 0) / N;
     const std  = Math.sqrt(variance);
-    const MIN_STD = 0.005, MAX_STD = 0.02;
+    const scale   = Math.sqrt(PEAK_FREQ_MAX_HISTORY / N); // → 1.0 at full history
+    const MIN_STD = 0.005 * scale;
+    const MAX_STD = 0.020 * scale;
     const norm = Math.max(0, Math.min(1, (std - MIN_STD) / (MAX_STD - MIN_STD)));
     return 1 - norm;
 }
@@ -1071,14 +1083,23 @@ function computeResonance() {
 
     const stability = computeStability(peakFreqHistory);
 
+    // Stability is only meaningful once the processor buffer spans a full analysis
+    // window. Before that the FFT peak bin jumps around due to short-window spectral
+    // noise, not genuine breathing instability. Using 1.0 (neutral) during warmup
+    // prevents a misleading early penalty on the resonance index.
+    const bufferSpanMs = hrvProcessor.timestamps.length >= 2
+        ? hrvProcessor.timestamps[hrvProcessor.timestamps.length - 1] - hrvProcessor.timestamps[0]
+        : 0;
+    const stabilityReady = bufferSpanMs >= hrvProcessor.windowSeconds * 1000;
+    const stabilityForIndex = stabilityReady ? stability : 1.0;
+
     // Phase alignment — time-domain peak offset method.
     // Averages the last N finalised cycle lags for stability, then normalises
     // to degrees. 72° offset centres "0" on the expected healthy lag (1–2 s).
     let phaseDiffDeg = null;
-    if (hrvProcessor._lagHistory.length > 0) {
-        const avgLagSec     = hrvProcessor._lagHistory.reduce((a, b) => a + b, 0) / hrvProcessor._lagHistory.length;
+    if (hrvProcessor._lagEma !== null) {
         const breathPeriodSec = rfbBreathPeriodMs() / 1000;
-        const rawPhaseDeg   = (avgLagSec / breathPeriodSec) * 360;
+        const rawPhaseDeg     = (hrvProcessor._lagEma / breathPeriodSec) * 360;
         phaseDiffDeg = Math.round(rawPhaseDeg - 72);
     }
 
@@ -1123,13 +1144,14 @@ function computeResonance() {
     const amplitudeMult  = Math.min(1, Math.max(0, amplitudeBpm / RFB_MIN_AMPLITUDE));
     const coherenceGated = result.coherence * amplitudeMult;
 
-    const ri = computeResonanceIndex(coherenceGated, stability, phaseDiffDeg);
+    const ri = computeResonanceIndex(coherenceGated, stabilityForIndex, phaseDiffDeg);
     return {
         ri,
-        coherence:    result.coherence,   // raw, for display
-        coherenceGated,                   // amplitude-adjusted, fed into RI
+        coherence:    result.coherence,
+        coherenceGated,
         amplitudeBpm,
         stability,
+        stabilityReady,
         phaseDiffDeg,
         validRate:    result.validBreathingRate,
     };
@@ -1187,26 +1209,43 @@ function updateCoherenceDisplay() {
         dbg.style.display = showDebug ? '' : 'none';
 
         if (r === null || !r.validRate) {
-            coherVal.textContent = `0 ${starsHtml(0, false)}`;
+            coherVal.textContent = starsHtml(0, false);
             if (showDebug) dbg.textContent = 'collecting data…';
         } else {
-            const riPct  = Math.round(r.ri * 100);
-            const level  = riPct >= 50 ? 3 : riPct >= 30 ? 2 : riPct >= 15 ? 1 : 0;
-            coherVal.textContent = `${riPct} ${starsHtml(level, riPct >= 65)}`;
-            if (showDebug) {
-                const relLagSec = r.phaseDiffDeg != null ? (r.phaseDiffDeg / 360 * (rfbBreathPeriodMs() / 1000)) : null;
-                const lagStr = relLagSec != null ? `${relLagSec >= 0 ? '+' : ''}${relLagSec.toFixed(1)}s` : '--';
-                dbg.textContent = `coherence:${Math.round(r.coherence * 100)}% ampl:${r.amplitudeBpm.toFixed(1)} stability:${Math.round(r.stability * 100)}% lag:${lagStr}`;
+            // Suppress stats and show "collecting data" for the first 30 seconds of RFB.
+            // Coherence, stability, and phase estimates are unreliable during this period —
+            // the FFT window is still filling, the phase EMA has only 0–3 cycles, and the
+            // user is still settling into the breathing rhythm. Including these readings
+            // would systematically depress average RI, time-in-star, and peak RI.
+            const rfbElapsedSec = rfbWallStartTime > 0 ? (Date.now() - rfbWallStartTime) / 1000 : 0;
+            const inWarmup = rfbElapsedSec < 30;
+
+            if (inWarmup) {
+                coherVal.textContent = starsHtml(0, false);
+                if (showDebug) dbg.textContent = 'collecting data…';
+            } else {
+                const riPct  = Math.round(r.ri * 100);
+                const level  = riPct >= 50 ? 3 : riPct >= 30 ? 2 : riPct >= 15 ? 1 : 0;
+                // Show number only when non-zero — a zero score displays as bare stars.
+                coherVal.textContent = riPct > 0
+                    ? `${riPct} ${starsHtml(level, riPct >= 65)}`
+                    : starsHtml(0, false);
+                if (showDebug) {
+                    const relLagSec = r.phaseDiffDeg != null ? (r.phaseDiffDeg / 360 * (rfbBreathPeriodMs() / 1000)) : null;
+                    const lagStr   = relLagSec != null ? `${relLagSec >= 0 ? '+' : ''}${relLagSec.toFixed(1)}s` : '--';
+                    const stabStr  = r.stabilityReady ? `${Math.round(r.stability * 100)}%` : '--';
+                    dbg.textContent = `coherence:${Math.round(r.coherence * 100)}% ampl:${r.amplitudeBpm.toFixed(1)} stability:${stabStr} lag:${lagStr}`;
+                }
+                // Collect raw components for post-session analysis — warmup excluded.
+                if (isSessionRunning) rfbCoherenceRecording.push({
+                    t:    sessionSeconds,
+                    c:    Math.round(r.coherence * 100),
+                    ri:   riPct,
+                    stab: Math.round(r.stability * 100),
+                    ph:   r.phaseDiffDeg ?? null,
+                    amp:  Math.round(r.amplitudeBpm * 10) / 10,
+                });
             }
-            // Collect all raw components for post-session analysis
-            if (isSessionRunning) rfbCoherenceRecording.push({
-                t:    sessionSeconds,
-                c:    Math.round(r.coherence * 100),
-                ri:   riPct,
-                stab: Math.round(r.stability * 100),
-                ph:   r.phaseDiffDeg ?? null,
-                amp:  Math.round(r.amplitudeBpm * 10) / 10,
-            });
         }
         coherVal.style.color = stateColor;
     }
@@ -1682,9 +1721,14 @@ if (currentState === 'reset' && rfbOnNow && rfbWallStartTime > 0) {
             if (hrvProcessor._lastInhaleEndTs > 0 &&
                 hrvProcessor._lastHrMaxTs > hrvProcessor._lastInhaleEndTs) {
                 const finalisedLag = (hrvProcessor._lastHrMaxTs - hrvProcessor._lastInhaleEndTs) / 1000;
-                hrvProcessor._lagHistory.push(finalisedLag);
-                if (hrvProcessor._lagHistory.length > hrvProcessor._LAG_HISTORY_SIZE) {
-                    hrvProcessor._lagHistory.shift();
+                // EMA update: on first cycle seed directly; thereafter blend with α.
+                // α=0.4 weights the most recent cycle at 40%, giving a time constant
+                // of ~2–3 cycles so genuine phase shifts appear within ~20–30s at 6 bpm.
+                if (hrvProcessor._lagEma === null) {
+                    hrvProcessor._lagEma = finalisedLag;
+                } else {
+                    hrvProcessor._lagEma = hrvProcessor._LAG_EMA_ALPHA * finalisedLag +
+                                           (1 - hrvProcessor._LAG_EMA_ALPHA) * hrvProcessor._lagEma;
                 }
             }
             hrvProcessor._lastInhaleEndTs   = Date.now();
@@ -1770,9 +1814,15 @@ function computeRfbSummary(recording, activeSec) {
     const riVals  = recording.map(s => s.ri  ?? s.c);  // fall back to raw coherence for old format
     const avg     = Math.round(riVals.reduce((a, b) => a + b, 0) / riVals.length);
     const peak    = Math.max(...riVals);
-    // Use the real RFB clock if available; fall back to recording length for old sessions
-    const totalSec = (activeSec && activeSec > 0) ? activeSec : recording.length;
-    // Denominator is total RFB time so warmup seconds count against the score
+    // Denominator excludes the 30-second warmup period during which no recordings
+    // are collected. Using raw activeSec would inflate the denominator and depress
+    // pctAboveStar1 by the warmup fraction. Fall back to recording length for old
+    // sessions that pre-date the warmup gate (they have no warmup to subtract).
+    const RFB_WARMUP_SEC = 30;
+    const measuredSec = (activeSec && activeSec > RFB_WARMUP_SEC)
+        ? activeSec - RFB_WARMUP_SEC
+        : recording.length;
+    const totalSec = measuredSec;
     const pctAboveStar1 = Math.round(riVals.filter(v => v >= 15).length / totalSec * 100);
     return { avg, peak, pctAboveStar1, totalSec };
 }
