@@ -237,38 +237,32 @@ function recordRrHistory(rrValuesMs, notifTs) {
     const wallGap   = lastRrWallClock > 0 ? wallNow - lastRrWallClock : 0;
     lastRrWallClock = wallNow;
 
-    // Read and immediately clear any pending deferred beat from the previous packet.
-    // Must happen before gap detection so that a detected gap can discard it cleanly.
-    let pendingBeat = recordRrHistory._pendingBeat || null;
-    recordRrHistory._pendingBeat = null;
-
-    // Distinguish two gap scenarios using lastHrWallClock, updated on every HR
-    // packet regardless of whether it contains RR data.
+    // Distinguish two gap scenarios using lastHrWallClock, which is updated on
+    // every HR packet AFTER recordRrHistory returns, so it always holds the
+    // previous packet's timestamp when we read it here.
     //
     //   Background gap: app suspended — both HR and RR stopped.
-    //   → Full flush. Pending beat also discarded (stale).
+    //   → Full flush: queued packets about to flood in.
     //
     //   Sensor RR interruption: skin contact lost briefly (e.g. finger swipe).
     //   HR packets kept arriving; only RR stopped.
-    //   → Soft reset: reseed the clock only. Processor buffers preserved.
-    //   → Pending beat discarded — the RR gap means any deferred beat has no
-    //     valid successor to pair with.
+    //   → Soft reset: discard pending beat and reseed the clock, but preserve
+    //     processor buffers and lastCleanRr so metrics resume cleanly.
     const hrGap         = lastHrWallClock > 0 ? wallNow - lastHrWallClock : wallGap;
     const isBackgroundGap = wallGap > BACKGROUND_GAP_MS && hrGap > BACKGROUND_GAP_MS;
     const isSensorRrGap   = wallGap > BACKGROUND_GAP_MS && hrGap <= BACKGROUND_GAP_MS;
 
     if (isBackgroundGap) {
-        pendingBeat = null;
         hrvProcessor.reset();
         peakFreqHistory.length = 0;
         lastRrTimestamp = 0;
         recordRrHistory._lastCleanRr = 0;
+        recordRrHistory._pendingBeat = null;
         rrHistory.length = 0;
     } else if (isSensorRrGap) {
-        pendingBeat = null;
         lastRrTimestamp = 0;
+        recordRrHistory._pendingBeat = null;
     }
-
     const pairs = [];
     const totalRrMs = rrValuesMs.reduce((sum, val) => sum + val, 0);
 
@@ -293,51 +287,15 @@ function recordRrHistory(rrValuesMs, notifTs) {
         lastRrTimestamp = notifTs;
     }
 
-    // ── Pending beat cross-packet validation ──────────────────────────────────
-    //
-    // A short beat deferred from the previous packet is prepended here so it can
-    // be classified as part of a pair with the first new beat. Before prepending,
-    // we validate that the two packets are truly back-to-back with no sensor gap.
-    //
-    // The check uses BLE packet arrival times:
-    //   notifTs         — wall-clock arrival time of the current packet
-    //   pendingBeat.ts  — forward-clock timestamp of the deferred beat
-    //
-    // If the stream is continuous: notifTs ≈ pendingBeat.ts + totalRrMs
-    //   (the new packet arrived roughly as long after the deferred beat as the
-    //   sum of the new RR intervals, plus a small BLE transmission allowance).
-    //
-    // If a sensor gap occurred: notifTs will be substantially larger than that,
-    // because the sensor stopped transmitting for some period. In this case the
-    // deferred beat and the first new beat are NOT adjacent cardiac events and
-    // must not be paired — the deferred beat is classified as a sensor artifact.
-    if (pendingBeat) {
-        const CONSECUTIVE_TOL_MS = 1500; // generous BLE jitter allowance
-        if (notifTs - pendingBeat.ts <= totalRrMs + CONSECUTIVE_TOL_MS) {
-            // Packets are back-to-back — prepend for pair classification.
-            // alreadyCounted prevents a second sessionTotalBeats increment.
-            pairs.unshift({ ...pendingBeat, alreadyCounted: true });
-        } else {
-            // Gap detected — deferred beat cannot be part of a genuine ectopic pair.
-            // sessionTotalBeats was already incremented when it was first seen.
-            sessionSensorArtifacts++;
-            const baselineRr = recordRrHistory._lastCleanRr || 0;
-            if (baselineRr > 0) {
-                const synth = Math.round(60000 / baselineRr);
-                if (synth >= 24 && synth <= 240)
-                    rrHistory.push({ hr: synth, state: currentState, ts: pendingBeat.ts });
-            }
-        }
-    }
-
     // ── Artifact classification ───────────────────────────────────────────────
     //
     // All comparisons are made against lastCleanRr — the last beat confirmed clean.
     //
     // Physiological artifact classification requires a recognised consecutive PAIR.
-    // "Consecutive" means the two beats are adjacent cardiac events with no sensor
-    // gap between them — enforced by the timestamp check above for cross-packet
-    // pairs, and guaranteed by construction for beats within the same packet.
+    // "Consecutive" means adjacent cardiac events with no sensor gap between them:
+    //   — within the same packet: guaranteed consecutive by construction
+    //   — across packets: validated by comparing notifTs against the deferred beat's
+    //     forward-clock timestamp plus the new packet's total RR span (±1500ms jitter)
     //
     // Two recognised pair patterns (±20% tolerance):
     //
@@ -353,9 +311,7 @@ function recordRrHistory(rrValuesMs, notifTs) {
     //     Criterion: rr1 short AND rr2 ≈ lastCleanRr.
     //     Only rr1 excluded from HRV; rr2 is clean. 1 ectopic event.
     //
-    //   Short beat with no in-packet successor:
-    //     Deferred to _pendingBeat; validated against next packet's arrival time.
-    //
+    //   Short beat at end of packet → deferred to _pendingBeat for cross-packet check.
     //   Short beat matching neither pattern → sensor artifact.
     //   Long beats with no preceding short beat → fall through to clean.
     //
@@ -365,7 +321,26 @@ function recordRrHistory(rrValuesMs, notifTs) {
     //   Clean beat       → graph + HRV processor
 
     let lastCleanRr = recordRrHistory._lastCleanRr || 0;
-    const PAIR_TOL  = 0.2;
+
+    // Prepend any beat deferred from the previous packet, validated by timestamp.
+    const pendingBeat = recordRrHistory._pendingBeat || null;
+    recordRrHistory._pendingBeat = null;
+    if (pendingBeat) {
+        const CONSECUTIVE_TOL_MS = 1500; // generous BLE jitter allowance
+        if (notifTs - pendingBeat.ts <= totalRrMs + CONSECUTIVE_TOL_MS) {
+            pairs.unshift({ ...pendingBeat, alreadyCounted: true });
+        } else {
+            // Gap too large — deferred beat was not adjacent to the new ones.
+            sessionSensorArtifacts++;
+            if (recordRrHistory._lastCleanRr > 0) {
+                const synth = Math.round(60000 / recordRrHistory._lastCleanRr);
+                if (synth >= 24 && synth <= 240)
+                    rrHistory.push({ hr: synth, state: currentState, ts: pendingBeat.ts });
+            }
+        }
+    }
+
+    const PAIR_TOL = 0.2;
     let i = 0;
     while (i < pairs.length) {
         const { rr, ts: t, alreadyCounted } = pairs[i];
@@ -394,8 +369,7 @@ function recordRrHistory(rrValuesMs, notifTs) {
 
         if (isShort) {
             if (i + 1 >= pairs.length) {
-                // No successor visible in this packet — defer for cross-packet
-                // validation against the next packet's arrival timestamp.
+                // No successor in this packet — defer for cross-packet validation.
                 recordRrHistory._pendingBeat = { rr, ts: t };
                 i++; break;
             }
@@ -410,23 +384,21 @@ function recordRrHistory(rrValuesMs, notifTs) {
 
             if (isPvc) {
                 if (!next.alreadyCounted) sessionTotalBeats++;
-                sessionPhysioArtifacts++;          // 1 event for the pair
+                sessionPhysioArtifacts++;
                 const hrPremature = Math.round(60000 / rr);
                 const hrPause     = Math.round(60000 / next.rr);
                 if (hrPremature >= 24 && hrPremature <= 240)
                     rrHistory.push({ hr: hrPremature, state: currentState, ts: t });
                 if (hrPause >= 24 && hrPause <= 240)
                     rrHistory.push({ hr: hrPause, state: currentState, ts: next.ts });
-                // lastCleanRr NOT updated — baseline preserved through ectopic pair.
                 i += 2; continue;
             }
 
             if (isPac) {
-                sessionPhysioArtifacts++;          // 1 event for the premature beat
+                sessionPhysioArtifacts++;
                 const hrPremature = Math.round(60000 / rr);
                 if (hrPremature >= 24 && hrPremature <= 240)
                     rrHistory.push({ hr: hrPremature, state: currentState, ts: t });
-                // lastCleanRr NOT updated — next beat evaluated against original baseline.
                 i++; continue;
             }
 
@@ -1639,7 +1611,6 @@ function handleHeartRate(event) {
     document.getElementById('heartRateDisplay').innerText = currentHeartRate;
     resetTimeout();
     if (currentHeartRate === 0) return;
-    lastHrWallClock = Date.now(); // track last HR packet regardless of RR presence
     updateSpeedometer(currentHeartRate);
 
     // ── Parse RR intervals (bit 4 of flags; H10 and compatible sensors) ───────
@@ -1662,6 +1633,10 @@ function handleHeartRate(event) {
         }
         if (rrValuesMs.length > 0) recordRrHistory(rrValuesMs, Date.now());
     }
+    // Updated AFTER the RR block so that inside recordRrHistory, lastHrWallClock
+    // still holds the previous packet's timestamp. If updated before, hrGap would
+    // always be ~0 and the sensor-RR-gap detection would never fire.
+    lastHrWallClock = Date.now();
 
     // ── RFB phase tracking: detect inhale→exhale turn and lock HR peak ──────────
 const rfbOnNow = (typeof RFB_ENABLED !== 'undefined') && RFB_ENABLED;
