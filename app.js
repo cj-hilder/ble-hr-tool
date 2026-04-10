@@ -1795,15 +1795,23 @@ function computeSessionSummary() {
 
         const total = valid.reduce((s, p) => s + p.duration, 0);
 
-        const ntDur = nonTerminal.map(p => p.duration);
+        // If the terminal period is the only valid period, treat it as non-terminal
+        // so it participates fully in all statistics (avg, min, max, count).
+        // A lone terminal has nothing to skew — the usual protection against a
+        // truncated final period distorting an established dataset doesn't apply.
+        const promoted       = nonTerminal.length === 0 && !!terminal;
+        const effNonTerminal = promoted ? [terminal] : nonTerminal;
+        const effTerminal    = promoted ? null       : terminal;
+
+        const ntDur = effNonTerminal.map(p => p.duration);
         const currentMin = ntDur.length ? Math.min(...ntDur) : Infinity;
 
         // Determine whether terminal joins the average pool
-        const terminalInAvg = terminal && ntDur.length > 0 && terminal.duration >= currentMin;
-        const avgPool = terminalInAvg ? [...nonTerminal, terminal] : nonTerminal;
-        const maxPool = terminal       ? [...nonTerminal, terminal] : nonTerminal;
+        const terminalInAvg = effTerminal && ntDur.length > 0 && effTerminal.duration >= currentMin;
+        const avgPool = terminalInAvg ? [...effNonTerminal, effTerminal] : effNonTerminal;
+        const maxPool = effTerminal   ? [...effNonTerminal, effTerminal] : effNonTerminal;
 
-        const dur = avgPool.map(p => p.duration);
+        const dur    = avgPool.map(p => p.duration);
         const maxDur = maxPool.map(p => p.duration);
 
         return {
@@ -1821,20 +1829,25 @@ function computeSessionSummary() {
         const valid   = periods.filter(p => p.duration >= MIN_PERIOD_SEC);
         const nonTerm = valid.filter(p => !p.terminal);
         const terminal = valid.find(p => p.terminal);
-        const ntDur = nonTerm.map(p => p.duration);
+
+        // Apply the same promotion as periodStats.
+        const promoted    = nonTerm.length === 0 && !!terminal;
+        const effNonTerm  = promoted ? [terminal] : nonTerm;
+        const effTerminal = promoted ? null       : terminal;
+
+        const ntDur = effNonTerm.map(p => p.duration);
         const currentMin = ntDur.length ? Math.min(...ntDur) : Infinity;
-        const termInAvg = terminal && ntDur.length > 0 && terminal.duration >= currentMin;
-        const avgPool   = termInAvg ? [...nonTerm, terminal] : nonTerm;
+        const termInAvg = effTerminal && ntDur.length > 0 && effTerminal.duration >= currentMin;
+        const avgPool   = termInAvg ? [...effNonTerm, effTerminal] : effNonTerm;
 
         // Lags and peaks are assembled independently of the duration-based avgPool.
-        // Non-terminal periods: included if they have a recorded peak (maxHr > 0).
-        // Terminal period: included if the lag is valid — lagSec < duration means the
-        // peak HR occurred before the period ended, so HR was observed declining after
-        // the peak. Valid regardless of the period's duration.
+        // Non-terminal (or promoted) periods: included if they have a recorded peak.
+        // Terminal period (unpromoted): included if the lag is valid — lagSec < duration
+        // means the peak HR occurred before the period ended, so HR was observed declining.
         const lagPool = [
-            ...nonTerm.filter(p => p.maxHr > 0),
-            ...(terminal && terminal.maxHr > 0 && terminal.lagSec < terminal.duration
-                ? [terminal] : []),
+            ...effNonTerm.filter(p => p.maxHr > 0),
+            ...(effTerminal && effTerminal.maxHr > 0 && effTerminal.lagSec < effTerminal.duration
+                ? [effTerminal] : []),
         ];
         return {
             ...base,
