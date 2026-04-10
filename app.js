@@ -242,12 +242,12 @@ function recordRrHistory(rrValuesMs, notifTs) {
     // previous packet's timestamp when we read it here.
     //
     //   Background gap: app suspended — both HR and RR stopped.
-    //   → Full flush: queued packets about to flood in.
+    //   → Full flush: queued packets are about to flood in.
     //
-    //   Sensor RR interruption: skin contact lost briefly (e.g. finger swipe).
+    //   Sensor RR interruption: brief skin contact loss (e.g. finger swipe).
     //   HR packets kept arriving; only RR stopped.
-    //   → Soft reset: discard pending beat and reseed the clock, but preserve
-    //     processor buffers and lastCleanRr so metrics resume cleanly.
+    //   → Soft reset: reseed the clock, discard pending beat; preserve processor
+    //     buffers and lastCleanRr so metrics resume cleanly.
     const hrGap         = lastHrWallClock > 0 ? wallNow - lastHrWallClock : wallGap;
     const isBackgroundGap = wallGap > BACKGROUND_GAP_MS && hrGap > BACKGROUND_GAP_MS;
     const isSensorRrGap   = wallGap > BACKGROUND_GAP_MS && hrGap <= BACKGROUND_GAP_MS;
@@ -291,6 +291,11 @@ function recordRrHistory(rrValuesMs, notifTs) {
     //
     // All comparisons are made against lastCleanRr — the last beat confirmed clean.
     //
+    // Graph consistency rule: a real HR spike is shown on the graph if and only if
+    // the beat is part of a classified ectopic pair (PVC or PAC). All other deviant
+    // beats receive a synthetic interpolated point so that what the user sees matches
+    // what gets counted in the session summary.
+    //
     // Physiological artifact classification requires a recognised consecutive PAIR.
     // "Consecutive" means adjacent cardiac events with no sensor gap between them:
     //   — within the same packet: guaranteed consecutive by construction
@@ -303,17 +308,20 @@ function recordRrHistory(rrValuesMs, notifTs) {
     //     SA node keeps firing on schedule. Premature beat fires early (short RR),
     //     ventricles refractory for next SA impulse → compensatory pause (long RR).
     //     Criterion: rr1 short AND rr1 + rr2 ≈ 2 × lastCleanRr.
-    //     Both beats excluded from HRV; counted as 1 ectopic event.
+    //     Both beats excluded from HRV; shown as real spikes; counted as 1 event.
     //
     //   PAC (premature atrial contraction):
     //     Ectopic fires from atria, resetting the SA node. Short premature beat
     //     followed immediately by a normal beat (SA node restarted from ectopic).
     //     Criterion: rr1 short AND rr2 ≈ lastCleanRr.
-    //     Only rr1 excluded from HRV; rr2 is clean. 1 ectopic event.
+    //     Only rr1 excluded from HRV and shown as spike; rr2 is clean. 1 event.
     //
     //   Short beat at end of packet → deferred to _pendingBeat for cross-packet check.
-    //   Short beat matching neither pattern → sensor artifact.
-    //   Long beats with no preceding short beat → fall through to clean.
+    //   Short beat matching neither pattern → sensor artifact (synthetic point).
+    //   Long beat ≥20% above lastCleanRr not preceded by a classified short beat →
+    //     sensor artifact. Genuine beat-to-beat HR changes are gradual (<5–10% per
+    //     beat); a lone 20%+ long beat is almost always an orphaned compensatory pause
+    //     or dropout. Synthetic-izing it ensures graph/count consistency.
     //
     // Routing:
     //   Sensor artifact  → synthetic interpolated graph point; excluded from HRV
@@ -330,7 +338,7 @@ function recordRrHistory(rrValuesMs, notifTs) {
         if (notifTs - pendingBeat.ts <= totalRrMs + CONSECUTIVE_TOL_MS) {
             pairs.unshift({ ...pendingBeat, alreadyCounted: true });
         } else {
-            // Gap too large — deferred beat was not adjacent to the new ones.
+            // Gap too large — deferred beat is not adjacent to the new ones.
             sessionSensorArtifacts++;
             if (recordRrHistory._lastCleanRr > 0) {
                 const synth = Math.round(60000 / recordRrHistory._lastCleanRr);
@@ -340,15 +348,16 @@ function recordRrHistory(rrValuesMs, notifTs) {
         }
     }
 
-    const PAIR_TOL = 0.2;
+    const PAIR_TOL  = 0.2;
+    const DEV_THRESHOLD = 0.2; // minimum deviation to enter artifact analysis
     let i = 0;
     while (i < pairs.length) {
         const { rr, ts: t, alreadyCounted } = pairs[i];
         if (!alreadyCounted) sessionTotalBeats++;
 
-        // ── Tier 1: sensor artifact ───────────────────────────────────────────
-        // Require both relative deviation ≥ 50% AND absolute delta > 250 ms to
-        // avoid misclassifying large but legitimate RFB HR swings at low HR.
+        // ── Tier 1: sensor artifact — outside physiological range or gross dropout ──
+        // Require both relative deviation ≥ 50% AND absolute delta > 250 ms to avoid
+        // misclassifying large RFB HR swings at low HR as sensor artifacts.
         const absDiff = lastCleanRr > 0 ? Math.abs(rr - lastCleanRr) : 0;
         const isSensorArtifact = rr < 250 || rr > 2000 ||
             (lastCleanRr > 0 && Math.abs(rr - lastCleanRr) / lastCleanRr >= 0.5 && absDiff > 250);
@@ -363,9 +372,10 @@ function recordRrHistory(rrValuesMs, notifTs) {
             i++; continue;
         }
 
-        // ── Tier 2: pair-based physiological artifact detection ───────────────
-        const isShort = lastCleanRr > 0 && rr < lastCleanRr &&
-                        (lastCleanRr - rr) / lastCleanRr >= 0.2;
+        const deviation = lastCleanRr > 0 ? (rr - lastCleanRr) / lastCleanRr : 0; // signed
+
+        // ── Tier 2a: short beat — enter pair-based ectopic detection ─────────
+        const isShort = lastCleanRr > 0 && deviation <= -DEV_THRESHOLD;
 
         if (isShort) {
             if (i + 1 >= pairs.length) {
@@ -391,6 +401,7 @@ function recordRrHistory(rrValuesMs, notifTs) {
                     rrHistory.push({ hr: hrPremature, state: currentState, ts: t });
                 if (hrPause >= 24 && hrPause <= 240)
                     rrHistory.push({ hr: hrPause, state: currentState, ts: next.ts });
+                // lastCleanRr NOT updated — baseline preserved through ectopic pair.
                 i += 2; continue;
             }
 
@@ -399,6 +410,7 @@ function recordRrHistory(rrValuesMs, notifTs) {
                 const hrPremature = Math.round(60000 / rr);
                 if (hrPremature >= 24 && hrPremature <= 240)
                     rrHistory.push({ hr: hrPremature, state: currentState, ts: t });
+                // lastCleanRr NOT updated — next beat evaluated against original baseline.
                 i++; continue;
             }
 
@@ -409,6 +421,21 @@ function recordRrHistory(rrValuesMs, notifTs) {
                 if (syntheticHr >= 24 && syntheticHr <= 240)
                     rrHistory.push({ hr: syntheticHr, state: currentState, ts: t });
             }
+            i++; continue;
+        }
+
+        // ── Tier 2b: long beat not preceded by a classified short beat ────────
+        // Genuine HR deceleration is gradual — each step stays well within the
+        // DEV_THRESHOLD. A lone beat ≥20% longer than the baseline is almost
+        // always an orphaned compensatory pause or a sensor dropout. Synthetic-ize
+        // it so the graph only shows real HR values for classified ectopic pairs.
+        const isLong = lastCleanRr > 0 && deviation >= DEV_THRESHOLD;
+
+        if (isLong) {
+            sessionSensorArtifacts++;
+            const syntheticHr = Math.round(60000 / lastCleanRr);
+            if (syntheticHr >= 24 && syntheticHr <= 240)
+                rrHistory.push({ hr: syntheticHr, state: currentState, ts: t });
             i++; continue;
         }
 
