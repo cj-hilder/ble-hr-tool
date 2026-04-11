@@ -9,9 +9,9 @@
     function fmtT(s) { return s > 0 ? formatTime(s) : '--'; }
     function fmtN(n) { return n > 0 ? n : '--'; }
     // Lag times can legitimately be zero (instant recovery). Show '--' only when
-    // there were no recovery periods at all; otherwise use formatTime so zero => '00:00'.
-    function fmtLag(sec, numRecoveryPeriods) {
-        return numRecoveryPeriods > 0 ? formatTime(sec) : '--';
+    // there were no periods with valid lag data; otherwise use formatTime so zero => '00:00'.
+    function fmtLag(sec, numLagPeriods) {
+        return numLagPeriods > 0 ? formatTime(sec) : '--';
     }
 
     function fmtDate(iso) {
