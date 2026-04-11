@@ -1187,11 +1187,12 @@ function computeResonance() {
         const lagMs          = (hrvProcessor._lagEma || 0) * 1000;
         const breathPeriodMs = rfbBreathPeriodMs();
         const inhaleFrac     = rfbGetInhaleFrac();
-        // Use all clean RR history since RFB started, capped at 75s.
-        const windowStart = Math.max(
-            rfbWallStartTime > 0 ? rfbWallStartTime : 0,
-            Date.now() - RFB_BLEND_START * 1000
-        );
+        // Use all clean RR data since RFB started — no time cap. More data makes
+        // the correlation estimate more stable, which is exactly what we want during
+        // the crossfade where correlation and FFT coherence blend together. The
+        // sliding cap that was here previously caused the correlation to fluctuate
+        // as earlier data dropped out, producing a bumpy blend.
+        const windowStart = rfbWallStartTime > 0 ? rfbWallStartTime : 0;
         const pts = rrHistory.filter(p => p.ts >= windowStart && !p.ectopic);
 
         if (pts.length >= 8) {
