@@ -225,25 +225,13 @@ const peakFreqHistory = [];
 const PEAK_FREQ_MAX_HISTORY = 120; // ~1 Hz update rate → ~2 min of history
 
 // ─── RFB display phase thresholds ─────────────────────────────────────────────
-// t < RFB_COLLECT_SEC  : collecting data — bare stars, no number
-// RFB_COLLECT_SEC ≤ t < RFB_BLEND_START : amplitude-based RI (quadratic formula)
-// RFB_BLEND_START ≤ t < RFB_BLEND_END   : crossfade amplitude → coherence
-// t ≥ RFB_BLEND_END                     : full coherence-based RI
-const RFB_COLLECT_SEC    = 30;
-const RFB_BLEND_START    = 75;
-const RFB_BLEND_END      = 90;
+// t < RFB_DISPLAY_SEC : progress animation shown; debug shows coherence from 30s
+// t ≥ RFB_DISPLAY_SEC : headline RI + stars shown; recording begins
+const RFB_DISPLAY_SEC    = 75;  // when headline number and recording activate
+const RFB_DEBUG_SEC      = 30;  // when debug line switches from "collecting" to coherence stats
 // Amplitude gate: minimum RSA swing required to show any score.
 // 3.75 bpm = 25% of the Hirsch & Bishop (1981) healthy adult floor (15 bpm).
 const RFB_MIN_AMPLITUDE  = 3.75;
-
-// ─── Correlation EMA state ────────────────────────────────────────────────────
-// The raw Pearson r jumps when _lagEma updates at each breath crossing, because
-// all historical guide values shift simultaneously. A time-based EMA (tau=8s,
-// matching the FFT coherence EMA) smooths these step changes while preserving
-// the underlying trend. Reset at session start and on background gap flush.
-let _corrEmaValue = null;
-let _corrEmaTime  = 0;
-const CORR_EMA_TAU = 8; // seconds
 
 // Returns a 0–1 stability value (1 = stable, 0 = wandering).
 // Thresholds are calibrated for the full PEAK_FREQ_MAX_HISTORY window:
@@ -296,7 +284,6 @@ function recordRrHistory(rrValuesMs, notifTs) {
     const isSensorRrGap   = wallGap > BACKGROUND_GAP_MS && hrGap <= BACKGROUND_GAP_MS;
 
     if (isBackgroundGap) {
-        _corrEmaValue = null; _corrEmaTime = 0;
         hrvProcessor.reset();
         peakFreqHistory.length = 0;
         lastRrTimestamp = 0;
@@ -1180,78 +1167,8 @@ function computeResonance() {
 
     const ri = computeResonanceIndex(coherenceGated, stabilityForIndex, phaseDiffDeg);
 
-    // ── Time-domain correlation RI ────────────────────────────────────────────
-    // Used as the interim metric while the FFT window is still filling (< 75s).
-    // Correlates actual beat-to-beat HR against the guide sine wave, phase-shifted
-    // by _lagEma to account for the natural RSA delay. Because the guide frequency
-    // and phase are known exactly, a good estimate is achievable from as little as
-    // 1–2 complete cycles — no bin-alignment aliasing, no spectral leakage.
-    //
-    // Pearson r ∈ [-1, 1] is clamped to [0, 1] (anti-phase = 0, not negative score)
-    // then gated by amplitudeMult so the amplitude threshold is consistently applied
-    // across both metrics.
-    //
-    // correlationRI = clamp(r, 0, 1) × amplitudeMult × 100
-    let correlationRI = 0;
-    {
-        // Fixed 2s lag: RSA peak HR consistently lags the inhale→exhale transition
-        // by ~1–2s in healthy adults. Using _lagEma here caused discontinuous jumps
-        // each time the EMA updated (once per breath cycle), shifting all historical
-        // guide values simultaneously. A fixed 2s is stable, well-grounded, and the
-        // correlation is not sensitive to the small individual variation around it.
-        const lagMs          = 2000;
-        const breathPeriodMs = rfbBreathPeriodMs();
-        const inhaleFrac     = rfbGetInhaleFrac();
-        // Use all clean RR data since RFB started — no time cap. More data makes
-        // the correlation estimate more stable, which is exactly what we want during
-        // the crossfade where correlation and FFT coherence blend together. The
-        // sliding cap that was here previously caused the correlation to fluctuate
-        // as earlier data dropped out, producing a bumpy blend.
-        const windowStart = rfbWallStartTime > 0 ? rfbWallStartTime : 0;
-        const pts = rrHistory.filter(p => p.ts >= windowStart && !p.ectopic);
-
-        if (pts.length >= 8) {
-            // For each beat, compute what the guide sine was at (ts - lag):
-            // if HR(t) ≈ guideSine(t - lag), then the correlation should be high.
-            const guideVals = pts.map(p => {
-                const adjTs  = p.ts - lagMs;
-                const elapsed = adjTs - rfbWallStartTime;
-                const phase  = ((elapsed % breathPeriodMs) + breathPeriodMs) % breathPeriodMs / breathPeriodMs;
-                return rfbAsymSine(phase, inhaleFrac);
-            });
-            const hrVals = pts.map(p => p.hr);
-
-            const n      = pts.length;
-            const meanHr = hrVals.reduce((a, b) => a + b, 0) / n;
-            const meanG  = guideVals.reduce((a, b) => a + b, 0) / n;
-            let num = 0, denHr = 0, denG = 0;
-            for (let j = 0; j < n; j++) {
-                const dh = hrVals[j] - meanHr;
-                const dg = guideVals[j] - meanG;
-                num   += dh * dg;
-                denHr += dh * dh;
-                denG  += dg * dg;
-            }
-            const denom = Math.sqrt(denHr * denG);
-            if (denom > 0) {
-                const rRaw = Math.max(0, num / denom);
-                // Time-based EMA on raw r — same tau as FFT coherence (8s).
-                // Smooths step changes from _lagEma updates without distorting the trend.
-                const nowMs = Date.now();
-                const dt    = _corrEmaTime > 0 ? (nowMs - _corrEmaTime) / 1000 : CORR_EMA_TAU;
-                const alpha = dt / (CORR_EMA_TAU + dt);
-                _corrEmaValue = _corrEmaValue === null
-                    ? rRaw
-                    : alpha * rRaw + (1 - alpha) * _corrEmaValue;
-                _corrEmaTime = nowMs;
-                correlationRI = Math.round(_corrEmaValue * _corrEmaValue * amplitudeMult * 100);
-            }
-        }
-    }
-
     return {
         ri,
-        correlationRI,
         coherence:    result.coherence,
         coherenceGated,
         amplitudeBpm,
@@ -1316,42 +1233,47 @@ function updateCoherenceDisplay() {
         dbg.style.display = showDebug ? '' : 'none';
 
         if (r === null || !r.validRate) {
-            coherVal.textContent = starsHtml(0, false);
+            if (coherEl) coherEl.style.display = 'none';
+            const progressEl = document.getElementById('rfbProgress');
+            if (progressEl) progressEl.style.display = 'none';
             if (showDebug) dbg.textContent = 'collecting data…';
         } else {
             const rfbElapsedSec = rfbWallStartTime > 0 ? (Date.now() - rfbWallStartTime) / 1000 : 0;
-            const amp    = r.amplitudeBpm;
-            const riCorr = r.correlationRI; // time-domain Pearson correlation against guide sine
+            const amp = r.amplitudeBpm;
 
-            if (rfbElapsedSec < RFB_COLLECT_SEC) {
-                // Phase 1: collecting data — too few beats for any reliable estimate.
-                coherVal.textContent = starsHtml(0, false);
-                if (showDebug) dbg.textContent = 'collecting data…';
+            if (rfbElapsedSec < RFB_DISPLAY_SEC) {
+                // Progress arc — headline suppressed until FFT is reliable at 75s.
+                if (coherEl) coherEl.style.display = 'none';
+                const progressEl = document.getElementById('rfbProgress');
+                const arc        = document.getElementById('rfbProgressArc');
+                if (progressEl) progressEl.style.display = 'flex';
+                if (arc) {
+                    const CIRCUMFERENCE = 125.66; // 2π × r=20
+                    const pct    = Math.min(1, rfbElapsedSec / RFB_DISPLAY_SEC);
+                    arc.setAttribute('stroke-dashoffset',
+                        (CIRCUMFERENCE * (1 - pct)).toFixed(2));
+                }
 
-            } else if (rfbElapsedSec < RFB_BLEND_START) {
-                // Phase 2: correlation-based RI. Uses Pearson r between actual HR and the
-                // guide sine (phase-shifted by _lagEma), gated by amplitude. Meaningful
-                // from ~1–2 cycles; no bin-alignment or spectral-leakage issues.
-                const level = riCorr >= 65 ? 3 : riCorr >= 45 ? 2 : riCorr >= 25 ? 1 : 0;
-                coherVal.textContent = riCorr > 0
-                    ? `${riCorr} ${starsHtml(level, riCorr >= 75)}`
-                    : starsHtml(0, false);
+                // Debug: "collecting data…" for first 30s, then live coherence stats.
                 if (showDebug) {
-                    dbg.textContent = `correlation:${riCorr} ampl:${amp.toFixed(1)} lag:2.0s fixed`;
+                    if (rfbElapsedSec < RFB_DEBUG_SEC) {
+                        dbg.textContent = 'collecting data…';
+                    } else {
+                        const relLagSec = r.phaseDiffDeg != null ? (r.phaseDiffDeg / 360 * (rfbBreathPeriodMs() / 1000)) : null;
+                        const lagStr   = relLagSec != null ? `${relLagSec >= 0 ? '+' : ''}${relLagSec.toFixed(1)}s` : '--';
+                        const stabStr  = r.stabilityReady ? `${Math.round(r.stability * 100)}%` : '--';
+                        dbg.textContent = `coherence:${Math.round(r.coherence * 100)}% ampl:${amp.toFixed(1)} stability:${stabStr} lag:${lagStr}`;
+                    }
                 }
 
             } else {
-                // Phase 3 (75–90s): crossfade correlation → FFT coherence.
-                // Phase 4 (90s+):   full coherence-based RI.
-                const riCoherence = Math.round(r.ri * 100);
-                let riPct;
-                if (rfbElapsedSec < RFB_BLEND_END) {
-                    const alpha = (rfbElapsedSec - RFB_BLEND_START) / (RFB_BLEND_END - RFB_BLEND_START);
-                    riPct = Math.round((1 - alpha) * riCorr + alpha * riCoherence);
-                } else {
-                    riPct = riCoherence;
-                }
-                const level = riPct >= 65 ? 3 : riPct >= 45 ? 2 : riPct >= 25 ? 1 : 0;
+                // 75s+: full coherence-based RI shown; recording active.
+                const progressEl = document.getElementById('rfbProgress');
+                if (progressEl) progressEl.style.display = 'none';
+                if (coherEl) coherEl.style.display = 'flex';
+
+                const riPct  = Math.round(r.ri * 100);
+                const level  = riPct >= 65 ? 3 : riPct >= 45 ? 2 : riPct >= 25 ? 1 : 0;
                 coherVal.textContent = riPct > 0
                     ? `${riPct} ${starsHtml(level, riPct >= 75)}`
                     : starsHtml(0, false);
@@ -1361,7 +1283,7 @@ function updateCoherenceDisplay() {
                     const stabStr  = r.stabilityReady ? `${Math.round(r.stability * 100)}%` : '--';
                     dbg.textContent = `coherence:${Math.round(r.coherence * 100)}% ampl:${amp.toFixed(1)} stability:${stabStr} lag:${lagStr}`;
                 }
-                // Recording starts at RFB_BLEND_START — only post-warmup data in summaries.
+                // Recording starts at RFB_DISPLAY_SEC — only settled data in summaries.
                 if (isSessionRunning) rfbCoherenceRecording.push({
                     t:    sessionSeconds,
                     c:    Math.round(r.coherence * 100),
@@ -1553,6 +1475,8 @@ function stopRfbAnimation() {
     clearTimeout(rfbScheduleTimer); rfbScheduleTimer = null;
     const indicator = document.getElementById('stateIndicator');
     if (indicator) { indicator.style.transform = ''; indicator.style.filter = ''; }
+    const progressEl = document.getElementById('rfbProgress');
+    if (progressEl) progressEl.style.display = 'none';
     stopInhaleSound();
     if ('vibrate' in navigator) navigator.vibrate(0);
 }
@@ -1942,7 +1866,7 @@ function computeRfbSummary(recording, activeSec) {
     // Denominator excludes the warmup period (first 75s) during which no recordings
     // are collected. Fall back to recording length for old sessions that pre-date
     // the warmup gate (they have no warmup to subtract).
-    const RFB_WARMUP_SEC = RFB_BLEND_START; // recording starts at crossfade onset
+    const RFB_WARMUP_SEC = RFB_DISPLAY_SEC; // recording starts when headline activates
     const measuredSec = (activeSec && activeSec > RFB_WARMUP_SEC)
         ? activeSec - RFB_WARMUP_SEC
         : recording.length;
@@ -2284,7 +2208,6 @@ function startSession() {
     recordRrHistory._lastAcceptedRr = 0;
     peakFreqHistory.length = 0;
     hrvProcessor.reset();
-    _corrEmaValue = null; _corrEmaTime = 0;
     document.getElementById('homeBtn').style.display = 'none';
     setTimerDisplay(document.getElementById('sessionTimerDisplay'), 0);
     setTimerDisplay(document.getElementById('stateTimerDisplay'), 0);

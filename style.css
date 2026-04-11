@@ -125,6 +125,11 @@ body.connected #trainingUI {
     justify-content: center;
     gap: 8px;
 }
+#rfbProgress {
+    align-items: center;
+    justify-content: center;
+    opacity: 0.9;
+}
 .coherence-label {
     font-size: 10px;
     letter-spacing: 0.14em;

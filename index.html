@@ -41,6 +41,20 @@
                 <span class="coherence-label"></span>
                 <span id="coherenceValue" class="coherence-value">--%</span>
             </div>
+            <div id="rfbProgress" style="display:none;">
+                <svg width="48" height="48" viewBox="0 0 48 48">
+                    <!-- Track ring -->
+                    <circle cx="24" cy="24" r="20" fill="none"
+                        stroke="#1a3a5c" stroke-width="4"/>
+                    <!-- Progress arc — stroke-dasharray=125.66 (2π×20), dashoffset animated by JS -->
+                    <circle id="rfbProgressArc" cx="24" cy="24" r="20" fill="none"
+                        stroke="#1a7fff" stroke-width="4"
+                        stroke-linecap="round"
+                        stroke-dasharray="125.66"
+                        stroke-dashoffset="125.66"
+                        transform="rotate(-90 24 24)"/>
+                </svg>
+            </div>
         </div>
         
         <div id="restStatsContainer" class="timers-row" style="margin-bottom: 1vh;">
