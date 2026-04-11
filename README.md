@@ -120,10 +120,8 @@ Your heart rate is graphed continuously on screen. The display shows the last 90
 When connected to a sensor that exposes raw beat-to-beat RR intervals, such as the Polar H10, this graph shows **unsmoothed, instantaneous heart rate**. This is not the smoothed heart rate graph that most fitness apps show. It shows every little variation and will be quite jagged, especially when you are at rest or low levels of exertion.
 
 >One consequence is that you will see **ectopic heart beats**  if any occur, and they will be included in the session summary. Ectopics are beats that fire outside the normal cardiac rhythm. There are two common types:
-
 >- **PVC (premature ventricular contraction):** A beat that fires early. On the graph it appears as a **sharp spike upward, immediately followed by a smaller spike downward**. 
 >- **PAC (premature atrial contraction):** A beat that fires early and resets your cardiac rhythm. On the graph it appears as a **spike upward with no corresponding downward spike**.
-
 >Occasional ectopics are completely normal. Anything under 1% of beats being ectopic is generally considered negligible, and up to a few hundred ectopic beats a day is entirely normal for a healthy, functioning heart. Seeing some on the graph is not a cause for concern — this is the app doing exactly what it says: showing you your cardiac data rather than hiding it. The number of ectopic beats varies widely for all sorts of reasons. They are **not** a useful way to track ANS health: they are a curiosity rather than a diagnostic tool. However, if you regularly see more than 5%, or a significant change in rate above 1%, it may be worth mentioning to a clinician.
 
 ---
@@ -164,7 +162,7 @@ Once enough data has been gathered, the score appears as a number and a star rat
 | ★★☆ | ≥ 45 | Moderate |
 | ★★★ | ≥ 65 | Strong |
 
-**Important:** Do not stress over achieving a high score. Stressing about the number will actively lower it. A healthy nervous system is, with practice, usually capable of scores over 65. With dysautonomia — scores of 20–30 early in your recovery are completely normal and a solid starting point. The goal is stability and a slow upward trend over weeks, not an impressive number in any individual session. A low score, or even a flat HR line, is physiologically expected when the ANS is depleted. The score will increase as ANS function recovers.
+**Important:** Do not stress over achieving a high score. Stressing about the number will actively lower it. A healthy nervous system is, with practice, usually capable of scores over 65. With dysautonomia scores of 20–30 early in your recovery are completely normal and a solid starting point. The goal is stability and a slow upward trend over weeks, not an impressive number in any individual session. A low score, or even a flat HR line, is physiologically expected when the ANS is depleted. The score will increase as ANS function recovers.
 
 The resonance score is most meaningful as a longitudinal tool: tracking whether your star rating and score gradually improve over weeks of consistent practice is a meaningful recovery signal.
 
