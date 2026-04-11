@@ -236,6 +236,15 @@ const RFB_BLEND_END      = 90;
 // 3.75 bpm = 25% of the Hirsch & Bishop (1981) healthy adult floor (15 bpm).
 const RFB_MIN_AMPLITUDE  = 3.75;
 
+// ─── Correlation EMA state ────────────────────────────────────────────────────
+// The raw Pearson r jumps when _lagEma updates at each breath crossing, because
+// all historical guide values shift simultaneously. A time-based EMA (tau=8s,
+// matching the FFT coherence EMA) smooths these step changes while preserving
+// the underlying trend. Reset at session start and on background gap flush.
+let _corrEmaValue = null;
+let _corrEmaTime  = 0;
+const CORR_EMA_TAU = 8; // seconds
+
 // Returns a 0–1 stability value (1 = stable, 0 = wandering).
 // Thresholds are calibrated for the full PEAK_FREQ_MAX_HISTORY window:
 //   MIN_STD = 0.005 Hz ≈ very stable
@@ -287,6 +296,7 @@ function recordRrHistory(rrValuesMs, notifTs) {
     const isSensorRrGap   = wallGap > BACKGROUND_GAP_MS && hrGap <= BACKGROUND_GAP_MS;
 
     if (isBackgroundGap) {
+        _corrEmaValue = null; _corrEmaTime = 0;
         hrvProcessor.reset();
         peakFreqHistory.length = 0;
         lastRrTimestamp = 0;
@@ -1184,7 +1194,12 @@ function computeResonance() {
     // correlationRI = clamp(r, 0, 1) × amplitudeMult × 100
     let correlationRI = 0;
     {
-        const lagMs          = (hrvProcessor._lagEma || 0) * 1000;
+        // Fixed 2s lag: RSA peak HR consistently lags the inhale→exhale transition
+        // by ~1–2s in healthy adults. Using _lagEma here caused discontinuous jumps
+        // each time the EMA updated (once per breath cycle), shifting all historical
+        // guide values simultaneously. A fixed 2s is stable, well-grounded, and the
+        // correlation is not sensitive to the small individual variation around it.
+        const lagMs          = 2000;
         const breathPeriodMs = rfbBreathPeriodMs();
         const inhaleFrac     = rfbGetInhaleFrac();
         // Use all clean RR data since RFB started — no time cap. More data makes
@@ -1219,14 +1234,17 @@ function computeResonance() {
             }
             const denom = Math.sqrt(denHr * denG);
             if (denom > 0) {
-                const r = num / denom;
-                // r² is the calibrated phase2 RI formula on the corrected 0–1 scale.
-                // r² (coefficient of determination) is the proportion of HR variance
-                // explained by the guide sine. With the FFT now correctly using only
-                // positive frequencies, the FFT ceiling is 1.0 and r² maps directly
-                // to the same scale — no divisor required. At the 75s crossover,
-                // r² and FFT_raw agree to within ~2 RI points across all SNR levels.
-                correlationRI = Math.round(Math.max(0, r * r) * amplitudeMult * 100);
+                const rRaw = Math.max(0, num / denom);
+                // Time-based EMA on raw r — same tau as FFT coherence (8s).
+                // Smooths step changes from _lagEma updates without distorting the trend.
+                const nowMs = Date.now();
+                const dt    = _corrEmaTime > 0 ? (nowMs - _corrEmaTime) / 1000 : CORR_EMA_TAU;
+                const alpha = dt / (CORR_EMA_TAU + dt);
+                _corrEmaValue = _corrEmaValue === null
+                    ? rRaw
+                    : alpha * rRaw + (1 - alpha) * _corrEmaValue;
+                _corrEmaTime = nowMs;
+                correlationRI = Math.round(_corrEmaValue * _corrEmaValue * amplitudeMult * 100);
             }
         }
     }
@@ -1319,9 +1337,7 @@ function updateCoherenceDisplay() {
                     ? `${riCorr} ${starsHtml(level, riCorr >= 75)}`
                     : starsHtml(0, false);
                 if (showDebug) {
-                    const lagStr = hrvProcessor._lagEma != null
-                        ? `${hrvProcessor._lagEma.toFixed(1)}s` : '--';
-                    dbg.textContent = `corr:${riCorr} ampl:${amp.toFixed(1)} lag:${lagStr}  (building…)`;
+                    dbg.textContent = `correlation:${riCorr} ampl:${amp.toFixed(1)} lag:2.0s fixed`;
                 }
 
             } else {
@@ -2268,6 +2284,7 @@ function startSession() {
     recordRrHistory._lastAcceptedRr = 0;
     peakFreqHistory.length = 0;
     hrvProcessor.reset();
+    _corrEmaValue = null; _corrEmaTime = 0;
     document.getElementById('homeBtn').style.display = 'none';
     setTimerDisplay(document.getElementById('sessionTimerDisplay'), 0);
     setTimerDisplay(document.getElementById('stateTimerDisplay'), 0);
