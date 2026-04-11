@@ -623,8 +623,28 @@ let rfbAudioNodes = null;
 let isHRVReading = false;
 let hrvSecondsRemaining = 0;
 let currentHRVIndex = null; // live-computed index shown during session and stored in summary
+
+// Session duration: 3 min (180s) default, 5 min (300s) if HRV_DURATION setting = 5.
+// 5 min is recommended — provides ~5 vasomotor cycles for a stable estimate.
+// 3 min is an acceptable compromise for daily practice.
+function hrvSessionDurationSec() {
+    return (typeof HRV_DURATION !== 'undefined' && HRV_DURATION === 5) ? 300 : 180;
+}
+
+// Rolling window for RMSSD calculation.
+// Always an integer number of complete 60s cycles so the vasomotor oscillation
+// (~60s period) is averaged out rather than sampled at an arbitrary phase.
+//   0–60s:  all available data (window too short for a full cycle)
+//   60–120s: 60s window
+//   120–180s: 120s window  etc.
+// This way, whenever the user ends the session (after 60s), the calculation
+// uses only complete minutes — the most recent elapsed complete minutes.
+function hrvRollingWindowMs(elapsedSec) {
+    if (elapsedSec < 60) return Number.MAX_SAFE_INTEGER; // use all data
+    return Math.floor(elapsedSec / 60) * 60000;
+}
+
 const HRV_READING_ID = 'hrv_reading';
-const HRV_SESSION_DURATION_SEC = 180; // fixed 3-minute session
 
 // Per-session artifact counters (reset in startSession, incremented in recordRrHistory)
 let sessionTotalBeats     = 0;
@@ -1045,8 +1065,7 @@ function updateHRVDisplay() {
     const coherVal = document.getElementById('coherenceValue');
     if (!el || !coherVal) return;
 
-    el.style.display    = 'flex';
-    if (coherEl) coherEl.style.display = 'flex';
+    el.style.display = 'flex';
 
     // Ensure HRV debug line exists (created once, persists)
     let dbg = document.getElementById('hrvDebug');
@@ -1059,8 +1078,33 @@ function updateHRVDisplay() {
     const showDebug = (typeof HRV_SHOW_DEBUG !== 'undefined') && HRV_SHOW_DEBUG;
     dbg.style.display = showDebug ? '' : 'none';
 
-    const metrics = hrvProcessor.computeHRVMetrics(HRV_SESSION_DURATION_SEC * 1000);
-    const pSensor = sessionTotalBeats > 0 ? sessionSensorArtifacts / sessionTotalBeats : 0;
+    const elapsedSec  = sessionSeconds;
+    const progressEl  = document.getElementById('rfbProgress');
+    const arc         = document.getElementById('rfbProgressArc');
+
+    // First 60s: show progress arc, hide RI number.
+    // The rolling window needs at least one complete minute to cancel the
+    // vasomotor oscillation; showing a number before that is misleading.
+    if (elapsedSec < 60) {
+        if (coherEl) coherEl.style.display = 'none';
+        if (progressEl) progressEl.style.display = 'flex';
+        if (arc) {
+            const CIRCUMFERENCE = 125.66;
+            arc.setAttribute('stroke', '#7c3aed'); // purple for HRV
+            arc.setAttribute('stroke-dashoffset',
+                (CIRCUMFERENCE * (1 - elapsedSec / 60)).toFixed(2));
+        }
+        if (showDebug) dbg.textContent = 'collecting data…';
+        return;
+    }
+
+    // 60s+: hide progress arc, show RI.
+    if (progressEl) progressEl.style.display = 'none';
+    if (coherEl) coherEl.style.display = 'flex';
+
+    const windowMs = hrvRollingWindowMs(elapsedSec);
+    const metrics  = hrvProcessor.computeHRVMetrics(windowMs);
+    const pSensor  = sessionTotalBeats > 0 ? sessionSensorArtifacts / sessionTotalBeats : 0;
 
     if (!metrics || pSensor > 0.02) {
         coherVal.textContent = '--';
@@ -1079,13 +1123,17 @@ function updateHRVDisplay() {
         return;
     }
 
+    // currentHRVIndex is the live rolling-window value. It is also what gets
+    // saved at session end — the final value naturally uses the largest complete
+    // integer-minute window available, which is the best estimate of true RMSSD.
     currentHRVIndex = result.index;
     coherVal.textContent = String(Math.round(result.index));
     coherVal.style.color = '#7c3aed';
 
     if (showDebug) {
         dbg.textContent =
-            `RMSSD:${metrics.rmssd}ms  balance:${Math.round(result.balanceFactor * 100)}%`;
+            `RMSSD:${metrics.rmssd}ms  balance:${Math.round(result.balanceFactor * 100)}%` +
+            `  win:${Math.round(windowMs / 60000)}min`;
     }
 }
 function computeResonance() {
@@ -2002,7 +2050,10 @@ function computeSessionSummary() {
         rfbCoherenceRecording: rfbStats ? rfbCoherenceRecording.slice() : null,
         // HRV Reading fields
         hvIndexFinal:      isHRVReading ? currentHRVIndex : null,
-        hrvSessionTooShort: isHRVReading && sessionSeconds < HRV_SESSION_DURATION_SEC - 5,
+        // Short-session warning fires below 180s — at 179s the rolling window
+        // uses only floor(179/60)×60 = 120s (2 min), so 180s is the minimum
+        // for a valid 3-min measurement regardless of session length setting.
+        hrvSessionTooShort: isHRVReading && sessionSeconds < 180,
         activityIsHRV:     isHRVReading,
         // Ectopic beat tracking — all session types.
         // Reported as count + rate for longitudinal monitoring across full sessions.
@@ -2098,6 +2149,8 @@ function finishSession() {
 function teardownSession() {
     isResonanceBreathing = false; rfbExtended = false;
     isHRVReading = false; currentHRVIndex = null;
+    const progressEl = document.getElementById('rfbProgress');
+    if (progressEl) progressEl.style.display = 'none';
     setRbDisplayMode(false);
     const toggleBtn = document.getElementById('toggleSessionBtn');
     toggleBtn.innerText = 'Start Session'; toggleBtn.classList.remove('running', 'paused');
@@ -2233,7 +2286,7 @@ function startSession() {
     } else if (isHRVReading) {
         // HRV Reading: stay in reset state for the full 3-minute measurement window.
         switchState('reset', true);
-        hrvSecondsRemaining = HRV_SESSION_DURATION_SEC;
+        hrvSecondsRemaining = hrvSessionDurationSec();
         if (!deviceSupportsRR) {
             // Device has sent no RR data since connecting — almost certainly a watch,
             // not a chest strap.  Defer the warning by one frame so the session UI

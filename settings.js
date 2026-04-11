@@ -28,6 +28,7 @@ const DEFAULTS = {
     RFB_VIBRATION:          1,   // 0=off, 1=on
     RFB_SHOW_DEBUG:         0,   // 0=off, 1=on
     HRV_SHOW_DEBUG:         0,   // 0=off, 1=on
+    HRV_DURATION:           3,   // session length in minutes: 3 or 5
 };
 
 const RESONANCE_BREATHING_ID = 'resonance_breathing';
@@ -41,6 +42,7 @@ const HRV_DEFAULTS = {
     TARGET_MIN_HR:        60,
     TARGET_MAX_HR:        75,
     HRV_SHOW_DEBUG:       0,
+    HRV_DURATION:         3,   // session length in minutes: 3 or 5
     // All other settings inherit from DEFAULTS but are hidden in the panel
 };
 
@@ -88,7 +90,7 @@ const RESONANCE_HIDDEN_GROUPS = new Set([
 const HRV_SHOWN_KEYS = new Set([
     'MAX_HR', 'RESTING_HR', 'RESTING_HR_BANDWIDTH',
     'ALERT_VIBRATION', 'ALERT_SOUND',
-    'HRV_SHOW_DEBUG',
+    'HRV_SHOW_DEBUG', 'HRV_DURATION',
 ]);
 const HRV_SHOWN_GROUPS = new Set([
     'Heart Rate Range', 'Resting HR', 'Alerts', 'HRV Reading',
@@ -164,6 +166,12 @@ const FIELDS = [
     { key: 'RFB_SHOW_DEBUG', label: 'Display details', type: 'toggle',
       desc: 'Display wave coherence, frequency stability, and phase lag — the components that are used to calculate the resonance index.' },
     { group: 'HRV Reading' },
+    { key: 'HRV_DURATION', label: 'Session length', type: 'select',
+      options: [
+          { value: 3, label: '3 minutes' },
+          { value: 5, label: '5 minutes' },
+      ],
+      desc: '5 minutes is recommended — provides enough data for the vasomotor oscillation to average out and gives a more stable result. 3 minutes is an acceptable compromise for daily practice.' },
     { key: 'HRV_SHOW_DEBUG', label: 'Display details', type: 'toggle',
       desc: 'Display RMSSD and autonomic balance during an HRV Reading session.' },
 ];
