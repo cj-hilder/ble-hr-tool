@@ -117,16 +117,14 @@ You are currently in the active state but want to rest voluntarily — not becau
 
 Your heart rate is graphed continuously on screen. The display shows the last 90 secs of data. 
 
-When connected to a sensor that exposes raw beat-to-beat RR intervals, such as the Polar H10, this graph shows **unsmoothed, instantaneous heart rate**. This is not the smoothed heart rate graph that most fitness apps show. It shows every little variation and will be quite jagged, especially when you are at rest. 
+When connected to a sensor that exposes raw beat-to-beat RR intervals, such as the Polar H10, this graph shows **unsmoothed, instantaneous heart rate**. This is not the smoothed heart rate graph that most fitness apps show. It shows every little variation and will be quite jagged, especially when you are at rest or low levels of exertion.
 
-One consequence is that you will see **ectopic heart beats** if any occur. Ectopics are beats that fire outside the normal cardiac rhythm. There are two common types:
+>One consequence is that you will see **ectopic heart beats**  if any occur, and they will be included in the session summary. Ectopics are beats that fire outside the normal cardiac rhythm. There are two common types:
 
-- **PVC (premature ventricular contraction):** A beat that fires early from the ventricles. On the graph it appears as a **sharp spike upward, immediately followed by a smaller spike downward**. The early beat shortens that RR interval; the ventricles are then refractory when the SA node fires on schedule, so the next beat is delayed — producing the characteristic double-spike shape.
-- **PAC (premature atrial contraction):** A beat that fires early from somewhere in the atria, which resets the SA node. On the graph it appears as a **spike upward with no corresponding downward spike** — the following beat is roughly normal because the SA node restarts from the ectopic.
+>- **PVC (premature ventricular contraction):** A beat that fires early. On the graph it appears as a **sharp spike upward, immediately followed by a smaller spike downward**. 
+>- **PAC (premature atrial contraction):** A beat that fires early and resets your cardiac rhythm. On the graph it appears as a **spike upward with no corresponding downward spike**.
 
-Occasional ectopics are completely normal. Healthy adults commonly experience them at a rate of up to once every three minutes or so, often without noticing. Seeing one on the graph is not a cause for concern — this is the app doing exactly what it says: showing you your cardiac data rather than hiding it. It may be worth mentioning to a clinician if you are seeing more than roughly three per minute consistently, though even that can be benign in isolation. The key question is whether the rate is new, increasing, or accompanied by symptoms.
-
-Every session recorded with an RR-capable sensor includes an **Ectopic Beats** section in the session summary, showing the total count and percentage for that session. Tracking this across sessions — particularly longer training sessions where sample sizes are large enough to be statistically meaningful — lets you observe your normal baseline rate and notice any genuine changes over time.
+>Occasional ectopics are completely normal. Anything under 1% of beats being ectopic is generally considered negligible, and up to a few hundred ectopic beats a day is entirely normal for a healthy, functioning heart. Seeing some on the graph is not a cause for concern — this is the app doing exactly what it says: showing you your cardiac data rather than hiding it. The number of ectopic beats varies widely for all sorts of reasons. They are **not** a useful way to track ANS health: they are a curiosity rather than a diagnostic tool. However, if you regularly see more than 5%, or a significant change in rate above 1%, it may be worth mentioning to a clinician.
 
 ---
 
@@ -155,26 +153,22 @@ You can choose "Resonance Breathing" from the activity drop-down menu, or for an
 
 ### Resonance score
 
-If you are using a **Polar H10** chest strap (or any sensor that exposes raw RR intervals via the Bluetooth Heart Rate Measurement characteristic), the app can calculate a **live resonance score**. This is a combination of wave coherence, frequency stability, and phase lag.
+If you are using a **Polar H10** chest strap (or any sensor that exposes raw RR intervals via the Bluetooth Heart Rate Measurement characteristic), the app can calculate a **live resonance score**. This is a combination of wave coherence, frequency stability, and phase lag. It takes more than 60 seconds to gather enough data to calculate a score.
 
-The score appears as a number and a star rating beneath the state description. 
+Once enough data has been gathered, the score appears as a number and a star rating beneath the state description. 
 
 | Rating | Score | Resonance |
 | :--- | :--- | :--- |
-| ☆☆☆ | < 15 | None |
-| ★☆☆ | ≥ 15 | Low |
-| ★★☆ | ≥ 30 | Moderate |
-| ★★★ | ≥ 50 | Strong |
+| ☆☆☆ | < 25 | None |
+| ★☆☆ | ≥ 25 | Low |
+| ★★☆ | ≥ 45 | Moderate |
+| ★★★ | ≥ 65 | Strong |
 
-The score requires approximately one minute of RR data to compute accurately, and appears as 0 until enough data is available.
-
-**Important:** Do not stress over achieving a high score. Stressing about the number will actively lower it. A healthy nervous system is, with practice, usually capable of scores over 50. With dysautonomia — scores of 10–20 early in your recovery are completely normal and a solid starting point. The goal is stability and a slow upward trend over weeks, not an impressive number in any individual session. A low score, or even a flat HR line, is physiologically expected when the ANS is depleted. The score will increase as ANS function recovers.
+**Important:** Do not stress over achieving a high score. Stressing about the number will actively lower it. A healthy nervous system is, with practice, usually capable of scores over 65. With dysautonomia — scores of 20–30 early in your recovery are completely normal and a solid starting point. The goal is stability and a slow upward trend over weeks, not an impressive number in any individual session. A low score, or even a flat HR line, is physiologically expected when the ANS is depleted. The score will increase as ANS function recovers.
 
 The resonance score is most meaningful as a longitudinal tool: tracking whether your star rating and score gradually improve over weeks of consistent practice is a meaningful recovery signal.
 
 Changes in the score during a session can be used to detect ANS fatigue and may be useful as a cue to stop for the day. This applies if you have achieved a stable score which then declines during the session or over the day.
-
-Polar and most other sports watches (as opposed to the Polar H10 chest strap and most other chest straps) report rolling-averaged HR rather than beat-to-beat intervals, which will not give a resonance score.
 
 ### Finding your personal resonance frequency
 
@@ -292,19 +286,19 @@ The key parameters and their purpose:
 - *Max response lag* — How long HR is allowed to keep rising after entering 'Rest or pull back' before a heart rate Reset is forced. This specifically targets the delayed-recovery pattern.
 - *Resets before warning* — How many heart rate Resets trigger the end-session advisory.
 
-**Activity limit and budget**
+**Time limit and budget**
 
-The activity time limit and the budget setting work together to define how you count your daily exercise allowance. The right choice depends on how well your HR is regulated.
+The time limit and the budget setting work together to define how you count your daily exercise allowance. The right choice depends on how well your HR is regulated.
 
 When your HR is **dysregulated**, the appropriate response to 'Rest or pull back' is to stop completely — not to ease off, but to fully stop. You only accrue exercise credit while the app is in the active state. Set *Budget with* to **Active time**, and your limit will count only the time your HR is actually in the Continue activity zone.
 
-When your HR is **regulated**, it becomes possible to stay active during 'Rest or pull back' by reducing effort slightly — a gentle walk rather than a stop. In this case, meaningful exercise is happening whenever your HR is at or above your target minimum, regardless of which state the app has triggered. Set *Budget with* to **Target time**, and your limit will count any second your HR is at or above *Target min*, across all states.
+When your HR is **regulated**, it becomes possible to stay active during 'Rest or pull back' by reducing effort slightly. In this case, meaningful exercise is happening whenever your HR is at or above your target minimum, regardless of which state the app has triggered. Set *Budget with* to **Target time**, and your limit will count any second your HR is at or above *Target min*, across all states.
 
 - *Budget with* — Selects what counts toward your daily budget. **Active time** counts seconds in the Continue activity state. **Target time** counts seconds at or above Target Min HR, regardless of state.
-- *Activity time limit* — Total budget allowed per session, in minutes. When reached, the app transitions to the heart rate Reset state. Set to 0 to disable. The session does not end automatically — you may choose to continue or finish.
+- *Time limit* — Total budget allowed per session, in minutes. When reached, the app transitions to the heart rate Reset state. Set to 0 to disable. The session does not end automatically — you may choose to continue or finish.
 
 **Target zone**
-- *Target min / max* — The HR range used for target time budgeting. When *Budget with* is set to Target time, any second your HR is at or above *Target min* counts toward your limit, regardless of which state the app is in. The zone is also shown as a visual guide on the speedometer in all modes.
+- *Target min / max* — The target zone is shown as a visual guide on the speedometer in all modes. This is a visual guide and is not used for calculations or transitions. In addition, when *Budget with* is set to Target time, any time your HR is at or above *Target min* counts toward your time limit, regardless of which state the app is in. 
 
 **Alerts**
 - *Vibration / Sound* — Intensity of the state-transition alerts (Off / Subtle / Intense).
@@ -317,14 +311,14 @@ When your HR is **regulated**, it becomes possible to stay active during 'Rest o
 ## ✨ Features
 
 - **Direct Bluetooth Low Energy (BLE) connection** — Connects directly to standard BLE heart rate monitors (like Polar straps or watches) via the browser. Compatible with any device that implements the standard Heart Rate Measurement characteristic.
-- **Raw RR interval support** — For devices that expose beat-to-beat RR data (such as the Polar H10), the app uses instantaneous heart rate on the HR graph rather than the sensor's rolling average. This higher-resolution signal is required for the RFB coherence score.
+- **Raw RR interval support** — For devices that expose beat-to-beat RR data (such as the Polar H10), the app uses instantaneous heart rate on the HR graph rather than the sensor's rolling average. This higher-resolution signal is required for the RFB coherence score and HRV readings.
 - **Sound and vibration alerts** — Configurable intensity on both, designed to be usable while active without watching the screen.
 - **Progressive Web App (PWA)** — Installable directly to an Android home screen for fullscreen, app-like behaviour.
 - **Multiple activity profiles** — Different threshold sets for different activities (e.g. walking, cycling, housework), switchable at session start.
-- **Activity time limit** — Optional per-session cap on total active time. When reached, the app transitions to the heart rate Reset state automatically.
+- **Time limit** — Optional per-session cap on total time. When reached, the app transitions to the heart rate Reset state automatically.
 - **Resonance Frequency Breathing** — Integrated breath pacer, sound and vibration guides, resonance scoring, and extended RFB phase during the Reset state. See dedicated section above.
 - **HRV Reading** — A dedicated 3-minute resting measurement that produces a single HRV Index from RMSSD and SDNN. It is designed for consistent longitudinal tracking of ANS recovery. Requires a Polar H10 or equivalent RR-capable sensor.
-- **Ectopic beat tracking** — Every session that uses an RR-capable sensor records the count and percentage of ectopic beats (PVCs, PACs). Reported in the session summary for all session types, enabling longitudinal monitoring of ectopic burden across full-length sessions where sample sizes are large enough for meaningful rate estimation.
+- **Ectopic beat tracking** — Every session that uses an RR-capable sensor records the count and percentage of ectopic beats (PVCs, PACs). Reported in the session summary for all session types.
 - **Session HR recording and graph export** — Every session records 1Hz heart rate data alongside state transitions. Saved sessions can be exported as a landscape A4 PDF graph showing HR over time with colour-coded state background bands, axes, and a resting HR reference line.
 - **Session history and trend graphs** — Each session can be saved with notes. History graphs allow you to track recovery metrics over time.
 - **Response lag and HR overshoot tracking** — Per-session statistics on recovery lag, HR peak during rest, and active/recovery time ratios.
