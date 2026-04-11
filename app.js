@@ -1232,46 +1232,45 @@ function updateCoherenceDisplay() {
         }
         dbg.style.display = showDebug ? '' : 'none';
 
-        if (r === null || !r.validRate) {
+        // Compute elapsed time upfront — progress arc must show regardless of r.validRate.
+        // During the first 75s the FFT often hasn't locked onto a valid breathing rate yet,
+        // so r.validRate is false, but the arc should still fill.
+        const rfbElapsedSec = rfbWallStartTime > 0 ? (Date.now() - rfbWallStartTime) / 1000 : 0;
+        const progressEl    = document.getElementById('rfbProgress');
+        const arc           = document.getElementById('rfbProgressArc');
+
+        if (rfbElapsedSec < RFB_DISPLAY_SEC) {
+            // Progress arc phase — headline suppressed until FFT is reliable at 75s.
             if (coherEl) coherEl.style.display = 'none';
-            const progressEl = document.getElementById('rfbProgress');
-            if (progressEl) progressEl.style.display = 'none';
-            if (showDebug) dbg.textContent = 'collecting data…';
+            if (progressEl) progressEl.style.display = 'flex';
+            if (arc) {
+                const CIRCUMFERENCE = 125.66; // 2π × r=20
+                const pct = Math.min(1, rfbElapsedSec / RFB_DISPLAY_SEC);
+                arc.setAttribute('stroke-dashoffset', (CIRCUMFERENCE * (1 - pct)).toFixed(2));
+            }
+            // Debug: "collecting data…" for first 30s, then live coherence (even if jumpy).
+            if (showDebug) {
+                if (rfbElapsedSec < RFB_DEBUG_SEC || r === null || !r.validRate) {
+                    dbg.textContent = 'collecting data…';
+                } else {
+                    const amp = r.amplitudeBpm;
+                    const relLagSec = r.phaseDiffDeg != null ? (r.phaseDiffDeg / 360 * (rfbBreathPeriodMs() / 1000)) : null;
+                    const lagStr   = relLagSec != null ? `${relLagSec >= 0 ? '+' : ''}${relLagSec.toFixed(1)}s` : '--';
+                    const stabStr  = r.stabilityReady ? `${Math.round(r.stability * 100)}%` : '--';
+                    dbg.textContent = `coherence:${Math.round(r.coherence * 100)}% ampl:${amp.toFixed(1)} stability:${stabStr} lag:${lagStr}`;
+                }
+            }
+
         } else {
-            const rfbElapsedSec = rfbWallStartTime > 0 ? (Date.now() - rfbWallStartTime) / 1000 : 0;
-            const amp = r.amplitudeBpm;
+            // 75s+: full coherence-based RI; recording active.
+            if (progressEl) progressEl.style.display = 'none';
 
-            if (rfbElapsedSec < RFB_DISPLAY_SEC) {
-                // Progress arc — headline suppressed until FFT is reliable at 75s.
+            if (r === null || !r.validRate) {
                 if (coherEl) coherEl.style.display = 'none';
-                const progressEl = document.getElementById('rfbProgress');
-                const arc        = document.getElementById('rfbProgressArc');
-                if (progressEl) progressEl.style.display = 'flex';
-                if (arc) {
-                    const CIRCUMFERENCE = 125.66; // 2π × r=20
-                    const pct    = Math.min(1, rfbElapsedSec / RFB_DISPLAY_SEC);
-                    arc.setAttribute('stroke-dashoffset',
-                        (CIRCUMFERENCE * (1 - pct)).toFixed(2));
-                }
-
-                // Debug: "collecting data…" for first 30s, then live coherence stats.
-                if (showDebug) {
-                    if (rfbElapsedSec < RFB_DEBUG_SEC) {
-                        dbg.textContent = 'collecting data…';
-                    } else {
-                        const relLagSec = r.phaseDiffDeg != null ? (r.phaseDiffDeg / 360 * (rfbBreathPeriodMs() / 1000)) : null;
-                        const lagStr   = relLagSec != null ? `${relLagSec >= 0 ? '+' : ''}${relLagSec.toFixed(1)}s` : '--';
-                        const stabStr  = r.stabilityReady ? `${Math.round(r.stability * 100)}%` : '--';
-                        dbg.textContent = `coherence:${Math.round(r.coherence * 100)}% ampl:${amp.toFixed(1)} stability:${stabStr} lag:${lagStr}`;
-                    }
-                }
-
+                if (showDebug) dbg.textContent = 'collecting data…';
             } else {
-                // 75s+: full coherence-based RI shown; recording active.
-                const progressEl = document.getElementById('rfbProgress');
-                if (progressEl) progressEl.style.display = 'none';
                 if (coherEl) coherEl.style.display = 'flex';
-
+                const amp    = r.amplitudeBpm;
                 const riPct  = Math.round(r.ri * 100);
                 const level  = riPct >= 65 ? 3 : riPct >= 45 ? 2 : riPct >= 25 ? 1 : 0;
                 coherVal.textContent = riPct > 0
