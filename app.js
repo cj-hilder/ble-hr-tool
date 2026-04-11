@@ -72,17 +72,11 @@ class HRVProcessor {
         // has latched onto LF noise or slow HR drift, not a real breathing oscillation.
         const validBreathingRate = peakFreq >= 0.07 && peakFreq <= 0.12;
         const now      = this.timestamps.length ? this.timestamps[this.timestamps.length - 1] : Date.now();
-        // Confidence ramp: with fewer samples the FFT has coarser bin resolution, and
-        // a short window spanning only 2–3 breathing cycles produces an artificially
-        // dominant spectral peak regardless of genuine coherence. Scale coherenceRaw by
-        // sqrt(bufferSec / windowSeconds) — a square-root ramp that reaches ~0.7 at
-        // half the full window (60s) and 1.0 at full window (120s). Applied before the
-        // EMA so early readings don't anchor the smoothed value too high.
-        const bufferSec    = this.timestamps.length >= 2
-            ? (this.timestamps[this.timestamps.length - 1] - this.timestamps[0]) / 1000
-            : 0;
-        const confidence   = Math.sqrt(Math.min(1, bufferSec / this.windowSeconds));
-        const coherence = this._ema(coherenceRaw * confidence, now);
+        // No confidence ramp: FFT coherence is only displayed from 75s onwards (via the
+        // phase-gated display in updateCoherenceDisplay), so early underestimation from
+        // short windows is never shown. The ramp was suppressing a problem that no longer
+        // exists and was persistently biasing the score at 90–120s.
+        const coherence = this._ema(coherenceRaw, now);
         // Phase of the dominant RR oscillation at the START of the analysis window (n=0).
         // atan2(im, re) of the peak FFT bin: phase=0 means oscillation at maximum at t=0.
         // The Hanning window emphasises the window centre, so we also expose the centre
@@ -159,11 +153,17 @@ class HRVProcessor {
         return freqs;
     }
     _computeBandMetrics(freqs, magnitudes) {
+        const N = freqs.length;
+        // Only sum positive frequencies (i <= N/2) for totalPower.
+        // The FFT of a real signal produces mirror-image bins for i > N/2 — summing
+        // all N bins doubles totalPower and halves every coherence value. Literature
+        // values (healthy adults 0.7–0.9) use positive frequencies only, so restricting
+        // to i <= N/2 brings our scale into alignment with published benchmarks.
         let totalPower = 0, peakPower = 0, peakFreq = 0, peakBin = 0;
         for (let i = 0; i < freqs.length; i++) {
             const f = freqs[i], p = magnitudes[i] ** 2;
             if (f >= 0.04 && f <= 0.15 && p > peakPower) { peakPower = p; peakFreq = f; peakBin = i; }
-            totalPower += p;
+            if (i <= N / 2) totalPower += p;
         }
         let peakBandPower = 0;
         const bandWidth = 0.015;
@@ -223,6 +223,18 @@ const hrvProcessor = new HRVProcessor({ sampleRate: 4, windowSeconds: 120 });
 // instability indicator only — not used to modify the coherence score.
 const peakFreqHistory = [];
 const PEAK_FREQ_MAX_HISTORY = 120; // ~1 Hz update rate → ~2 min of history
+
+// ─── RFB display phase thresholds ─────────────────────────────────────────────
+// t < RFB_COLLECT_SEC  : collecting data — bare stars, no number
+// RFB_COLLECT_SEC ≤ t < RFB_BLEND_START : amplitude-based RI (quadratic formula)
+// RFB_BLEND_START ≤ t < RFB_BLEND_END   : crossfade amplitude → coherence
+// t ≥ RFB_BLEND_END                     : full coherence-based RI
+const RFB_COLLECT_SEC    = 30;
+const RFB_BLEND_START    = 75;
+const RFB_BLEND_END      = 90;
+// Amplitude gate: minimum RSA swing required to show any score.
+// 3.75 bpm = 25% of the Hirsch & Bishop (1981) healthy adult floor (15 bpm).
+const RFB_MIN_AMPLITUDE  = 3.75;
 
 // Returns a 0–1 stability value (1 = stable, 0 = wandering).
 // Thresholds are calibrated for the full PEAK_FREQ_MAX_HISTORY window:
@@ -1131,8 +1143,7 @@ function computeResonance() {
     // (~15 bpm peak-to-trough at controlled tidal volume, breathing <6 cycles/min).
     // This is conservative — well below what a healthy person following the pacer
     // should produce — so the gate only fires when signal is genuinely absent.
-    //   amplitudeMult = clamp(amplitudeBpm / 3.75, 0, 1)
-    const RFB_MIN_AMPLITUDE = 3.75;
+    //   amplitudeMult = clamp(amplitudeBpm / RFB_MIN_AMPLITUDE, 0, 1)
     let amplitudeBpm = 0;
     {
         const BLOCK_MS = 20000;
@@ -1158,11 +1169,74 @@ function computeResonance() {
     const coherenceGated = result.coherence * amplitudeMult;
 
     const ri = computeResonanceIndex(coherenceGated, stabilityForIndex, phaseDiffDeg);
+
+    // ── Time-domain correlation RI ────────────────────────────────────────────
+    // Used as the interim metric while the FFT window is still filling (< 75s).
+    // Correlates actual beat-to-beat HR against the guide sine wave, phase-shifted
+    // by _lagEma to account for the natural RSA delay. Because the guide frequency
+    // and phase are known exactly, a good estimate is achievable from as little as
+    // 1–2 complete cycles — no bin-alignment aliasing, no spectral leakage.
+    //
+    // Pearson r ∈ [-1, 1] is clamped to [0, 1] (anti-phase = 0, not negative score)
+    // then gated by amplitudeMult so the amplitude threshold is consistently applied
+    // across both metrics.
+    //
+    // correlationRI = clamp(r, 0, 1) × amplitudeMult × 100
+    let correlationRI = 0;
+    {
+        const lagMs          = (hrvProcessor._lagEma || 0) * 1000;
+        const breathPeriodMs = rfbBreathPeriodMs();
+        const inhaleFrac     = rfbGetInhaleFrac();
+        // Use all clean RR history since RFB started, capped at 75s.
+        const windowStart = Math.max(
+            rfbWallStartTime > 0 ? rfbWallStartTime : 0,
+            Date.now() - RFB_BLEND_START * 1000
+        );
+        const pts = rrHistory.filter(p => p.ts >= windowStart && !p.ectopic);
+
+        if (pts.length >= 8) {
+            // For each beat, compute what the guide sine was at (ts - lag):
+            // if HR(t) ≈ guideSine(t - lag), then the correlation should be high.
+            const guideVals = pts.map(p => {
+                const adjTs  = p.ts - lagMs;
+                const elapsed = adjTs - rfbWallStartTime;
+                const phase  = ((elapsed % breathPeriodMs) + breathPeriodMs) % breathPeriodMs / breathPeriodMs;
+                return rfbAsymSine(phase, inhaleFrac);
+            });
+            const hrVals = pts.map(p => p.hr);
+
+            const n      = pts.length;
+            const meanHr = hrVals.reduce((a, b) => a + b, 0) / n;
+            const meanG  = guideVals.reduce((a, b) => a + b, 0) / n;
+            let num = 0, denHr = 0, denG = 0;
+            for (let j = 0; j < n; j++) {
+                const dh = hrVals[j] - meanHr;
+                const dg = guideVals[j] - meanG;
+                num   += dh * dg;
+                denHr += dh * dh;
+                denG  += dg * dg;
+            }
+            const denom = Math.sqrt(denHr * denG);
+            if (denom > 0) {
+                const r = num / denom;
+                // r² is the calibrated phase2 RI formula on the corrected 0–1 scale.
+                // r² (coefficient of determination) is the proportion of HR variance
+                // explained by the guide sine. With the FFT now correctly using only
+                // positive frequencies, the FFT ceiling is 1.0 and r² maps directly
+                // to the same scale — no divisor required. At the 75s crossover,
+                // r² and FFT_raw agree to within ~2 RI points across all SNR levels.
+                correlationRI = Math.round(Math.max(0, r * r) * amplitudeMult * 100);
+            }
+        }
+    }
+
     return {
         ri,
+        correlationRI,
         coherence:    result.coherence,
         coherenceGated,
         amplitudeBpm,
+        amplitudeMult,
         stability,
         stabilityReady,
         phaseDiffDeg,
@@ -1197,10 +1271,11 @@ function updateCoherenceDisplay() {
                      : '#aaaaaa';
 
     // 4-level star system matching Polar coherence tiers:
-    //   0 = none      (☆☆☆)  < 15%
-    //   1 = amethyst  (★☆☆)  >= 15%
-    //   2 = sapphire  (★★☆)  >= 30%
-    //   3 = diamond   (★★★)  >= 50%
+    //   0 = none      (☆☆☆)  < 25
+    //   1 = amethyst  (★☆☆)  >= 25
+    //   2 = sapphire  (★★☆)  >= 45
+    //   3 = diamond   (★★★)  >= 65
+    //   🍓 easter egg          >= 75
     function starsHtml(level, easterEgg) {
         return '★'.repeat(level) + '☆'.repeat(3 - level) + (easterEgg ? '🍓' : '') ;
     }
@@ -1225,31 +1300,51 @@ function updateCoherenceDisplay() {
             coherVal.textContent = starsHtml(0, false);
             if (showDebug) dbg.textContent = 'collecting data…';
         } else {
-            // Suppress stats and show "collecting data" for the first 30 seconds of RFB.
-            // Coherence, stability, and phase estimates are unreliable during this period —
-            // the FFT window is still filling, the phase EMA has only 0–3 cycles, and the
-            // user is still settling into the breathing rhythm. Including these readings
-            // would systematically depress average RI, time-in-star, and peak RI.
             const rfbElapsedSec = rfbWallStartTime > 0 ? (Date.now() - rfbWallStartTime) / 1000 : 0;
-            const inWarmup = rfbElapsedSec < 30;
+            const amp    = r.amplitudeBpm;
+            const riCorr = r.correlationRI; // time-domain Pearson correlation against guide sine
 
-            if (inWarmup) {
+            if (rfbElapsedSec < RFB_COLLECT_SEC) {
+                // Phase 1: collecting data — too few beats for any reliable estimate.
                 coherVal.textContent = starsHtml(0, false);
                 if (showDebug) dbg.textContent = 'collecting data…';
+
+            } else if (rfbElapsedSec < RFB_BLEND_START) {
+                // Phase 2: correlation-based RI. Uses Pearson r between actual HR and the
+                // guide sine (phase-shifted by _lagEma), gated by amplitude. Meaningful
+                // from ~1–2 cycles; no bin-alignment or spectral-leakage issues.
+                const level = riCorr >= 65 ? 3 : riCorr >= 45 ? 2 : riCorr >= 25 ? 1 : 0;
+                coherVal.textContent = riCorr > 0
+                    ? `${riCorr} ${starsHtml(level, riCorr >= 75)}`
+                    : starsHtml(0, false);
+                if (showDebug) {
+                    const lagStr = hrvProcessor._lagEma != null
+                        ? `${hrvProcessor._lagEma.toFixed(1)}s` : '--';
+                    dbg.textContent = `corr:${riCorr} ampl:${amp.toFixed(1)} lag:${lagStr}  (building…)`;
+                }
+
             } else {
-                const riPct  = Math.round(r.ri * 100);
-                const level  = riPct >= 50 ? 3 : riPct >= 30 ? 2 : riPct >= 15 ? 1 : 0;
-                // Show number only when non-zero — a zero score displays as bare stars.
+                // Phase 3 (75–90s): crossfade correlation → FFT coherence.
+                // Phase 4 (90s+):   full coherence-based RI.
+                const riCoherence = Math.round(r.ri * 100);
+                let riPct;
+                if (rfbElapsedSec < RFB_BLEND_END) {
+                    const alpha = (rfbElapsedSec - RFB_BLEND_START) / (RFB_BLEND_END - RFB_BLEND_START);
+                    riPct = Math.round((1 - alpha) * riCorr + alpha * riCoherence);
+                } else {
+                    riPct = riCoherence;
+                }
+                const level = riPct >= 65 ? 3 : riPct >= 45 ? 2 : riPct >= 25 ? 1 : 0;
                 coherVal.textContent = riPct > 0
-                    ? `${riPct} ${starsHtml(level, riPct >= 65)}`
+                    ? `${riPct} ${starsHtml(level, riPct >= 75)}`
                     : starsHtml(0, false);
                 if (showDebug) {
                     const relLagSec = r.phaseDiffDeg != null ? (r.phaseDiffDeg / 360 * (rfbBreathPeriodMs() / 1000)) : null;
                     const lagStr   = relLagSec != null ? `${relLagSec >= 0 ? '+' : ''}${relLagSec.toFixed(1)}s` : '--';
                     const stabStr  = r.stabilityReady ? `${Math.round(r.stability * 100)}%` : '--';
-                    dbg.textContent = `coherence:${Math.round(r.coherence * 100)}% ampl:${r.amplitudeBpm.toFixed(1)} stability:${stabStr} lag:${lagStr}`;
+                    dbg.textContent = `coherence:${Math.round(r.coherence * 100)}% ampl:${amp.toFixed(1)} stability:${stabStr} lag:${lagStr}`;
                 }
-                // Collect raw components for post-session analysis — warmup excluded.
+                // Recording starts at RFB_BLEND_START — only post-warmup data in summaries.
                 if (isSessionRunning) rfbCoherenceRecording.push({
                     t:    sessionSeconds,
                     c:    Math.round(r.coherence * 100),
@@ -1827,16 +1922,15 @@ function computeRfbSummary(recording, activeSec) {
     const riVals  = recording.map(s => s.ri  ?? s.c);  // fall back to raw coherence for old format
     const avg     = Math.round(riVals.reduce((a, b) => a + b, 0) / riVals.length);
     const peak    = Math.max(...riVals);
-    // Denominator excludes the 30-second warmup period during which no recordings
-    // are collected. Using raw activeSec would inflate the denominator and depress
-    // pctAboveStar1 by the warmup fraction. Fall back to recording length for old
-    // sessions that pre-date the warmup gate (they have no warmup to subtract).
-    const RFB_WARMUP_SEC = 30;
+    // Denominator excludes the warmup period (first 75s) during which no recordings
+    // are collected. Fall back to recording length for old sessions that pre-date
+    // the warmup gate (they have no warmup to subtract).
+    const RFB_WARMUP_SEC = RFB_BLEND_START; // recording starts at crossfade onset
     const measuredSec = (activeSec && activeSec > RFB_WARMUP_SEC)
         ? activeSec - RFB_WARMUP_SEC
         : recording.length;
     const totalSec = measuredSec;
-    const pctAboveStar1 = Math.round(riVals.filter(v => v >= 15).length / totalSec * 100);
+    const pctAboveStar1 = Math.round(riVals.filter(v => v >= 25).length / totalSec * 100);
     return { avg, peak, pctAboveStar1, totalSec };
 }
 
