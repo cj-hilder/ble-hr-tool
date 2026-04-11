@@ -106,9 +106,9 @@
             <div class="stat-group">
                 <div class="stat-group-label lag-label">📈 Recovery Lag & Peak HR</div>
                 <div class="stat-row">
-                    ${statItem(fmtLag(s.longestLagSec,  s.numRecoveryPeriods), 'Longest lag')}
-                    ${statItem(fmtLag(s.avgLagSec,      s.numRecoveryPeriods), 'Avg lag')}
-                    ${statItem(fmtLag(s.shortestLagSec, s.numRecoveryPeriods), 'Shortest lag')}
+                    ${statItem(fmtLag(s.longestLagSec,  s.numLagPeriods), 'Longest lag')}
+                    ${statItem(fmtLag(s.avgLagSec,      s.numLagPeriods), 'Avg lag')}
+                    ${statItem(fmtLag(s.shortestLagSec, s.numLagPeriods), 'Shortest lag')}
                 </div>
                 <div class="stat-row">
                     ${statItem(fmtN(s.highestPeakHr), 'Highest peak')}
@@ -148,6 +148,28 @@
                     ${statItem(fmtN(s.avgHr),            'Avg HR')}
                 </div>
                 ${shortNote}
+            </div>`;
+        }
+
+        // ── Ectopic Beats (any session with RR data) ──────────────────────────
+        // Displayed for all session types so the user can build a longitudinal
+        // picture of their normal ectopic burden.  Meaningful rate estimation
+        // requires large samples (full-session RR streams), not the short HRV
+        // measurement window, which is why quality is not penalised in the index.
+        // Omitted entirely when count is zero — no noise, and a clean session needs no comment.
+        if ((s.ectopicCount || 0) > 0) {
+            const count  = String(s.ectopicCount);
+            const pct    = s.ectopicPct != null ? s.ectopicPct.toFixed(1) + '%' : '--';
+            const beats  = String(s.totalBeats);
+            html += `
+            <div class="stat-group">
+                <div class="stat-group-label ectopic-label">❤️ Ectopic Beats</div>
+                <div class="stat-row">
+                    ${statItem(count, 'Count')}
+                    ${statItem(pct,   'Rate')}
+                    ${statItem(beats, 'Beats monitored')}
+                </div>
+                <div class="ectopic-note">This is not an ECG. The detection algorithm has not been clinically validated and may occasionally identify sensor noise as an ectopic beat, or miss genuine ectopics.</div>
             </div>`;
         }
 
