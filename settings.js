@@ -96,7 +96,7 @@ const HRV_SHOWN_GROUPS = new Set([
 ]);
 
 // Fields always hidden for standard (non-built-in) activities.
-const DEFAULT_HIDDEN_KEYS   = new Set(['HRV_SHOW_DEBUG']);
+const DEFAULT_HIDDEN_KEYS   = new Set(['HRV_SHOW_DEBUG', 'HRV_DURATION']);
 const DEFAULT_HIDDEN_GROUPS = new Set(['HRV Reading']);
 
 const ALERT_OPTIONS = [
