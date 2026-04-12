@@ -159,16 +159,16 @@ Once enough data has been gathered, the score appears as a number and a star rat
 
 | Rating | Score | Resonance |
 | :--- | :--- | :--- |
-| ☆☆☆ | < 25 | None |
-| ★☆☆ | ≥ 25 | Low |
+| ☆☆☆ | < 30 | Very Low |
+| ★☆☆ | ≥ 30 | Low |
 | ★★☆ | ≥ 45 | Moderate |
 | ★★★ | ≥ 65 | Strong |
 
-**Important:** Do not stress over achieving a high score. Stressing about the number will actively lower it. A healthy nervous system is, with practice, usually capable of scores over 65. With dysautonomia scores of 20–30 early in your recovery are completely normal and a solid starting point. The goal is stability and a slow upward trend over weeks, not an impressive number in any individual session. A low score, or even a flat HR line, is physiologically expected when the ANS is depleted. The score will increase as ANS function recovers.
+**Important:** Do not stress over achieving a high score. Stressing about the number will actively lower it. A healthy nervous system is, with practice, usually capable of scores over 65 or three stars. With dysautonomia scores of 20–30 early in your recovery are completely normal and a solid starting point. The goal is stability and a slow upward trend over weeks, not an impressive number in any individual session. A low score, or even a flat HR line, is physiologically expected when the ANS is depleted. The score will increase as ANS function recovers.
 
-The resonance score is most meaningful as a longitudinal tool: tracking whether your star rating and score gradually improve over weeks of consistent practice is a meaningful recovery signal.
+Changes in the score during a session or during the day can be used to detect ANS fatigue and may be useful as a cue to stop for the day. This applies if you have achieved a stable score which then declines during the session or over the day.
 
-Changes in the score during a session can be used to detect ANS fatigue and may be useful as a cue to stop for the day. This applies if you have achieved a stable score which then declines during the session or over the day.
+Tracking your star rating and score over weeks may be of use for tracking your recovery. However the main expected benefit of  resonance frequency breathing is that it promotes recovery, not that it is a recovery tracking tool.
 
 ### Finding your personal resonance frequency
 

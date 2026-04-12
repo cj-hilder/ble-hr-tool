@@ -28,7 +28,6 @@ const DEFAULTS = {
     RFB_VIBRATION:          1,   // 0=off, 1=on
     RFB_SHOW_DEBUG:         0,   // 0=off, 1=on
     HRV_SHOW_DEBUG:         0,   // 0=off, 1=on
-    HRV_DURATION:           3,   // session length in minutes: 3 or 5
 };
 
 const RESONANCE_BREATHING_ID = 'resonance_breathing';
@@ -248,7 +247,7 @@ function loadActivities() {
             activities.splice(1, 0, {
                 id: HRV_READING_ID_S,
                 name: 'HRV Reading',
-                description: 'A 3-minute resting HRV measurement. Sit still and breathe normally.',
+                description: 'A resting HRV measurement. Sit or lie still and breathe normally.',
                 settings: baseSettings,
             });
         }
