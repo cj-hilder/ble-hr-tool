@@ -79,7 +79,7 @@ const RESONANCE_HIDDEN_KEYS = new Set([
     'MAX_RECOVERY_PERIOD', 'MAX_RESPONSE_LAG', 'NUM_RESETS_B4_WARN',
     'TARGET_MIN_HR', 'TARGET_MAX_HR',
     'RFB_ENABLED',
-    'HRV_SHOW_DEBUG',
+    'HRV_SHOW_DEBUG', 'HRV_DURATION',
 ]);
 const RESONANCE_HIDDEN_GROUPS = new Set([
     'Active Thresholds', 'Recovery Limits', 'Target Zone', 'HRV Reading',
