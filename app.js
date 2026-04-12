@@ -2331,6 +2331,11 @@ async function attemptReconnect() {
         document.getElementById('toggleSessionBtn').classList.remove('running');
         document.getElementById('manualResetBtn').style.display = 'none';
         document.body.classList.remove('connected');
+        document.getElementById('homeBtn').style.display = 'flex';
+        // Null the device reference so requestDevice() starts fresh next time.
+        // Keeping the old reference can cause the browser to block the picker
+        // because it considers the device still claimed from the previous session.
+        bluetoothDevice = null;
         log('❌ Could not reconnect after 30 attempts. Session ended.', true);
         switchState('stopped', true);
         wakeLockDesired = false; if (wakeLock !== null) wakeLock.release().then(() => { wakeLock = null; });
@@ -2498,6 +2503,12 @@ document.getElementById('homeBtn').addEventListener('click', () => {
 
 document.getElementById('connectBtn').addEventListener('click', async () => {
     try {
+        // Ensure any stale device reference is cleared before requesting a new one.
+        // If the previous device was abandoned (e.g. after failed reconnection),
+        // some browsers block requestDevice() until the old reference is released.
+        if (bluetoothDevice && !bluetoothDevice.gatt.connected) {
+            bluetoothDevice = null;
+        }
         log('1. Waiting for you to select a device...');
         bluetoothDevice = await navigator.bluetooth.requestDevice({ filters: [{ services: ['heart_rate'] }] });
         bluetoothDevice.addEventListener('gattserverdisconnected', handleDisconnect);
