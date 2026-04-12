@@ -730,11 +730,12 @@ function generateSessionPDF(session) {
         }
 
         // ── Star-level threshold reference lines ─────────────────────────────
-        // Diamond ≥50%, Sapphire ≥30%, Amethyst ≥15%
+        // Thresholds defined in summary.js (window.RFB_STAR_LEVELS).
+        const SL = window.RFB_STAR_LEVELS || { STAR1: 30, STAR2: 45, STAR3: 65 };
         const THRESHOLDS = [
-            { pct: 50, label: '★★★ Diamond',  rgb: [160, 120, 255] },
-            { pct: 30, label: '★★☆ Sapphire', rgb: [80,  140, 255] },
-            { pct: 15, label: '★☆☆ Amethyst', rgb: [180, 100, 220] },
+            { pct: SL.STAR3, label: '★★★ Diamond',  rgb: [160, 120, 255] },
+            { pct: SL.STAR2, label: '★★☆ Sapphire', rgb: [80,  140, 255] },
+            { pct: SL.STAR1, label: '★☆☆ Amethyst', rgb: [180, 100, 220] },
         ];
         for (const th of THRESHOLDS) {
             const ty = cToY(th.pct);

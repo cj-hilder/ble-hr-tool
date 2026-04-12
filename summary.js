@@ -2,6 +2,16 @@
 // Loaded by both index.html (main app) and history.html (history page).
 // Requires utils.js (formatTime, escHtml) to be loaded first.
 
+// ─── RFB star level thresholds (single source of truth) ──────────────────────
+// Used by summary cards, PDF graphs, and the live display in app.js.
+// app.js reads these via window.RFB_STAR_LEVELS at startup.
+window.RFB_STAR_LEVELS = {
+    STAR1:      30,  // ★☆☆ Amethyst
+    STAR2:      45,  // ★★☆ Sapphire
+    STAR3:      65,  // ★★★ Diamond
+    EASTER_EGG: 80,  // 🍓
+};
+
 (function () {
     'use strict';
 
@@ -12,6 +22,14 @@
     // there were no periods with valid lag data; otherwise use formatTime so zero => '00:00'.
     function fmtLag(sec, numLagPeriods) {
         return numLagPeriods > 0 ? formatTime(sec) : '--';
+    }
+
+    // Returns filled stars (★) only — no empty outlines — for a given RI value.
+    function rfbStars(ri) {
+        if (ri == null) return '';
+        const { STAR1, STAR2, STAR3 } = window.RFB_STAR_LEVELS;
+        const count = ri >= STAR3 ? 3 : ri >= STAR2 ? 2 : ri >= STAR1 ? 1 : 0;
+        return '★'.repeat(count);
     }
 
     function fmtDate(iso) {
@@ -175,10 +193,11 @@
 
         // ── Resonance Breathing stats (dedicated RFB sessions) ────────────────
         if (isRFB && s.rfbTotalSec > 0) {
-            const rfbAvg  = (s.rfbAvgRI  ?? s.rfbAvgCoherence)  ?? '--';
+            const rfbAvgRaw  = (s.rfbAvgRI  ?? s.rfbAvgCoherence)  ?? null;
             const rfbPeakRaw = s.rfbPeakRI ?? s.rfbPeakCoherence;
+            const rfbAvg  = rfbAvgRaw  != null ? `${rfbAvgRaw} ${rfbStars(rfbAvgRaw)}`   : '--';
             const rfbPeak = rfbPeakRaw != null
-                ? String(rfbPeakRaw) + (rfbPeakRaw >= 75 ? ' 🍓' : '')
+                ? String(rfbPeakRaw) + ' ' + rfbStars(rfbPeakRaw) + (rfbPeakRaw >= window.RFB_STAR_LEVELS.EASTER_EGG ? ' 🍓' : '')
                 : '--';
             const rfbPct  = s.rfbPctAboveStar1 != null ? s.rfbPctAboveStar1 + '%' : '--';
             html += `
@@ -239,10 +258,11 @@
         // ── Resonance Breathing (embedded in standard activity sessions) ──────
         // Show when RFB data is present but session is NOT a dedicated RFB session.
         if (!isHRV && !isRFB && s.rfbTotalSec > 0) {
-            const rfbAvg  = (s.rfbAvgRI  ?? s.rfbAvgCoherence)  ?? '--';
+            const rfbAvgRaw  = (s.rfbAvgRI  ?? s.rfbAvgCoherence)  ?? null;
             const rfbPeakRaw = s.rfbPeakRI ?? s.rfbPeakCoherence;
+            const rfbAvg  = rfbAvgRaw  != null ? `${rfbAvgRaw} ${rfbStars(rfbAvgRaw)}`   : '--';
             const rfbPeak = rfbPeakRaw != null
-                ? String(rfbPeakRaw) + (rfbPeakRaw >= 75 ? ' 🍓' : '')
+                ? String(rfbPeakRaw) + ' ' + rfbStars(rfbPeakRaw) + (rfbPeakRaw >= window.RFB_STAR_LEVELS.EASTER_EGG ? ' 🍓' : '')
                 : '--';
             const rfbPct  = s.rfbPctAboveStar1 != null ? s.rfbPctAboveStar1 + '%' : '--';
             html += `
@@ -281,11 +301,11 @@
                 <span class="chip chip-duration">${durationMin} min</span>
                 ${hrvVal ? `<span class="chip chip-hrv-index">HRV ${hrvVal}</span>` : ''}`;
         } else if (isRFB) {
-            const rfbAvg = (s.rfbAvgRI ?? s.rfbAvgCoherence);
+            const rfbAvgRaw = (s.rfbAvgRI ?? s.rfbAvgCoherence);
             chips = `
                 <span class="chip chip-rfb">Resonance Breathing</span>
                 <span class="chip chip-duration">${durationMin} min</span>
-                ${rfbAvg != null ? `<span class="chip chip-rfb-index">${rfbAvg} avg RI</span>` : ''}`;
+                ${rfbAvgRaw != null ? `<span class="chip chip-rfb-index">${rfbAvgRaw} ${rfbStars(rfbAvgRaw)} avg RI</span>` : ''}`;
         } else {
             // Standard activity — headline is target time or % active
             const headlineChip = byTarget

@@ -1296,12 +1296,13 @@ function updateCoherenceDisplay() {
 
     // 4-level star system matching Polar coherence tiers:
     //   0 = none      (☆☆☆)  < 25
-    //   1 = amethyst  (★☆☆)  >= 25
-    //   2 = sapphire  (★★☆)  >= 45
-    //   3 = diamond   (★★★)  >= 65
-    //   🍓 easter egg          >= 75
+    //   Thresholds defined in summary.js (window.RFB_STAR_LEVELS) — single source of truth.
     function starsHtml(level, easterEgg) {
         return '★'.repeat(level) + '☆'.repeat(3 - level) + (easterEgg ? '🍓' : '') ;
+    }
+    function riLevel(riPct) {
+        const SL = window.RFB_STAR_LEVELS;
+        return riPct >= SL.STAR3 ? 3 : riPct >= SL.STAR2 ? 2 : riPct >= SL.STAR1 ? 1 : 0;
     }
 
     // Resonance row — only during reset + RFB
@@ -1360,9 +1361,9 @@ function updateCoherenceDisplay() {
                 if (coherEl) coherEl.style.display = 'flex';
                 const amp    = r.amplitudeBpm;
                 const riPct  = Math.round(r.ri * 100);
-                const level  = riPct >= 65 ? 3 : riPct >= 45 ? 2 : riPct >= 25 ? 1 : 0;
+                const level  = riLevel(riPct);
                 coherVal.textContent = riPct > 0
-                    ? `${riPct} ${starsHtml(level, riPct >= 75)}`
+                    ? `${riPct} ${starsHtml(level, riPct >= window.RFB_STAR_LEVELS.EASTER_EGG)}`
                     : starsHtml(0, false);
                 if (showDebug) {
                     const relLagSec = r.phaseDiffDeg != null ? (r.phaseDiffDeg / 360 * (rfbBreathPeriodMs() / 1000)) : null;
@@ -1958,7 +1959,7 @@ function computeRfbSummary(recording, activeSec) {
         ? activeSec - RFB_WARMUP_SEC
         : recording.length;
     const totalSec = measuredSec;
-    const pctAboveStar1 = Math.round(riVals.filter(v => v >= 25).length / totalSec * 100);
+    const pctAboveStar1 = Math.round(riVals.filter(v => v >= (window.RFB_STAR_LEVELS ? window.RFB_STAR_LEVELS.STAR1 : 30)).length / totalSec * 100);
     return { avg, peak, pctAboveStar1, totalSec };
 }
 
