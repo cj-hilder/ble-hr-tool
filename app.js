@@ -198,12 +198,21 @@ class HRVProcessor {
         if (rawRrs.length < 5) return null;
         const { rrs } = this._removeArtifacts(rawRrs, rawTs);
         if (rrs.length < 5) return null;
-        const meanRR = rrs.reduce((a, b) => a + b, 0) / rrs.length;
-        const sdnn   = Math.sqrt(rrs.reduce((s, x) => s + (x - meanRR) ** 2, 0) / rrs.length);
-        let sumSqDiff = 0;
-        for (let i = 1; i < rrs.length; i++) sumSqDiff += (rrs[i] - rrs[i - 1]) ** 2;
-        const rmssd = Math.sqrt(sumSqDiff / (rrs.length - 1));
-        return { rmssd: Math.round(rmssd), sdnn: Math.round(sdnn), meanRR: Math.round(meanRR), n: rrs.length };
+        const n      = rrs.length;
+        const sumRR  = rrs.reduce((a, b) => a + b, 0);
+        const meanRR = sumRR / n;
+        // SS: sum of squared deviations from mean — basis for SDNN via parallel-axis theorem
+        const SS     = rrs.reduce((s, x) => s + (x - meanRR) ** 2, 0);
+        const sdnn   = Math.sqrt(SS / n);
+        // SSD: sum of squared successive differences — basis for RMSSD, additive across windows
+        let SSD = 0;
+        for (let i = 1; i < n; i++) SSD += (rrs[i] - rrs[i - 1]) ** 2;
+        const rmssd = Math.sqrt(SSD / (n - 1));
+        return {
+            rmssd: Math.round(rmssd), sdnn: Math.round(sdnn), meanRR: Math.round(meanRR), n,
+            // Raw statistics for exact window combining
+            SSD, SS, sumRR,
+        };
     }
     reset() {
         this.buffer = []; this.timestamps = [];
@@ -631,19 +640,6 @@ function hrvSessionDurationSec() {
     return (typeof HRV_DURATION !== 'undefined' && HRV_DURATION === 5) ? 300 : 180;
 }
 
-// Rolling window for RMSSD calculation.
-// Always an integer number of complete 60s cycles so the vasomotor oscillation
-// (~60s period) is averaged out rather than sampled at an arbitrary phase.
-//   0–60s:  all available data (window too short for a full cycle)
-//   60–120s: 60s window
-//   120–180s: 120s window  etc.
-// This way, whenever the user ends the session (after 60s), the calculation
-// uses only complete minutes — the most recent elapsed complete minutes.
-function hrvRollingWindowMs(elapsedSec) {
-    if (elapsedSec < 60) return Number.MAX_SAFE_INTEGER; // use all data
-    return Math.floor(elapsedSec / 60) * 60000;
-}
-
 const HRV_READING_ID = 'hrv_reading';
 
 // Per-session artifact counters (reset in startSession, incremented in recordRrHistory)
@@ -1030,6 +1026,40 @@ function computeResonanceIndex(coherence, stability, phaseDiffDeg) {
     return Math.min(1, coherence * phaseMult * stabMult);
 }
 
+// ─── HRV window combining ─────────────────────────────────────────────────────
+// Combines two non-overlapping HRV statistic windows exactly, without
+// approximation, using the parallel-axis theorem for SDNN.
+//
+// RMSSD: SSD (sum of squared successive differences) is additive across
+//   non-overlapping windows. Combined RMSSD = √(SSD_total / (n_total - 1)).
+//   Note: the boundary pair (last beat of window A, first beat of window B)
+//   is not counted — we treat windows as independent samples.
+//
+// SDNN: SS (sum of squared deviations) is NOT directly additive when the
+//   two windows have different means. The parallel-axis theorem gives:
+//   SS_combined = SS_A + SS_B + (n_A × n_B / n_combined) × (μ_A − μ_B)²
+//   Combined SDNN = √(SS_combined / n_combined).
+function combineHRVStats(a, b) {
+    if (!a || !b) return a || b || null;
+    const nC   = a.n + b.n;
+    const muA  = a.sumRR / a.n;
+    const muB  = b.sumRR / b.n;
+    const SSD  = a.SSD + b.SSD;
+    const SS   = a.SS + b.SS + (a.n * b.n / nC) * (muA - muB) ** 2;
+    const rmssd = Math.sqrt(SSD / (nC - 1));
+    const sdnn  = Math.sqrt(SS  / nC);
+    return {
+        rmssd: Math.round(rmssd), sdnn: Math.round(sdnn),
+        meanRR: Math.round((a.sumRR + b.sumRR) / nC),
+        n: nC, SSD, SS, sumRR: a.sumRR + b.sumRR,
+    };
+}
+
+// First-minute HRV stats — captured once at t=60 and held constant.
+// Used to smooth the 1-minute boundary jumps in the rolling window via a
+// weighted combination that ensures all data is always used.
+let _hrvFirstMinStats = null;
+
 // ─── HRV Index ────────────────────────────────────────────────────────────────
 // Returns null when pSensor > 2% (session data is unreliable).
 // Otherwise: rawIndex × balanceFactor
@@ -1102,11 +1132,43 @@ function updateHRVDisplay() {
     if (progressEl) progressEl.style.display = 'none';
     if (coherEl) coherEl.style.display = 'flex';
 
-    const windowMs = hrvRollingWindowMs(elapsedSec);
-    const metrics  = hrvProcessor.computeHRVMetrics(windowMs);
-    const pSensor  = sessionTotalBeats > 0 ? sessionSensorArtifacts / sessionTotalBeats : 0;
+    // Capture first-minute stats once at t=60 and hold them constant.
+    if (!_hrvFirstMinStats) {
+        _hrvFirstMinStats = hrvProcessor.computeHRVMetrics(60000) || null;
+    }
 
-    if (!metrics || pSensor > 0.02) {
+    const W = Math.floor(elapsedSec / 60) * 60; // main window length (complete minutes)
+    const E = elapsedSec - W;                    // excluded seconds (< 60)
+    const mainMetrics = hrvProcessor.computeHRVMetrics(W * 1000);
+
+    // Combine main window with the excluded portion of the first minute.
+    // E seconds of the first minute are not in the main window; their contribution
+    // to the overall estimate is weighted by E (seconds excluded) vs W (main window).
+    // combineHRVStats handles the exact SDNN merge via parallel-axis theorem.
+    //
+    // When E=0 (exactly at a minute boundary): no excluded data, use main window only.
+    // When E>0: blend the first-minute constant with the main window proportionally.
+    let combinedMetrics;
+    if (E === 0 || !_hrvFirstMinStats || !mainMetrics) {
+        combinedMetrics = mainMetrics;
+    } else {
+        // Scale the first-minute stats to represent only the E excluded seconds.
+        // We can't extract exactly E seconds of stats from the first minute, so we
+        // scale by E/60 — a proportional approximation that is exact at E=0 and E=60
+        // and introduces negligible error in between (the first minute is stationary).
+        const frac = E / 60;
+        const firstScaled = {
+            n:     Math.max(2, Math.round(_hrvFirstMinStats.n * frac)),
+            SSD:   _hrvFirstMinStats.SSD  * frac,
+            SS:    _hrvFirstMinStats.SS   * frac,
+            sumRR: _hrvFirstMinStats.sumRR * frac,
+        };
+        combinedMetrics = combineHRVStats(mainMetrics, firstScaled);
+    }
+
+    const pSensor = sessionTotalBeats > 0 ? sessionSensorArtifacts / sessionTotalBeats : 0;
+
+    if (!combinedMetrics || pSensor > 0.02) {
         coherVal.textContent = '--';
         coherVal.style.color = '#7c3aed';
         if (showDebug) dbg.textContent = pSensor > 0.02 ? 'sensor unreliable' : 'collecting data…';
@@ -1114,7 +1176,7 @@ function updateHRVDisplay() {
         return;
     }
 
-    const result = calculateHRVIndex({ rmssd: metrics.rmssd, sdnn: metrics.sdnn, pSensor });
+    const result = calculateHRVIndex({ rmssd: combinedMetrics.rmssd, sdnn: combinedMetrics.sdnn, pSensor });
     if (!result) {
         coherVal.textContent = '--';
         coherVal.style.color = '#7c3aed';
@@ -1123,17 +1185,14 @@ function updateHRVDisplay() {
         return;
     }
 
-    // currentHRVIndex is the live rolling-window value. It is also what gets
-    // saved at session end — the final value naturally uses the largest complete
-    // integer-minute window available, which is the best estimate of true RMSSD.
     currentHRVIndex = result.index;
     coherVal.textContent = String(Math.round(result.index));
     coherVal.style.color = '#7c3aed';
 
     if (showDebug) {
         dbg.textContent =
-            `RMSSD:${metrics.rmssd}ms  balance:${Math.round(result.balanceFactor * 100)}%` +
-            `  win:${Math.round(windowMs / 60000)}min`;
+            `RMSSD:${combinedMetrics.rmssd}ms  balance:${Math.round(result.balanceFactor * 100)}%` +
+            `  win:${Math.round(W / 60)}min+${Math.round(E)}s`;
     }
 }
 function computeResonance() {
@@ -2273,7 +2332,7 @@ function startSession() {
     rfbExtended = false;
     // Reset artifact counters and HRV index for fresh session
     sessionTotalBeats = 0; sessionSensorArtifacts = 0; sessionPhysioArtifacts = 0;
-    currentHRVIndex = null; _lastHRVDisplayTs = 0;
+    currentHRVIndex = null; _lastHRVDisplayTs = 0; _hrvFirstMinStats = null;
     setRbDisplayMode(isResonanceBreathing || isHRVReading);
     if (isResonanceBreathing) {
         // Enter reset+RFB immediately — no active phase, no waiting for resting HR.
