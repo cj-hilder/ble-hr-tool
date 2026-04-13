@@ -1336,6 +1336,7 @@ function updateCoherenceDisplay() {
             if (arc) {
                 const CIRCUMFERENCE = 125.66; // 2π × r=20
                 const pct = Math.min(1, rfbElapsedSec / RFB_DISPLAY_SEC);
+                arc.setAttribute('stroke', '#1a7fff'); // reset to blue (may have been purple from HRV)
                 arc.setAttribute('stroke-dashoffset', (CIRCUMFERENCE * (1 - pct)).toFixed(2));
             }
             // Debug: "collecting data…" for first 30s, then live coherence (even if jumpy).
