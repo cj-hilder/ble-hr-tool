@@ -546,8 +546,8 @@ function drawHrGraph() {
         const breathPeriodMs = rfbBreathPeriodMs();
         const inhaleFrac     = rfbGetInhaleFrac();
         const amplitude = 8; // ±8 bpm visual range
-        ctx.globalAlpha = 0.45; // semi-transparent — picks up blue tint from background
-        ctx.strokeStyle = '#cccccc';
+        ctx.globalAlpha = 0.75; // semi-transparent — picks up blue tint from background
+        ctx.strokeStyle = '#e0e0e0';
         ctx.lineWidth = 2;
         ctx.lineJoin = 'round';
         ctx.beginPath();
