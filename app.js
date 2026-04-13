@@ -536,6 +536,33 @@ function drawHrGraph() {
     function toX(ts) { return ((ts - windowStart) / HR_HISTORY_MS) * W; }
     function toY(hr)  { return H - (hr / MAX_HR) * H; }
 
+    // ── RFB breathing guide overlay ───────────────────────────────────────────
+    // Drawn BEFORE the HR line so it sits behind it.
+    // Only drawn when connected to a device that provides beat-to-beat RR data
+    // (e.g. Polar H10).  A watch-type sensor without RR would show a flat HR
+    // line that bears no relationship to the guide, which is misleading.
+    const rfbResting = (typeof RESTING_HR !== 'undefined') ? RESTING_HR : 65;
+    if (currentState === 'reset' && (typeof RFB_ENABLED !== 'undefined') && RFB_ENABLED && rfbWallStartTime > 0 && deviceSupportsRR) {
+        const breathPeriodMs = rfbBreathPeriodMs();
+        const inhaleFrac     = rfbGetInhaleFrac();
+        const amplitude = 8; // ±8 bpm visual range
+        ctx.globalAlpha = 0.45; // semi-transparent — picks up blue tint from background
+        ctx.strokeStyle = '#cccccc';
+        ctx.lineWidth = 2;
+        ctx.lineJoin = 'round';
+        ctx.beginPath();
+        for (let px = 0; px <= W; px++) {
+            const ts = windowStart + (px / W) * HR_HISTORY_MS;
+            const elapsed = ts - rfbWallStartTime;
+            const phase = ((elapsed % breathPeriodMs) + breathPeriodMs) % breathPeriodMs / breathPeriodMs;
+            const sineVal = rfbAsymSine(phase, inhaleFrac);
+            const y = toY(rfbResting + sineVal * amplitude);
+            if (px === 0) ctx.moveTo(0, y); else ctx.lineTo(px, y);
+        }
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+    }
+
     // ── HR line (beat-to-beat if available, averaged as fallback) ─────────────
     if (activeHistory.length >= 2) {
         ctx.globalAlpha = 0.7;
@@ -561,31 +588,6 @@ function drawHrGraph() {
                 ctx.lineTo(nextBreaks ? x - GAP_HALF : x, y);
             }
             prevState = state;
-        }
-        ctx.stroke();
-    }
-
-    // ── RFB breathing guide overlay ───────────────────────────────────────────
-    // Only drawn when connected to a device that provides beat-to-beat RR data
-    // (e.g. Polar H10).  A watch-type sensor without RR would show a flat HR
-    // line that bears no relationship to the guide, which is misleading.
-    const rfbResting = (typeof RESTING_HR !== 'undefined') ? RESTING_HR : 65;
-    if (currentState === 'reset' && (typeof RFB_ENABLED !== 'undefined') && RFB_ENABLED && rfbWallStartTime > 0 && deviceSupportsRR) {
-        const breathPeriodMs = rfbBreathPeriodMs();
-        const inhaleFrac     = rfbGetInhaleFrac();
-        const amplitude = 8; // ±8 bpm visual range
-        ctx.globalAlpha = 0.85;
-        ctx.strokeStyle = '#000000';
-        ctx.lineWidth = 1;
-        ctx.lineJoin = 'round';
-        ctx.beginPath();
-        for (let px = 0; px <= W; px++) {
-            const ts = windowStart + (px / W) * HR_HISTORY_MS;
-            const elapsed = ts - rfbWallStartTime;
-            const phase = ((elapsed % breathPeriodMs) + breathPeriodMs) % breathPeriodMs / breathPeriodMs;
-            const sineVal = rfbAsymSine(phase, inhaleFrac);
-            const y = toY(rfbResting + sineVal * amplitude);
-            if (px === 0) ctx.moveTo(0, y); else ctx.lineTo(px, y);
         }
         ctx.stroke();
     }

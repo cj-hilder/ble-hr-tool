@@ -222,7 +222,9 @@ Two minutes of comfortable, high-quality breathing is vastly superior to ten min
 
 ## HRV Reading
 
-An HRV Reading gives you a single number that summarises your heart rate variability. It is comparable across sessions, making it useful as a longitudinal recovery signal.
+An HRV Reading gives you a single number that summarises your heart rate variability. It is useful as a longitudinal recovery signal, provided you take readings under similar circumstances. 
+
+Consistent morning readings — taken at the same time each day, before getting up or after a few minutes of quiet rest — will give the most comparable longitudinal data. There is no 'correct' HRV that you should aim for, but as your autonomic health improves your HRV is expected to also improve. 
 
 Select **"HRV Reading"** from the activity drop-down menu to start a new reading.
 
@@ -231,8 +233,8 @@ Select **"HRV Reading"** from the activity drop-down menu to start a new reading
 - **The status dot turns purple** for the duration of the reading.
 - A countdown timer shows time remaining.
 - The HRV appears as a live number updating as data accumulates.
-- The session runs for 3 minutes. You can end it early, but the full 3 minutes of required for an accurate reading.
-- Sit or lie still. Avoid speaking, moving, or changing posture during the reading. Any significant movement will affect the result.
+- The session runs for 3 or 5 minutes. You can end a reading early, but at least 3 minutes is required for an accurate reading while 5 minutes is the recommended standard.
+- Sit or lie still. Avoid speaking, moving, changing posture or deep breathing during the reading. Any significant movement will affect the result.
 
 ### The HRV number
 
@@ -250,13 +252,9 @@ The index is computed as:
 - **ln(RMSSD) × 15** is the core vagal tone signal, scaled to produce values in a practical range (roughly 0–100 for typical adults).
 - **balanceFactor** (0–1) penalises sympathetic dominance. It is derived from the RMSSD/SDNN ratio: a healthy ANS produces relatively high RMSSD for its total variability. When the sympathetic system dominates — as it often does in dysautonomia — SDNN is elevated while RMSSD stays low, reducing the index.
 
-The HRV index is most meaningful as a **relative trend** tracked over time. There is no 'correct' HRV that you should aim for, but as your autonomic health improves your HRV is expected to also improve. This makes it a potentially useful way to track your recovery.
-
 ### What to expect
 
 A healthy adult at rest typically scores in the range of 40–70. With active dysautonomia, scores of 10–25 are common and are not cause for alarm — they reflect the current state of the ANS, not a permanent ceiling. Scores below 10 suggest significant sympathetic dominance or ANS depletion.
-
-Consistent morning readings — taken at the same time each day, before getting up or after a few minutes of quiet rest — will give the most comparable longitudinal data.
 
 ### Hardware requirement
 
