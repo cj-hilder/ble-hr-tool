@@ -1174,8 +1174,7 @@ function updateHRVDisplay() {
 
     if (showDebug) {
         dbg.textContent =
-            `RMSSD:${Math.round(rmssd)}ms  balance:${Math.round(result.balanceFactor * 100)}%` +
-            `  win:${Math.round(W / 60)}min  excl:${E}s`;
+            `RMSSD:${Math.round(rmssd)}ms  balance:${Math.round(result.balanceFactor * 100)}%` ;
     }
 }
 function computeResonance() {

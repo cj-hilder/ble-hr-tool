@@ -224,9 +224,11 @@ Two minutes of comfortable, high-quality breathing is vastly superior to ten min
 
 An HRV Reading gives you a single number that summarises your heart rate variability. It is useful as a longitudinal recovery signal, provided you take readings under similar circumstances. 
 
-Consistent morning readings — taken at the same time each day, before getting up or after a few minutes of quiet rest — will give the most comparable longitudinal data. There is no 'correct' HRV that you should aim for, but as your autonomic health improves your HRV is expected to also improve. 
+Consistent morning readings, taken at the same time each day — before getting up or after a few minutes of quiet rest — will give the most comparable longitudinal data. There is no 'correct' HRV that you should aim for, but as your autonomic health improves your HRV is expected to also improve. 
 
 Select **"HRV Reading"** from the activity drop-down menu to start a new reading.
+
+Wait until your heart rate has settled to your resting heart rate before starting. The displayed HRV number will change during the session, converging on the final value. If it jumps up and down by more than a few points you may have started the reading before your heart rate has settled.
 
 ### During the session
 
