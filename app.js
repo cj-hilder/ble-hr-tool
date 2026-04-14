@@ -398,7 +398,12 @@ function recordRrHistory(rrValuesMs, notifTs) {
         }
     }
 
-    const PAIR_TOL  = 0.2;
+    // PVC compensatory pauses are mechanistically precise (SA node fires on schedule),
+    // so the pair-sum tolerance can be tight. PAC follow-up is near-normal but slightly
+    // less constrained because the SA node resets from an arbitrary ectopic phase.
+    // Both are tighter than the old 0.20 to avoid sensor noise satisfying either pattern.
+    const PVC_TOL   = 0.12; // pair-sum tolerance for PVC (was 0.20)
+    const PAC_TOL   = 0.15; // next-beat tolerance for PAC (was 0.20)
     const DEV_THRESHOLD = 0.2; // minimum deviation to enter artifact analysis
     let i = 0;
     while (i < pairs.length) {
@@ -438,9 +443,13 @@ function recordRrHistory(rrValuesMs, notifTs) {
             const pairSum = rr + next.rr;
 
             // PVC: rr1 + rr2 ≈ 2 × lastCleanRr  (compensatory pause)
-            const isPvc = Math.abs(pairSum - 2 * lastCleanRr) / (2 * lastCleanRr) < PAIR_TOL;
+            const isPvc = Math.abs(pairSum - 2 * lastCleanRr) / (2 * lastCleanRr) < PVC_TOL;
             // PAC: rr2 ≈ lastCleanRr  (SA node reset — next beat is normal)
-            const isPac = !isPvc && Math.abs(next.rr - lastCleanRr) / lastCleanRr < PAIR_TOL;
+            // Extra sanity: rr2 must be longer than rr1. A premature beat is always
+            // followed by a longer recovery; if rr2 ≤ rr1 it is more likely two noise hits.
+            const isPac = !isPvc &&
+                Math.abs(next.rr - lastCleanRr) / lastCleanRr < PAC_TOL &&
+                next.rr > rr;
 
             if (isPvc) {
                 if (!next.alreadyCounted) sessionTotalBeats++;
