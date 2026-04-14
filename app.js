@@ -944,10 +944,17 @@ async function requestWakeLock() {
             // Log for debugging
             console.log('Wake Lock acquired');
 
-            // Handle the case where the system releases the lock
+            // Handle the case where the system releases the lock.
+            // Two scenarios:
+            //   1. Page hidden (switch app, lock button): visibilitychange re-acquires on return.
+            //   2. System release while still visible (battery saver, low battery, OS power
+            //      management): visibilitychange never fires, so we must re-acquire here.
             wakeLock.addEventListener('release', () => {
                 console.log('Wake Lock was released');
                 wakeLock = null;
+                if (wakeLockDesired && document.visibilityState === 'visible') {
+                    requestWakeLock();
+                }
             });
         } catch (err) {
             console.log('Wake Lock Error:', err);
