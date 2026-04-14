@@ -806,6 +806,8 @@ function saveSession() {
             sessionHrMax: sessionHrSamples.length ? Math.max(...sessionHrSamples) : 0,
             sessionHrSum: sessionHrSamples.reduce((a,b)=>a+b, 0),
             sessionHrCount: sessionHrSamples.length,
+            targetHrSum: targetHrSamples.reduce((a,b)=>a+b, 0),
+            targetHrCount: targetHrSamples.length,
             currentActivityId, currentActivityName,
             rfbPhase, rfbSecondsRemaining, rfbSessionClockStart,
             isResonanceBreathing, rfbExtended,
@@ -865,6 +867,12 @@ function restoreSession() {
             sessionHrSamples = [s.sessionHrMin, s.sessionHrMax];
             for (let i = 0; i < cnt - 2; i++) sessionHrSamples.push(avg);
         } else { sessionHrSamples = []; }
+        const tCnt = s.targetHrCount || 0;
+        if (tCnt > 0) {
+            const tAvg = Math.round(s.targetHrSum / tCnt);
+            targetHrSamples = [];
+            for (let i = 0; i < tCnt; i++) targetHrSamples.push(tAvg);
+        } else { targetHrSamples = []; }
         isSessionRunning = true; return true;
     } catch (e) { return false; }
 }
