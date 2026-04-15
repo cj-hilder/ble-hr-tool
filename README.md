@@ -1,16 +1,18 @@
-# Autonomic HR Pacer v1.2
+# Manawa v1.2
+
+## Measure. Pace. Recover.
 
 **[Launch the Live App Here](https://cj-hilder.github.io/ble-hr-tool/)**
 
 A specialised, web-based heart rate pacing app designed for individuals with dysautonomia (such as POTS, Long COVID, ME/CFS, or Post-Concussion Syndrome).
 
-This app is intended to help you visualise what your heart is doing and help you pace yourself during exercise. It is not intended for logging symptoms, nor does it analyse the data and offer advice. To use this app effectively you need to be aware of your symptoms, and understand how to pace your progress. 
+This app is intended to help you visualise what your heart is doing, pace yourself during exercise, and track your recovery. It is not intended for logging symptoms, nor does it analyse the data and offer advice. To use this app effectively you need to be aware of your symptoms, and understand how to pace your progress. 
 
 [Quick Start Guide](https://cj-hilder.github.io/ble-hr-tool/quick_start_guide.html)
 
 This app was built by a software developer managing their own post-concussion dysautonomia; not by a clinician or researcher. It is a best-effort personal project, grounded in published protocols and personal experience, that has worked well for its author. It may or may not work for you. Nothing here should be taken as medical advice, and it is no substitute for working with a qualified healthcare provider who understands your condition.
 
-> **Note:** Wrist based (optical) heart rate sensors are not usually suitable for measuring heart rate in the presence of dysautonomia. They are misled by irregular beats, weak pulse strength, and arm movement. They will often be significantly wrong by upwards of 30 bpm. A chest strap sensor, e.g. Polar H10, is mandatory for HR based pacing with dysautonomia.
+> **Note:** Wrist based (optical) heart rate sensors are not usually suitable for measuring heart rate in the presence of dysautonomia. They are misled by irregular beats, weak pulse strength, and arm movement. They will often be significantly wrong by upwards of 30 bpm. A chest strap sensor, e.g. Polar H10, is strongly recommended for HR based pacing with dysautonomia.
 
 ---
 
@@ -251,12 +253,14 @@ The index is computed as:
 
 > **HRV Index = ln(RMSSD) × 15 × balanceFactor**
 
-- **ln(RMSSD) × 15** is the core vagal tone signal, scaled to produce values in a practical range (roughly 0–100 for typical adults).
-- **balanceFactor** (0–1) penalises sympathetic dominance. It is derived from the RMSSD/SDNN ratio: a healthy ANS produces relatively high RMSSD for its total variability. When the sympathetic system dominates — as it often does in dysautonomia — SDNN is elevated while RMSSD stays low, reducing the index.
+- **ln(RMSSD) × 15** is the core vagal tone signal, scaled to produce values in a practical range.
+- **balanceFactor** (0–1) assists for sympathetic dominance. It is derived from the RMSSD/SDNN ratio: a healthy ANS produces relatively high RMSSD for its total variability. When the sympathetic system dominates — as it often does in dysautonomia — SDNN is elevated while RMSSD stays low, reducing the index.
 
 ### What to expect
 
 A healthy adult at rest typically scores in the range of 40–70. With active dysautonomia, scores of 10–25 are common and are not cause for alarm — they reflect the current state of the ANS, not a permanent ceiling. Scores below 10 suggest significant sympathetic dominance or ANS depletion.
+
+Manawa HRV scores are directly comparable with EliteHRV and Visible HRV scores.
 
 ### Hardware requirement
 
