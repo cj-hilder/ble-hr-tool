@@ -5,14 +5,17 @@ body { font-family: sans-serif; text-align: center; margin: 0; background-color:
 } 
 button { cursor: pointer; border: none; font-weight: bold; }
 
-#setupUI { margin-top: 50px; }
+#setupUI { 
+    margin-top: 50px; 
+    margin-bottom: 10px; 
+}
 .app-tagline {
     font-size: 12px;
     letter-spacing: 0.22em;
     color: #aaa;
     text-transform: uppercase;
-    margin: 2px 0 0;
-    font-weight: normal;
+    margin: 0 0 24px;
+    font-: normal;
 }
 #connectBtn { padding: 15px 30px; font-size: 18px; border-radius: 8px; background: #007bff; color: white; }
 #log { margin-top: 30px; color: #555; font-size: 14px; padding: 0 20px; word-wrap: break-word; line-height: 1.4; }

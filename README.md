@@ -1,6 +1,5 @@
 # Manawa v1.2
-
-## Measure. Pace. Recover.
+### Measure. Pace. Recover.
 
 **[Launch the Live App Here](https://cj-hilder.github.io/ble-hr-tool/)**
 
