@@ -81,7 +81,7 @@ window.RFB_STAR_LEVELS = {
                     ${statItem(fmtT(s.shortestActiveSec), 'Shortest')}
                 </div>
                 <div class="stat-row">
-                    ${statItem(fmtN(s.avgHrActive), 'Avg HR')}
+                    ${statItem(fmtN(Math.round(s.avgHrActive)), 'Avg HR')}
                     <div></div><div></div>
                 </div>
             </div>`;
@@ -114,7 +114,7 @@ window.RFB_STAR_LEVELS = {
                     ${statItem(fmtT(s.shortestRecoverySec), 'Shortest')}
                 </div>
                 <div class="stat-row">
-                    ${statItem(fmtN(s.avgHrRecovery), 'Avg HR')}
+                    ${statItem(fmtN(Math.round(s.avgHrRecovery)), 'Avg HR')}
                     <div></div><div></div>
                 </div>
             </div>`;
@@ -142,8 +142,8 @@ window.RFB_STAR_LEVELS = {
             <div class="stat-group-label session-label">📊 Session</div>
             <div class="stat-row">
                 ${statItem(fmtT(s.sessionLengthSec), 'Duration')}
-                ${statItem(fmtN(s.highestHr),        'Highest HR')}
-                ${statItem(fmtN(s.avgHr),            'Avg HR')}
+                ${statItem(fmtN(s.highestHr),              'Highest HR')}
+                ${statItem(fmtN(Math.round(s.avgHr)),      'Avg HR')}
             </div>
             <div class="stat-row">
                 ${statItem(fmtN(s.lowestHr), 'Lowest HR')}
@@ -163,7 +163,7 @@ window.RFB_STAR_LEVELS = {
                 <div class="stat-row">
                     ${statItem(hrvVal,                   'HRV')}
                     ${statItem(fmtT(s.sessionLengthSec), 'Duration')}
-                    ${statItem(fmtN(s.avgHr),            'Avg HR')}
+                    ${statItem(fmtN(Math.round(s.avgHr)),            'Avg HR')}
                 </div>
                 ${shortNote}
             </div>`;

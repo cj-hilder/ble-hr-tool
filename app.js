@@ -2023,7 +2023,7 @@ function computeRfbSummary(recording, activeSec) {
         ? activeSec - RFB_WARMUP_SEC
         : recording.length;
     const totalSec = measuredSec;
-    const pctAboveStar1 = Math.round(riVals.filter(v => v >= (window.RFB_STAR_LEVELS ? window.RFB_STAR_LEVELS.STAR1 : 30)).length / totalSec * 100);
+    const pctAboveStar1 = Math.round(riVals.filter(v => v >= window.RFB_STAR_LEVELS.STAR1).length / totalSec * 100);
     return { avg, peak, pctAboveStar1, totalSec };
 }
 
