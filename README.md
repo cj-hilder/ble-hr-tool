@@ -253,7 +253,7 @@ The index is computed as:
 > **HRV Index = ln(RMSSD) × 15.3 × balanceFactor**
 
 - **ln(RMSSD) × 15.3** is the core vagal tone signal, scaled to produce values in a practical range.
-- **balanceFactor** (0–1) assists for sympathetic dominance. It is derived from the RMSSD/SDNN ratio: a healthy ANS produces relatively high RMSSD for its total variability. When the sympathetic system dominates — as it often does in dysautonomia — SDNN is elevated while RMSSD stays low, reducing the index.
+- **balanceFactor** (0–1) adjusts for sympathetic dominance. It is derived from the RMSSD/SDNN ratio: a healthy ANS produces relatively high RMSSD for its total variability. When the sympathetic system dominates — as it often does in dysautonomia — SDNN is elevated while RMSSD stays low, reducing the index.
 
 ### What to expect
 
