@@ -37,6 +37,12 @@ window.rfbRating = function(ri, { emptyStars = false } = {}) {
         return numLagPeriods > 0 ? formatTime(sec) : '--';
     }
     function fmtDate(iso) {
+        const d = new Date(iso);
+        return d.toLocaleDateString(undefined, {
+            weekday: 'short', month: 'short', day: 'numeric', year: 'numeric'
+        });
+    }
+    function fmtTime(iso) {
         return new Date(iso).toLocaleTimeString(undefined, {
             hour: '2-digit', minute: '2-digit'
         });
