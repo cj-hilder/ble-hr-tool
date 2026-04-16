@@ -253,6 +253,9 @@ const RFB_DEBUG_SEC      = 30;  // when debug line switches from "collecting" to
 // for controlled slow breathing. Amplitudes below this receive a proportional
 // penalty, reflecting the established association between reduced RSA amplitude
 // and impaired cardiac vagal tone. Full credit at ≥ 7.5 bpm; zero below 0.
+// Empirical anchor (age 67, post-viral ANS recovery, 2025): peak amplitudes
+// of 8–10 bpm at coherence ~0.8, consistent with the expected ~50% attenuation
+// of RSA amplitude in older adults relative to the young adult floor.
 const RFB_MIN_AMPLITUDE  = 7.5;
 
 // Returns a 0–1 stability value (1 = stable, 0 = wandering).
@@ -409,7 +412,12 @@ function recordRrHistory(rrValuesMs, notifTs) {
     // Both are tighter than the old 0.20 to avoid sensor noise satisfying either pattern.
     const PVC_TOL   = 0.12; // pair-sum tolerance for PVC (was 0.20)
     const PAC_TOL   = 0.15; // next-beat tolerance for PAC (was 0.20)
-    const DEV_THRESHOLD = 0.2; // minimum deviation to enter artifact analysis
+    const DEV_THRESHOLD = 0.15; // minimum deviation to enter artifact analysis (was 0.20)
+                                // Lowered to catch subtle artifacts and ectopics — beats
+                                // failing both PVC and PAC pattern matching fall through
+                                // to sensor artifact classification. False positive cost
+                                // (synthetic fill) is low; false negative cost (artifact
+                                // displayed as real HR spike) is high.
     let i = 0;
     while (i < pairs.length) {
         const { rr, ts: t, alreadyCounted } = pairs[i];
