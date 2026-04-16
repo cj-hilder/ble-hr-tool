@@ -1,13 +1,13 @@
 # Manawa v1.2
-### Measure. Pace. Recover.
+### MEASURE. PACE. RECOVER.
 
-**[Launch the Live App Here](https://cj-hilder.github.io/ble-hr-tool/)**
+**[Launch Manawa here](https://cj-hilder.github.io/ble-hr-tool/)**
 
 A specialised, web-based heart rate pacing app designed for individuals with dysautonomia (such as POTS, Long COVID, ME/CFS, or Post-Concussion Syndrome).
 
 This app is intended to help you visualise what your heart is doing, pace yourself during exercise, and track your recovery. It is not intended for logging symptoms, nor does it analyse the data and offer advice. To use this app effectively you need to be aware of your symptoms, and understand how to pace your progress. 
 
-[Quick Start Guide](https://cj-hilder.github.io/ble-hr-tool/quick_start_guide.html)
+[Quick Start Guide here](https://cj-hilder.github.io/ble-hr-tool/quick_start_guide.html)
 
 This app was built by a software developer managing their own post-concussion dysautonomia; not by a clinician or researcher. It is a best-effort personal project, grounded in published protocols and personal experience, that has worked well for its author. It may or may not work for you. Nothing here should be taken as medical advice, and it is no substitute for working with a qualified healthcare provider who understands your condition.
 
@@ -250,9 +250,9 @@ The HRV is calculated from RMSSD and SDNN.
 
 The index is computed as:
 
-> **HRV Index = ln(RMSSD) × 15 × balanceFactor**
+> **HRV Index = ln(RMSSD) × 15.3 × balanceFactor**
 
-- **ln(RMSSD) × 15** is the core vagal tone signal, scaled to produce values in a practical range.
+- **ln(RMSSD) × 15.3** is the core vagal tone signal, scaled to produce values in a practical range.
 - **balanceFactor** (0–1) assists for sympathetic dominance. It is derived from the RMSSD/SDNN ratio: a healthy ANS produces relatively high RMSSD for its total variability. When the sympathetic system dominates — as it often does in dysautonomia — SDNN is elevated while RMSSD stays low, reducing the index.
 
 ### What to expect

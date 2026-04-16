@@ -1065,7 +1065,7 @@ function computeResonanceIndex(coherence, stability, phaseDiffDeg) {
 // ─── HRV Index ────────────────────────────────────────────────────────────────
 // Returns null when pSensor > 2% (session data is unreliable).
 // Otherwise: rawIndex × balanceFactor
-//   rawIndex      = ln(RMSSD) × 15  — vagal tone, scaled to ~0–100 for typical adults
+//   rawIndex      = ln(RMSSD) × 15.3  — vagal tone, scaled to ~0–100 for typical adults
 //   balanceFactor ∈ [0,1]           — sympathovagal balance (RMSSD/SDNN ratio)
 //
 // Physiological artifact rate (ectopy) is intentionally not penalised here.
@@ -1075,7 +1075,7 @@ function computeResonanceIndex(coherence, stability, phaseDiffDeg) {
 function calculateHRVIndex({ rmssd, sdnn, pSensor }) {
     const HEALTHY_BALANCE = 0.5;
     if (pSensor > 0.02 || rmssd <= 0 || sdnn <= 0) return null;
-    const rawIndex      = Math.log(rmssd) * 15;
+    const rawIndex      = Math.log(rmssd) * 15.3;
     const balanceFactor = Math.min(Math.max((rmssd / sdnn) / HEALTHY_BALANCE, 0), 1);
     return {
         index:         Math.round(rawIndex * balanceFactor * 10) / 10,
