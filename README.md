@@ -154,7 +154,9 @@ You can choose "Resonance Breathing" from the activity drop-down menu, or for an
 
 ### Resonance score
 
-If you are using a **Polar H10** chest strap (or any sensor that exposes raw RR intervals via the Bluetooth Heart Rate Measurement characteristic), the app can calculate a **live resonance score**. This is a combination of wave coherence, frequency stability, and phase lag. It takes more than 60 seconds to gather enough data to calculate a score.
+If you are using a **Polar H10** chest strap (or any sensor that exposes raw RR intervals via the Bluetooth Heart Rate Measurement characteristic), the app can calculate a **live resonance score**. This is a combination of wave coherence, amplitude, frequency stability, and phase lag. It takes more than 60 seconds to gather enough data to calculate a score
+
+>Amplitudes below 7.5 bpm receive a proportional penalty, reflecting the established association between reduced amplitude and impaired cardiac vagal tone. (7.5 bpm = 50% of the Hirsch & Bishop (1981) healthy adult floor of 15 bpm.)
 
 Once enough data has been gathered, the score appears as a number and a star rating beneath the state description. 
 
