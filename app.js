@@ -43,7 +43,7 @@ class HRVProcessor {
         this._lastInhaleEndTs   = 0;        // wall-clock timestamp of last inhale→exhale turn
         this._lagHistory        = []; // kept for reset() symmetry — not used for averaging
         this._lagEma            = null;  // EMA of per-cycle lag (seconds); null until first cycle
-        this._LAG_EMA_ALPHA     = 0.4;   // α=0.4 → time constant ≈ 2–3 cycles (~20–30s at 6 bpm)
+        this._LAG_EMA_ALPHA     = 0.2;   // α=0.2 → time constant ≈ 4–5 cycles (~40–50s at 6 bpm)
     }
     addRR(rrInterval, timestamp) {
         if (!this._isValidRR(rrInterval)) return;
@@ -1080,9 +1080,17 @@ function triggerNotification() {
 //
 // Worst case: coherence × 0.35.  Best case: coherence × 1.00.
 function computeResonanceIndex(coherence, stability, phaseDiffDeg) {
+    // Add a small offset (PHASE_FLAT_K) to the cosine before scaling, then clamp
+    // at 1.0. This flattens the top of the curve so that lags within the normal
+    // healthy range (≈ ±1 s of the expected 2 s baroreflex delay, equivalent to
+    // ±37° at 6 bpm) attract no penalty at all. Only lags clearly outside that
+    // range begin to reduce the multiplier.
+    // k = 0.2  →  flat zone: phaseDiffDeg where cos(θ)+0.2 ≥ 1  →  |θ| ≤ 37°
+    // Floor shifts from 0.50 to 0.55 at 180° — slightly less severe at the extreme.
+    const PHASE_FLAT_K = 0.2;
     const phaseMult = phaseDiffDeg != null
-        ? 0.75 + 0.25 * Math.cos(phaseDiffDeg * Math.PI / 180)
-        : 0.85;
+        ? Math.min(1, 0.75 + 0.25 * (Math.cos(phaseDiffDeg * Math.PI / 180) + PHASE_FLAT_K))
+        : 1.0;
     const stabMult  = 0.70 + 0.30 * stability;
     return Math.min(1, coherence * phaseMult * stabMult);
 }
@@ -1255,12 +1263,17 @@ function computeResonance() {
 
     // Phase alignment — time-domain peak offset method.
     // Averages the last N finalised cycle lags for stability, then normalises
-    // to degrees. 72° offset centres "0" on the expected healthy lag (1–2 s).
+    // to degrees. The expected healthy lag (baroreflex loop delay) is ~2 s;
+    // this is converted to degrees at the current breathing rate so the
+    // centering remains correct across the full RFB range rather than being
+    // calibrated only to 6 bpm.
     let phaseDiffDeg = null;
     if (hrvProcessor._lagEma !== null) {
-        const breathPeriodSec = rfbBreathPeriodMs() / 1000;
-        const rawPhaseDeg     = (hrvProcessor._lagEma / breathPeriodSec) * 360;
-        phaseDiffDeg = Math.round(rawPhaseDeg - 72);
+        const breathPeriodSec  = rfbBreathPeriodMs() / 1000;
+        const EXPECTED_LAG_SEC = 2.0; // physiological RSA lag: baroreflex loop delay
+        const rawPhaseDeg      = (hrvProcessor._lagEma  / breathPeriodSec) * 360;
+        const expectedLagDeg   = (EXPECTED_LAG_SEC / breathPeriodSec) * 360;
+        phaseDiffDeg = Math.round(rawPhaseDeg - expectedLagDeg);
     }
 
     // Amplitude gate: low RSA oscillation amplitude means the coherence signal is
