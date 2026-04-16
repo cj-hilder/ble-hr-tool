@@ -1279,9 +1279,17 @@ function computeResonance() {
         phaseDiffDeg = Math.round(rawPhaseDeg - expectedLagDeg);
     }
 
-    // Amplitude gate: low RSA oscillation amplitude means the coherence signal is
-    // unreliable regardless of spectral shape — coherence computed on a near-flat
-    // HR signal measures noise pattern, not genuine vagal modulation.
+    // Amplitude gate: low RSA oscillation amplitude penalises high coherence,
+    // but does not penalise emerging coherence (< COHERENCE_AMP_FLOOR).
+    // The rationale: a small, consistent oscillation is a genuine if weak vagal
+    // signal; penalising it would discourage early-session or low-capacity data.
+    // Only coherence above the floor — the "premium" earned by good technique —
+    // is discounted when amplitude is insufficient to support it.
+    //
+    // Formula: min(coherence, FLOOR + (coherence − FLOOR) × amplitudeMult)
+    //   amplitudeMult = 0 → coherence collapses to FLOOR regardless of raw value
+    //   amplitudeMult = 1 → no change
+    //   coherence ≤ FLOOR → min() always returns coherence unchanged (no penalty)
     //
     // Amplitude is estimated from instantaneous beat-to-beat HR values in rrHistory
     // (computed as 60000/RR, not the BLE-averaged HR integer which is attenuated by
@@ -1290,11 +1298,15 @@ function computeResonance() {
     // oscillation amplitude while remaining immune to slow HR drift that would
     // inflate a single window-wide max-min.
     //
-    // Threshold: 3.75 bpm = 25% of the Hirsch & Bishop (1981) healthy adult floor of 15 bpm
-    // (~15 bpm peak-to-trough at controlled tidal volume, breathing <6 cycles/min).
-    // This is conservative — well below what a healthy person following the pacer
-    // should produce — so the gate only fires when signal is genuinely absent.
+    // RFB_MIN_AMPLITUDE = 7.5 bpm = 50% of the Hirsch & Bishop (1981) healthy adult
+    // floor of 15 bpm for controlled slow breathing. Full credit at ≥ 7.5 bpm;
+    // linear ramp to zero below.
     //   amplitudeMult = clamp(amplitudeBpm / RFB_MIN_AMPLITUDE, 0, 1)
+    const COHERENCE_AMP_FLOOR = 0.3; // HeartMath published low-coherence threshold
+                                      // (= STAR1 = 30). Coherence below this is
+                                      // never penalised — amplitude measurement is
+                                      // unreliable at low coherence, and the score
+                                      // is already capturing poor vagal entrainment.
     let amplitudeBpm = 0;
     {
         const BLOCK_MS = 20000;
@@ -1317,7 +1329,10 @@ function computeResonance() {
         }
     }
     const amplitudeMult  = Math.min(1, Math.max(0, amplitudeBpm / RFB_MIN_AMPLITUDE));
-    const coherenceGated = result.coherence * amplitudeMult;
+    const coherenceGated = Math.min(
+        result.coherence,
+        COHERENCE_AMP_FLOOR + (result.coherence - COHERENCE_AMP_FLOOR) * amplitudeMult
+    );
 
     const ri = computeResonanceIndex(coherenceGated, stabilityForIndex, phaseDiffDeg);
 
