@@ -6,8 +6,13 @@ body { font-family: sans-serif; text-align: center; margin: 0; background-color:
 button { cursor: pointer; border: none; font-weight: bold; }
 
 #setupUI { 
-    margin-top: 15px; 
+    margin-top: 25px; 
     margin-bottom: 10px; 
+}
+#setupUI img { 
+    width: 100px;
+    height: 100px;
+    border-radius: 10px; 
 }
 .app-tagline {
     font-size: 12px;
