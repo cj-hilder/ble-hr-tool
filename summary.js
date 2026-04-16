@@ -12,19 +12,6 @@ window.RFB_STAR_LEVELS = {
     EASTER_EGG: 80,  // 🍓
 };
 
-// Returns the rating string for a given RI value.
-// emptyStars: true  → live display (e.g. "★★☆ 🍓" — ☆ placeholders shown)
-//             false → summary cards (e.g. "★★ 🍓"  — filled stars only)
-window.rfbRating = function(ri, { emptyStars = false } = {}) {
-    if (ri == null) return '';
-    const { STAR1, STAR2, STAR3, EASTER_EGG } = window.RFB_STAR_LEVELS;
-    const count  = ri >= STAR3 ? 3 : ri >= STAR2 ? 2 : ri >= STAR1 ? 1 : 0;
-    const filled = '★'.repeat(count);
-    const empty  = emptyStars ? '☆'.repeat(3 - count) : '';
-    const berry  = ri >= EASTER_EGG ? ' 🍓' : '';
-    return filled + empty + berry;
-};
-
 (function () {
     'use strict';
 
@@ -36,6 +23,20 @@ window.rfbRating = function(ri, { emptyStars = false } = {}) {
     function fmtLag(sec, numLagPeriods) {
         return numLagPeriods > 0 ? formatTime(sec) : '--';
     }
+
+    // Returns the rating string for a given RI value.
+    // emptyStars: true  → live display (★★☆ 🍓 — empty-star placeholders shown)
+    //             false → summary cards (★★ 🍓  — filled stars only)
+    function rfbRating(ri, emptyStars) {
+        if (ri == null) return '';
+        const { STAR1, STAR2, STAR3, EASTER_EGG } = window.RFB_STAR_LEVELS;
+        const count  = ri >= STAR3 ? 3 : ri >= STAR2 ? 2 : ri >= STAR1 ? 1 : 0;
+        const filled = '\u2605'.repeat(count);
+        const empty  = emptyStars ? '\u2606'.repeat(3 - count) : '';
+        const berry  = ri >= EASTER_EGG ? ' \uD83C\uDF53' : '';
+        return filled + empty + berry;
+    }
+
     function fmtDate(iso) {
         const d = new Date(iso);
         return d.toLocaleDateString(undefined, {
@@ -146,8 +147,8 @@ window.rfbRating = function(ri, { emptyStars = false } = {}) {
             <div class="stat-group-label session-label">📊 Session</div>
             <div class="stat-row">
                 ${statItem(fmtT(s.sessionLengthSec), 'Duration')}
-                ${statItem(fmtN(s.highestHr),              'Highest HR')}
-                ${statItem(fmtN(Math.round(s.avgHr)),      'Avg HR')}
+                ${statItem(fmtN(s.highestHr),             'Highest HR')}
+                ${statItem(fmtN(Math.round(s.avgHr)),     'Avg HR')}
             </div>
             <div class="stat-row">
                 ${statItem(fmtN(s.lowestHr), 'Lowest HR')}
@@ -167,7 +168,7 @@ window.rfbRating = function(ri, { emptyStars = false } = {}) {
                 <div class="stat-row">
                     ${statItem(hrvVal,                   'HRV')}
                     ${statItem(fmtT(s.sessionLengthSec), 'Duration')}
-                    ${statItem(fmtN(Math.round(s.avgHr)),            'Avg HR')}
+                    ${statItem(fmtN(Math.round(s.avgHr)),   'Avg HR')}
                 </div>
                 ${shortNote}
             </div>`;
@@ -199,8 +200,8 @@ window.rfbRating = function(ri, { emptyStars = false } = {}) {
         if (isRFB && s.rfbTotalSec > 0) {
             const rfbAvgRaw  = (s.rfbAvgRI  ?? s.rfbAvgCoherence)  ?? null;
             const rfbPeakRaw = s.rfbPeakRI ?? s.rfbPeakCoherence;
-            const rfbAvg  = rfbAvgRaw  != null ? `${rfbAvgRaw} ${window.rfbRating(rfbAvgRaw)}`  : '--';
-            const rfbPeak = rfbPeakRaw != null ? `${rfbPeakRaw} ${window.rfbRating(rfbPeakRaw)}` : '--';
+            const rfbAvg  = rfbAvgRaw  != null ? `${rfbAvgRaw} ${rfbRating(rfbAvgRaw)}`  : '--';
+            const rfbPeak = rfbPeakRaw != null ? `${rfbPeakRaw} ${rfbRating(rfbPeakRaw)}` : '--';
             const rfbPct  = s.rfbPctAboveStar1 != null ? s.rfbPctAboveStar1 + '%' : '--';
             html += `
             <div class="stat-group">
@@ -262,8 +263,8 @@ window.rfbRating = function(ri, { emptyStars = false } = {}) {
         if (!isHRV && !isRFB && s.rfbTotalSec > 0) {
             const rfbAvgRaw  = (s.rfbAvgRI  ?? s.rfbAvgCoherence)  ?? null;
             const rfbPeakRaw = s.rfbPeakRI ?? s.rfbPeakCoherence;
-            const rfbAvg  = rfbAvgRaw  != null ? `${rfbAvgRaw} ${window.rfbRating(rfbAvgRaw)}`  : '--';
-            const rfbPeak = rfbPeakRaw != null ? `${rfbPeakRaw} ${window.rfbRating(rfbPeakRaw)}` : '--';
+            const rfbAvg  = rfbAvgRaw  != null ? `${rfbAvgRaw} ${rfbRating(rfbAvgRaw)}`  : '--';
+            const rfbPeak = rfbPeakRaw != null ? `${rfbPeakRaw} ${rfbRating(rfbPeakRaw)}` : '--';
             const rfbPct  = s.rfbPctAboveStar1 != null ? s.rfbPctAboveStar1 + '%' : '--';
             html += `
             <div class="stat-group">
@@ -305,7 +306,7 @@ window.rfbRating = function(ri, { emptyStars = false } = {}) {
             chips = `
                 <span class="chip chip-rfb">Resonance Breathing</span>
                 <span class="chip chip-duration">${durationMin} min</span>
-                ${rfbAvgRaw != null ? `<span class="chip chip-rfb-index">${rfbAvgRaw} ${window.rfbRating(rfbAvgRaw)} avg RI</span>` : ''}`;
+                ${rfbAvgRaw != null ? `<span class="chip chip-rfb-index">${rfbAvgRaw} ${rfbRating(rfbAvgRaw)} avg RI</span>` : ''}`;
         } else {
             // Standard activity — headline is target time or % active
             const headlineChip = byTarget
@@ -374,10 +375,12 @@ window.rfbRating = function(ri, { emptyStars = false } = {}) {
     });
 
     // ─── Public API ───────────────────────────────────────────────────────────
+    window.rfbRating = rfbRating;   // used by app.js live display
     window.SummaryCard = {
         buildCardHTML,
         buildStatGroupsHTML,
         buildCardHeaderHTML,
         statItem,
+        rfbRating,
     };
 })();

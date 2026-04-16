@@ -1415,8 +1415,8 @@ function updateCoherenceDisplay() {
                 const riPct  = Math.round(r.ri * 100);
                 const amp    = r.amplitudeBpm;
                 coherVal.textContent = riPct > 0
-                    ? `${riPct} ${window.rfbRating(riPct, { emptyStars: true })}`
-                    : window.rfbRating(0, { emptyStars: true });
+                    ? `${riPct} ${window.rfbRating(riPct, true)}`
+                    : window.rfbRating(0, true);
                 if (showDebug) {
                     const relLagSec = r.phaseDiffDeg != null ? (r.phaseDiffDeg / 360 * (rfbBreathPeriodMs() / 1000)) : null;
                     const lagStr   = relLagSec != null ? `${relLagSec >= 0 ? '+' : ''}${relLagSec.toFixed(1)}s` : '--';
