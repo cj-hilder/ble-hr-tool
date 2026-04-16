@@ -378,7 +378,8 @@ function recordRrHistory(rrValuesMs, notifTs) {
     //   Physio artifact  → real HR spike on graph; excluded from HRV; counted
     //   Clean beat       → graph + HRV processor
 
-    let lastCleanRr = recordRrHistory._lastCleanRr || 0;
+    let lastCleanRr         = recordRrHistory._lastCleanRr         || 0;
+    let lastSensorArtifactTs = recordRrHistory._lastSensorArtifactTs || 0;
 
     // Prepend any beat deferred from the previous packet, validated by timestamp.
     const pendingBeat = recordRrHistory._pendingBeat || null;
@@ -390,6 +391,7 @@ function recordRrHistory(rrValuesMs, notifTs) {
         } else {
             // Gap too large — deferred beat is not adjacent to the new ones.
             sessionSensorArtifacts++;
+            lastSensorArtifactTs = pendingBeat.ts;
             if (recordRrHistory._lastCleanRr > 0) {
                 const synth = Math.round(60000 / recordRrHistory._lastCleanRr);
                 if (synth >= 24 && synth <= 240)
@@ -419,6 +421,7 @@ function recordRrHistory(rrValuesMs, notifTs) {
 
         if (isSensorArtifact) {
             sessionSensorArtifacts++;
+            lastSensorArtifactTs = t;
             if (lastCleanRr > 0) {
                 const syntheticHr = Math.round(60000 / lastCleanRr);
                 if (syntheticHr >= 24 && syntheticHr <= 240)
@@ -433,6 +436,23 @@ function recordRrHistory(rrValuesMs, notifTs) {
         const isShort = lastCleanRr > 0 && deviation <= -DEV_THRESHOLD;
 
         if (isShort) {
+            // ── Noise-burst guard ─────────────────────────────────────────────
+            // If this short beat falls within NOISE_BURST_MS of a confirmed sensor
+            // artifact it is almost certainly the tail of the same noise burst
+            // rather than a genuine ectopic. Skip both deferral and PVC/PAC
+            // evaluation and force a sensor-artifact classification immediately.
+            const NOISE_BURST_MS = 1500;
+            if (lastSensorArtifactTs > 0 && t - lastSensorArtifactTs <= NOISE_BURST_MS) {
+                sessionSensorArtifacts++;
+                lastSensorArtifactTs = t;
+                if (lastCleanRr > 0) {
+                    const syntheticHr = Math.round(60000 / lastCleanRr);
+                    if (syntheticHr >= 24 && syntheticHr <= 240)
+                        rrHistory.push({ hr: syntheticHr, state: currentState, ts: t });
+                }
+                i++; continue;
+            }
+
             if (i + 1 >= pairs.length) {
                 // No successor in this packet — defer for cross-packet validation.
                 recordRrHistory._pendingBeat = { rr, ts: t };
@@ -475,6 +495,7 @@ function recordRrHistory(rrValuesMs, notifTs) {
 
             // Short beat matching neither pattern → sensor artifact.
             sessionSensorArtifacts++;
+            lastSensorArtifactTs = t;
             if (lastCleanRr > 0) {
                 const syntheticHr = Math.round(60000 / lastCleanRr);
                 if (syntheticHr >= 24 && syntheticHr <= 240)
@@ -492,6 +513,7 @@ function recordRrHistory(rrValuesMs, notifTs) {
 
         if (isLong) {
             sessionSensorArtifacts++;
+            lastSensorArtifactTs = t;
             const syntheticHr = Math.round(60000 / lastCleanRr);
             if (syntheticHr >= 24 && syntheticHr <= 240)
                 rrHistory.push({ hr: syntheticHr, state: currentState, ts: t });
@@ -506,7 +528,8 @@ function recordRrHistory(rrValuesMs, notifTs) {
             rrHistory.push({ hr: instantHr, state: currentState, ts: t });
         i++;
     }
-    recordRrHistory._lastCleanRr = lastCleanRr;
+    recordRrHistory._lastCleanRr          = lastCleanRr;
+    recordRrHistory._lastSensorArtifactTs = lastSensorArtifactTs;
 
     rrHistory.sort((a, b) => a.ts - b.ts);
     const cutoff = notifTs - HR_HISTORY_MS;
@@ -945,7 +968,8 @@ function restoreSessionUI() {
 async function requestWakeLock() {
     wakeLockDesired = true;
     // Only request if the API is supported and we don't already have an active lock
-    if ('wakeLock' in navigator && wakeLock === null) {
+    if ('wakeLock' in navigator && (wakeLock === null || wakeLock.released)) {
+        wakeLock = null;          // normalise stale reference before the await
         try {
             wakeLock = await navigator.wakeLock.request('screen');
 
@@ -976,7 +1000,8 @@ document.addEventListener('visibilitychange', async () => {
 
     // Re-acquire the wake lock if we wanted one. The API auto-released it when
     // the page was hidden, so wakeLock is null here even though we still want it.
-    if (wakeLockDesired && wakeLock === null) {
+    if (wakeLockDesired && (wakeLock === null || wakeLock.released)) {
+        wakeLock = null;          // clear stale reference before re-acquiring
         await requestWakeLock();
     }
 
