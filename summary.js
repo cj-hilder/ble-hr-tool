@@ -12,6 +12,19 @@ window.RFB_STAR_LEVELS = {
     EASTER_EGG: 80,  // 🍓
 };
 
+// Returns the rating string for a given RI value.
+// emptyStars: true  → live display (e.g. "★★☆ 🍓" — ☆ placeholders shown)
+//             false → summary cards (e.g. "★★ 🍓"  — filled stars only)
+window.rfbRating = function(ri, { emptyStars = false } = {}) {
+    if (ri == null) return '';
+    const { STAR1, STAR2, STAR3, EASTER_EGG } = window.RFB_STAR_LEVELS;
+    const count  = ri >= STAR3 ? 3 : ri >= STAR2 ? 2 : ri >= STAR1 ? 1 : 0;
+    const filled = '★'.repeat(count);
+    const empty  = emptyStars ? '☆'.repeat(3 - count) : '';
+    const berry  = ri >= EASTER_EGG ? ' 🍓' : '';
+    return filled + empty + berry;
+};
+
 (function () {
     'use strict';
 
@@ -23,22 +36,7 @@ window.RFB_STAR_LEVELS = {
     function fmtLag(sec, numLagPeriods) {
         return numLagPeriods > 0 ? formatTime(sec) : '--';
     }
-
-    // Returns filled stars (★) only — no empty outlines — for a given RI value.
-    function rfbStars(ri) {
-        if (ri == null) return '';
-        const { STAR1, STAR2, STAR3 } = window.RFB_STAR_LEVELS;
-        const count = ri >= STAR3 ? 3 : ri >= STAR2 ? 2 : ri >= STAR1 ? 1 : 0;
-        return '★'.repeat(count);
-    }
-
     function fmtDate(iso) {
-        const d = new Date(iso);
-        return d.toLocaleDateString(undefined, {
-            weekday: 'short', month: 'short', day: 'numeric', year: 'numeric'
-        });
-    }
-    function fmtTime(iso) {
         return new Date(iso).toLocaleTimeString(undefined, {
             hour: '2-digit', minute: '2-digit'
         });
@@ -195,10 +193,8 @@ window.RFB_STAR_LEVELS = {
         if (isRFB && s.rfbTotalSec > 0) {
             const rfbAvgRaw  = (s.rfbAvgRI  ?? s.rfbAvgCoherence)  ?? null;
             const rfbPeakRaw = s.rfbPeakRI ?? s.rfbPeakCoherence;
-            const rfbAvg  = rfbAvgRaw  != null ? `${rfbAvgRaw} ${rfbStars(rfbAvgRaw)}`   : '--';
-            const rfbPeak = rfbPeakRaw != null
-                ? String(rfbPeakRaw) + ' ' + rfbStars(rfbPeakRaw) + (rfbPeakRaw >= window.RFB_STAR_LEVELS.EASTER_EGG ? ' 🍓' : '')
-                : '--';
+            const rfbAvg  = rfbAvgRaw  != null ? `${rfbAvgRaw} ${window.rfbRating(rfbAvgRaw)}`  : '--';
+            const rfbPeak = rfbPeakRaw != null ? `${rfbPeakRaw} ${window.rfbRating(rfbPeakRaw)}` : '--';
             const rfbPct  = s.rfbPctAboveStar1 != null ? s.rfbPctAboveStar1 + '%' : '--';
             html += `
             <div class="stat-group">
@@ -260,10 +256,8 @@ window.RFB_STAR_LEVELS = {
         if (!isHRV && !isRFB && s.rfbTotalSec > 0) {
             const rfbAvgRaw  = (s.rfbAvgRI  ?? s.rfbAvgCoherence)  ?? null;
             const rfbPeakRaw = s.rfbPeakRI ?? s.rfbPeakCoherence;
-            const rfbAvg  = rfbAvgRaw  != null ? `${rfbAvgRaw} ${rfbStars(rfbAvgRaw)}`   : '--';
-            const rfbPeak = rfbPeakRaw != null
-                ? String(rfbPeakRaw) + ' ' + rfbStars(rfbPeakRaw) + (rfbPeakRaw >= window.RFB_STAR_LEVELS.EASTER_EGG ? ' 🍓' : '')
-                : '--';
+            const rfbAvg  = rfbAvgRaw  != null ? `${rfbAvgRaw} ${window.rfbRating(rfbAvgRaw)}`  : '--';
+            const rfbPeak = rfbPeakRaw != null ? `${rfbPeakRaw} ${window.rfbRating(rfbPeakRaw)}` : '--';
             const rfbPct  = s.rfbPctAboveStar1 != null ? s.rfbPctAboveStar1 + '%' : '--';
             html += `
             <div class="stat-group">
@@ -305,7 +299,7 @@ window.RFB_STAR_LEVELS = {
             chips = `
                 <span class="chip chip-rfb">Resonance Breathing</span>
                 <span class="chip chip-duration">${durationMin} min</span>
-                ${rfbAvgRaw != null ? `<span class="chip chip-rfb-index">${rfbAvgRaw} ${rfbStars(rfbAvgRaw)} avg RI</span>` : ''}`;
+                ${rfbAvgRaw != null ? `<span class="chip chip-rfb-index">${rfbAvgRaw} ${window.rfbRating(rfbAvgRaw)} avg RI</span>` : ''}`;
         } else {
             // Standard activity — headline is target time or % active
             const headlineChip = byTarget

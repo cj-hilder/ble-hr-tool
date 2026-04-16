@@ -1357,17 +1357,6 @@ function updateCoherenceDisplay() {
                      : currentState === 'pause'  ? '#888888'
                      : '#aaaaaa';
 
-    // 4-level star system matching Polar coherence tiers:
-    //   0 = none      (☆☆☆)  < 25
-    //   Thresholds defined in summary.js (window.RFB_STAR_LEVELS) — single source of truth.
-    function starsHtml(level, easterEgg) {
-        return '★'.repeat(level) + '☆'.repeat(3 - level) + (easterEgg ? '🍓' : '') ;
-    }
-    function riLevel(riPct) {
-        const SL = window.RFB_STAR_LEVELS;
-        return riPct >= SL.STAR3 ? 3 : riPct >= SL.STAR2 ? 2 : riPct >= SL.STAR1 ? 1 : 0;
-    }
-
     // Resonance row — only during reset + RFB
     if (coherEl) coherEl.style.display = inRfb ? 'flex' : 'none';
     if (inRfb && coherVal) {
@@ -1423,12 +1412,11 @@ function updateCoherenceDisplay() {
                 if (showDebug) dbg.textContent = 'collecting data…';
             } else {
                 if (coherEl) coherEl.style.display = 'flex';
-                const amp    = r.amplitudeBpm;
                 const riPct  = Math.round(r.ri * 100);
-                const level  = riLevel(riPct);
+                const amp    = r.amplitudeBpm;
                 coherVal.textContent = riPct > 0
-                    ? `${riPct} ${starsHtml(level, riPct >= window.RFB_STAR_LEVELS.EASTER_EGG)}`
-                    : starsHtml(0, false);
+                    ? `${riPct} ${window.rfbRating(riPct, { emptyStars: true })}`
+                    : window.rfbRating(0, { emptyStars: true });
                 if (showDebug) {
                     const relLagSec = r.phaseDiffDeg != null ? (r.phaseDiffDeg / 360 * (rfbBreathPeriodMs() / 1000)) : null;
                     const lagStr   = relLagSec != null ? `${relLagSec >= 0 ? '+' : ''}${relLagSec.toFixed(1)}s` : '--';
