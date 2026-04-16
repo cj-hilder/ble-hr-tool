@@ -248,9 +248,12 @@ const PEAK_FREQ_MAX_HISTORY = 120; // ~1 Hz update rate → ~2 min of history
 // t ≥ RFB_DISPLAY_SEC : headline RI + stars shown; recording begins
 const RFB_DISPLAY_SEC    = 75;  // when headline number and recording activate
 const RFB_DEBUG_SEC      = 30;  // when debug line switches from "collecting" to coherence stats
-// Amplitude gate: minimum RSA swing required to show any score.
-// 3.75 bpm = 25% of the Hirsch & Bishop (1981) healthy adult floor (15 bpm).
-const RFB_MIN_AMPLITUDE  = 3.75;
+// Amplitude gate: linear ramp from 0 → full credit at 7.5 bpm.
+// 7.5 bpm = 50% of the Hirsch & Bishop (1981) healthy adult floor of 15 bpm
+// for controlled slow breathing. Amplitudes below this receive a proportional
+// penalty, reflecting the established association between reduced RSA amplitude
+// and impaired cardiac vagal tone. Full credit at ≥ 7.5 bpm; zero below 0.
+const RFB_MIN_AMPLITUDE  = 7.5;
 
 // Returns a 0–1 stability value (1 = stable, 0 = wandering).
 // Thresholds are calibrated for the full PEAK_FREQ_MAX_HISTORY window:
@@ -2012,7 +2015,13 @@ function computeRfbSummary(recording, activeSec) {
         : recording.length;
     const totalSec = measuredSec;
     const pctAboveStar1 = Math.round(riVals.filter(v => v >= window.RFB_STAR_LEVELS.STAR1).length / totalSec * 100);
-    return { avg, peak, pctAboveStar1, totalSec };
+    // Amplitude stats — stored to allow future recalculation of RI if the
+    // amplitude gate formula changes. amp is 0 for old sessions without the field.
+    const ampVals = recording.map(s => s.amp ?? 0);
+    const avgAmplitude = Math.round(ampVals.reduce((a, b) => a + b, 0) / ampVals.length * 10) / 10;
+    const peakRiIdx    = riVals.indexOf(peak);
+    const peakRiAmplitude = ampVals[peakRiIdx] ?? null;
+    return { avg, peak, pctAboveStar1, totalSec, avgAmplitude, peakRiAmplitude };
 }
 
 // ─── Session summary ──────────────────────────────────────────────────────────
@@ -2130,16 +2139,25 @@ function computeSessionSummary() {
         pctTarget:    sessionSeconds > 0 && totalTargetSeconds > 0
                         ? Math.round(totalTargetSeconds / sessionSeconds * 100) : 0,
         avgHrTarget:  targetHrSamples.length ? Math.round(arrAvg(targetHrSamples)) : 0,
+        // Schema version — increment when stored fields change in a way that
+        // affects recalculation of derived metrics (e.g. RI amplitude gate).
+        // Absent on pre-versioning sessions (treat as version 0 / legacy).
+        schemaVersion: 1,
         sessionLengthSec: (isResonanceBreathing && rbSessionEndSeconds > 0) ? rbSessionEndSeconds : sessionSeconds,
         highestHr: sessionHrSamples.length ? Math.max(...sessionHrSamples) : 0,
         avgHr:     sessionHrSamples.length ? arrAvg(sessionHrSamples)      : 0,
         lowestHr:  sessionHrSamples.length ? Math.min(...sessionHrSamples) : 0,
         hrRecording: sessionHrRecording.slice(),
         // RFB coherence — null if RFB was not used or no valid readings were collected
-        rfbAvgRI:         rfbStats ? rfbStats.avg           : null,
-        rfbPeakRI:        rfbStats ? rfbStats.peak          : null,
-        rfbPctAboveStar1: rfbStats ? rfbStats.pctAboveStar1 : null,
-        rfbTotalSec:      rfbStats ? rfbStats.totalSec      : null,
+        rfbAvgRI:           rfbStats ? rfbStats.avg              : null,
+        rfbPeakRI:          rfbStats ? rfbStats.peak             : null,
+        rfbPctAboveStar1:   rfbStats ? rfbStats.pctAboveStar1    : null,
+        rfbTotalSec:        rfbStats ? rfbStats.totalSec         : null,
+        // Amplitude stats stored for future recalculation of historical RI scores
+        // if the amplitude gate formula changes. peakRiAmplitude is the RSA
+        // amplitude at the moment of peak RI, giving context for that best score.
+        rfbAvgAmplitude:    rfbStats ? rfbStats.avgAmplitude     : null,
+        rfbPeakRiAmplitude: rfbStats ? rfbStats.peakRiAmplitude  : null,
         rfbCoherenceRecording: rfbStats ? rfbCoherenceRecording.slice() : null,
         // HRV Reading fields
         hvIndexFinal:      isHRVReading ? currentHRVIndex : null,
