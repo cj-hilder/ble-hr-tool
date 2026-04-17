@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hr-pacer-v1.2.139';
+const CACHE_NAME = 'hr-pacer-v1.2.141';
 const ASSETS = [
     '/',
     '/index.html',
@@ -15,6 +15,7 @@ const ASSETS = [
     '/icon.png',
     '/quick_start_guide.html',
     '/about.html',
+    '/marked.min.js',
     '/README.md',
 ];
 
@@ -37,31 +38,36 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('fetch', event => {
-    const url = new URL(event.request.url);
+    // Skip cross-origin requests (like Google Fonts or APIs) to avoid security errors
+    if (!event.request.url.startsWith(registration.scope)) return;
 
     event.respondWith(
         caches.match(event.request).then(response => {
-            // 1. Direct Match: If the request is in the cache as-is, return it.
+            // 1. If it's in the cache, return it immediately
             if (response) return response;
 
-            // 2. Extension Logic: Handle the mismatch between /about and /about.html
-            if (url.origin === location.origin) {
-                // Case A: User asked for /about, but we only have /about.html in cache
-                if (!url.pathname.endsWith('.html') && url.pathname !== '/') {
-                    return caches.match(url.pathname + '.html');
-                }
-                
-                // Case B: User asked for /about.html, but we only have /about in cache
-                if (url.pathname.endsWith('.html')) {
-                    const cleanPath = url.pathname.slice(0, -5); // Strips '.html'
-                    return caches.match(cleanPath);
-                }
+            // 2. Cloudflare Pretty URL fallback
+            // If /about fails, try /about.html (and vice versa)
+            const url = new URL(event.request.url);
+            let alternatePath = null;
+
+            if (url.pathname.endsWith('.html')) {
+                alternatePath = url.pathname.replace('.html', '');
+            } else if (url.pathname !== '/' && !url.pathname.includes('.')) {
+                alternatePath = url.pathname + '.html';
             }
 
-            // 3. Fallback to Network
+            if (alternatePath) {
+                return caches.match(alternatePath).then(altResponse => {
+                    return altResponse || fetch(event.request);
+                });
+            }
+
+            // 3. Last resort: Network
             return fetch(event.request);
+        }).catch(() => {
+            // Generic fallback for total failure
+            return caches.match('/');
         })
     );
 });
-
-
