@@ -11,6 +11,8 @@ This app is intended to help you visualise what your heart is doing, pace yourse
 
 This app was built by a software developer managing their own post-concussion dysautonomia; not by a clinician or researcher. It is a best-effort personal project, grounded in published protocols and personal experience, that has worked well for its author. It may or may not work for you. Nothing here should be taken as medical advice, and it is no substitute for working with a qualified healthcare provider who understands your condition.
 
+Manawa is free, [open source software](https://github.com/cj-hilder/ble-hr-tool).
+
 > **Note:** Wrist based (optical) heart rate sensors are not usually suitable for measuring heart rate in the presence of dysautonomia. They are misled by irregular beats, weak pulse strength, and arm movement. They will often be significantly wrong by upwards of 30 bpm. A chest strap sensor, e.g. Polar H10, is strongly recommended for HR based pacing with dysautonomia.
 
 ---
