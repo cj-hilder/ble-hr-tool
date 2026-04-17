@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hr-pacer-v1.2.141';
+const CACHE_NAME = 'hr-pacer-v1.2.142';
 const ASSETS = [
     '/',
     '/index.html',
@@ -19,15 +19,17 @@ const ASSETS = [
     '/README.md',
 ];
 
-// Install: pre-cache all static assets
+// Install: pre-cache assets, but don't crash if one fails
 self.addEventListener('install', event => {
     event.waitUntil(
-        caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS))
+        caches.open(CACHE_NAME).then(cache => {
+            return cache.addAll(ASSETS).catch(err => console.warn('Partial cache install:', err));
+        })
     );
     self.skipWaiting();
 });
 
-// Activate: delete old caches from previous versions
+// Activate: clean up old caches
 self.addEventListener('activate', event => {
     event.waitUntil(
         caches.keys().then(keys =>
@@ -37,37 +39,34 @@ self.addEventListener('activate', event => {
     self.clients.claim();
 });
 
+// Fetch: NETWORK FIRST, fallback to cache
 self.addEventListener('fetch', event => {
-    // Skip cross-origin requests (like Google Fonts or APIs) to avoid security errors
-    if (!event.request.url.startsWith(registration.scope)) return;
+    // Skip cross-origin (like Google Fonts or CDNs) and non-GET requests
+    if (event.request.method !== 'GET' || !event.request.url.startsWith(self.location.origin)) {
+        return;
+    }
 
     event.respondWith(
-        caches.match(event.request).then(response => {
-            // 1. If it's in the cache, return it immediately
-            if (response) return response;
-
-            // 2. Cloudflare Pretty URL fallback
-            // If /about fails, try /about.html (and vice versa)
-            const url = new URL(event.request.url);
-            let alternatePath = null;
-
-            if (url.pathname.endsWith('.html')) {
-                alternatePath = url.pathname.replace('.html', '');
-            } else if (url.pathname !== '/' && !url.pathname.includes('.')) {
-                alternatePath = url.pathname + '.html';
-            }
-
-            if (alternatePath) {
-                return caches.match(alternatePath).then(altResponse => {
-                    return altResponse || fetch(event.request);
+        fetch(event.request)
+            .then(networkResponse => {
+                // If network succeeds, save a copy to the cache for later offline use
+                const responseClone = networkResponse.clone();
+                caches.open(CACHE_NAME).then(cache => {
+                    cache.put(event.request, responseClone);
                 });
-            }
-
-            // 3. Last resort: Network
-            return fetch(event.request);
-        }).catch(() => {
-            // Generic fallback for total failure
-            return caches.match('/');
-        })
+                return networkResponse;
+            })
+            .catch(() => {
+                // If network fails (offline), return the cached version
+                return caches.match(event.request).then(cachedResponse => {
+                    if (cachedResponse) {
+                        return cachedResponse;
+                    }
+                    // Last resort: if they are offline and navigating to a missing page, show the home screen
+                    if (event.request.mode === 'navigate') {
+                        return caches.match('/');
+                    }
+                });
+            })
     );
 });
