@@ -37,11 +37,13 @@ self.addEventListener('activate', event => {
     self.clients.claim();
 });
 
-// Fetch: cache-first, fall back to network
 self.addEventListener('fetch', event => {
     event.respondWith(
-        caches.match(event.request).then(cached => cached || fetch(event.request))
+        fetch(event.request).then(response => {
+            return response; // Success! Return the live page.
+        }).catch(() => {
+            return caches.match(event.request); // Only use cache if offline.
+        })
     );
 });
 
-  
