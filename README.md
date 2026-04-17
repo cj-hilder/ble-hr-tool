@@ -1,13 +1,13 @@
 # Manawa Pace v1.2
 ### MEASURE. PACE. RECOVER.
 
-**[Launch Manawa Pace here](https://cj-hilder.github.io/ble-hr-tool/)**
+**[Launch Manawa Pace here](https://manawapace.app)**
 
 A specialised, web-based heart rate pacing app designed for individuals with dysautonomia (such as POTS, Long COVID, ME/CFS, or Post-Concussion Syndrome).
 
 This app is intended to help you visualise what your heart is doing, pace yourself during exercise, and track your recovery. It is not intended for logging symptoms, nor does it analyse the data and offer advice. To use this app effectively you need to be aware of your symptoms, and understand how to pace your progress. 
 
-[Quick Start Guide here](https://cj-hilder.github.io/ble-hr-tool/quick_start_guide.html)
+[Quick Start Guide here](https://manawapace.app/quick_start_guide.html)
 
 This app was built by a software developer managing their own post-concussion dysautonomia; not by a clinician or researcher. It is a best-effort personal project, grounded in published protocols and personal experience, that has worked well for its author. It may or may not work for you. Nothing here should be taken as medical advice, and it is no substitute for working with a qualified healthcare provider who understands your condition.
 
