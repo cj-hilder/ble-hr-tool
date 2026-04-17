@@ -357,11 +357,12 @@ Because this app uses the **Web Bluetooth API**, it requires a compatible browse
 
 ### Setup Instructions
 
-1. Open the app on your Android device: **[cj-hilder.github.io/ble-hr-tool](https://cj-hilder.github.io/ble-hr-tool/)**
+1. Open the app on your Android device: **[manawapace.app](https://manawapace.app)**
 2. Tap the browser menu (three dots) and select **"Add to Home screen"** or **"Install App"**.
 3. Launch the app from your home screen.
 4. Put your heart rate monitor into pairing/broadcasting mode (e.g. on a Polar watch, select a workout and tap the gear icon to enable "Share HR with other devices").
 5. Tap **Connect to HR monitor** and select your device from the browser popup.
+6. Set Unrestricted Battery Use: (optional) Detailed instructions [here](https://manawapace.app/battery_settings_guide. html)
 
 ### Recommended Hardware
 
