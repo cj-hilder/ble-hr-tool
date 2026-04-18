@@ -388,7 +388,7 @@ To fix this:
 
 ## Author
 
-**Chris Hilder** — [github.com/cj-hilder](https://github.com/cj-hilder)
+**Chris Hilder** — [github.com/cj-hilder](https://github.com/cj-hilder) ✉️ chris at manawa.app 
 
 ## Licence
 
