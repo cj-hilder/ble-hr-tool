@@ -1,20 +1,51 @@
 <!DOCTYPE html>
 <html>
+<html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Manawa Pace</title>
+    <title>Manawa Pace – HR Pacing for Dysautonomia & ME/CFS</title>
+    <meta name="description" content="Free heart rate pacing app for dysautonomia, POTS, ME/CFS, Long COVID & Post-Concussion. Connect a Bluetooth chest strap. Measure. Pace. Recover.">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#000000">
+    <meta name="mobile-web-app-capable" content="yes">
+
+    <!-- Canonical -->
+    <link rel="canonical" href="https://manawapace.app/">
+
+    <!-- Open Graph -->
+    <meta property="og:title" content="Manawa Pace – HR Pacing for Dysautonomia & ME/CFS">
+    <meta property="og:description" content="Free heart rate pacing app for dysautonomia, POTS, ME/CFS, Long COVID & Post-Concussion. Connect a Bluetooth chest strap. Measure. Pace. Recover.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://manawapace.app/">
+    <meta property="og:image" content="https://manawapace.app/icon.png">
+
+    <!-- JSON-LD structured data -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "Manawa Pace",
+      "description": "Heart rate pacing app for people with dysautonomia, POTS, ME/CFS, Long COVID, and Post-Concussion Syndrome. Visualise HR patterns, pace exercise safely, and protect against post-exertional malaise. Free and open source.",
+      "applicationCategory": "HealthApplication",
+      "operatingSystem": ["Android", "Windows", "macOS", "Linux"],
+      "url": "https://manawapace.app/",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      }
+    }
+    </script>
+
     <link rel="manifest" href="/manifest.json">
     <link rel="icon" href="icon.png" type="image/png">
-    <link rel="apple-touch-icon" href="icon.png">
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="summary.css">
 </head>
 <body>
 
     <div id="setupUI">
-        <img src="icon.png" />
+        <img src="icon.png" alt="Manawa Pace logo" />
         <h2>Manawa Pace</h2>
         <p class="app-tagline">Measure. Pace. Recover.</p>
         <button id="connectBtn">Connect to HR monitor</button>
