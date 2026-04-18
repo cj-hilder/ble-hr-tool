@@ -362,7 +362,7 @@ Because this app uses the **Web Bluetooth API**, it requires a compatible browse
 3. Launch the app from your home screen.
 4. Put your heart rate monitor into pairing/broadcasting mode (e.g. on a Polar watch, select a workout and tap the gear icon to enable "Share HR with other devices").
 5. Tap **Connect to HR monitor** and select your device from the browser popup.
-6. Set Unrestricted Battery Use: (optional) Detailed instructions [here](https://manawapace.app/battery_settings_guide.html)
+6. Set Unrestricted Battery Use: (optional) This will prevent your screen from dimming during a session. Detailed instructions [here](https://manawapace.app/battery_settings_guide.html)
 
 ### Recommended Hardware
 

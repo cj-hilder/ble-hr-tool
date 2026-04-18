@@ -331,6 +331,20 @@ function recordRrHistory(rrValuesMs, notifTs) {
             ts += rrValuesMs[i];
             pairs.push({ rr: rrValuesMs[i], ts });
         }
+        // Flood guard: beats can't happen in the future. When queued packets
+        // flush after a background period, they arrive ms apart but each
+        // carries seconds of RR content, so the forward clock races ahead of
+        // wall-clock. Without this clamp, lastRrTimestamp drifts permanently
+        // into the future — the re-anchor condition above stays satisfied
+        // trivially (LHS negative, RHS positive), so every subsequent real-time
+        // beat continues to forward-clock until disconnect. Shifting the packet
+        // back so its last beat lands at notifTs keeps timestamps plausible
+        // and collapses flood beats into the tail of the 90s window.
+        if (ts > notifTs) {
+            const shift = ts - notifTs;
+            for (const p of pairs) p.ts -= shift;
+            ts = notifTs;
+        }
         lastRrTimestamp = ts;
     } else {
         // First packet or gap too large — seed from notifTs backwards as before.
@@ -573,9 +587,10 @@ function drawHrGraph() {
 
     const now = Date.now();
     const activeHistory = getActiveHrHistory();
-    const windowStart = activeHistory.length > 0
-        ? Math.max(activeHistory[0].ts, now - HR_HISTORY_MS)
-        : now - HR_HISTORY_MS;
+    // Always anchor the X-axis to wall-clock: show the most recent 90s.
+    // Data older than the window clips off the left; on first connection
+    // data builds in from the right (ECG-style) rather than the left.
+    const windowStart = now - HR_HISTORY_MS;
     function toX(ts) { return ((ts - windowStart) / HR_HISTORY_MS) * W; }
     function toY(hr)  { return H - (hr / MAX_HR) * H; }
 
@@ -1014,6 +1029,23 @@ document.addEventListener('visibilitychange', async () => {
     if (wakeLockDesired && (wakeLock === null || wakeLock.released)) {
         wakeLock = null;          // clear stale reference before re-acquiring
         await requestWakeLock();
+    }
+
+    // Eager flush if we were backgrounded long enough for the BLE queue to hold
+    // stale data. The lazy flush inside recordRrHistory only fires when the
+    // first queued packet arrives — that can leave pre-background data visible
+    // for tens/hundreds of ms. Doing it here makes the resume instantaneous-
+    // blank rather than briefly-stale. The first flood packet will still hit
+    // the isBackgroundGap branch (idempotent) and seed cleanly from notifTs.
+    const hrGap = lastHrWallClock > 0 ? Date.now() - lastHrWallClock : 0;
+    if (hrGap > BACKGROUND_GAP_MS) {
+        hrvProcessor.reset();
+        peakFreqHistory.length = 0;
+        lastRrTimestamp = 0;
+        recordRrHistory._lastCleanRr = 0;
+        recordRrHistory._pendingBeat = null;
+        rrHistory.length = 0;
+        hrHistory.length = 0;
     }
 
     // Force an immediate redraw of the HR graph. While hidden, requestAnimationFrame
