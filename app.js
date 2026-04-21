@@ -331,20 +331,6 @@ function recordRrHistory(rrValuesMs, notifTs) {
             ts += rrValuesMs[i];
             pairs.push({ rr: rrValuesMs[i], ts });
         }
-        // Flood guard: beats can't happen in the future. When queued packets
-        // flush after a background period, they arrive ms apart but each
-        // carries seconds of RR content, so the forward clock races ahead of
-        // wall-clock. Without this clamp, lastRrTimestamp drifts permanently
-        // into the future — the re-anchor condition above stays satisfied
-        // trivially (LHS negative, RHS positive), so every subsequent real-time
-        // beat continues to forward-clock until disconnect. Shifting the packet
-        // back so its last beat lands at notifTs keeps timestamps plausible
-        // and collapses flood beats into the tail of the 90s window.
-        if (ts > notifTs) {
-            const shift = ts - notifTs;
-            for (const p of pairs) p.ts -= shift;
-            ts = notifTs;
-        }
         lastRrTimestamp = ts;
     } else {
         // First packet or gap too large — seed from notifTs backwards as before.
@@ -424,14 +410,21 @@ function recordRrHistory(rrValuesMs, notifTs) {
     // so the pair-sum tolerance can be tight. PAC follow-up is near-normal but slightly
     // less constrained because the SA node resets from an arbitrary ectopic phase.
     // Both are tighter than the old 0.20 to avoid sensor noise satisfying either pattern.
-    const PVC_TOL   = 0.12; // pair-sum tolerance for PVC (was 0.20)
-    const PAC_TOL   = 0.15; // next-beat tolerance for PAC (was 0.20)
-    const DEV_THRESHOLD = 0.15; // minimum deviation to enter artifact analysis (was 0.20)
-                                // Lowered to catch subtle artifacts and ectopics — beats
-                                // failing both PVC and PAC pattern matching fall through
-                                // to sensor artifact classification. False positive cost
-                                // (synthetic fill) is low; false negative cost (artifact
-                                // displayed as real HR spike) is high.
+    const PVC_TOL       = 0.12;  // pair-sum tolerance for PVC — percentage of 2×lastCleanRr
+    const PAC_TOL_BPM   = 10;    // next-beat tolerance for PAC — fixed bpm, consistent with
+                                  // DEV_BPM. Percentage tolerance was too permissive at high
+                                  // HR (15% of RR 500ms = 18 bpm for a "normal" successor beat).
+    // Fixed 10 bpm threshold for entry into artifact/ectopic analysis.
+    // A percentage threshold becomes too permissive at high HR (15% of RR 500ms
+    // = 18 bpm) and too tight at low RFB HR. A fixed bpm threshold correctly
+    // reflects that genuine beat-to-beat variability is physiologically constrained
+    // in absolute terms regardless of mean HR. At RFB HR 50 bpm the maximum
+    // genuine beat-to-beat swing from a 20 bpm amplitude oscillation at 6 bpm
+    // is ~7.5 bpm; at exercise HR 120 bpm genuine variability is well under 5 bpm.
+    // 10 bpm provides headroom for both cases without becoming permissive at
+    // high HR. False positive cost (synthetic fill) is low; false negative cost
+    // (artifact displayed as real HR spike) is high — bias toward sensitivity.
+    const DEV_BPM = 10; // bpm, entry threshold for Tier 2 artifact/ectopic analysis
     let i = 0;
     while (i < pairs.length) {
         const { rr, ts: t, alreadyCounted } = pairs[i];
@@ -455,10 +448,11 @@ function recordRrHistory(rrValuesMs, notifTs) {
             i++; continue;
         }
 
-        const deviation = lastCleanRr > 0 ? (rr - lastCleanRr) / lastCleanRr : 0; // signed
+        // deviationBpm: positive = beat is faster than baseline (short RR), negative = slower
+        const deviationBpm = lastCleanRr > 0 ? (60000 / rr) - (60000 / lastCleanRr) : 0;
 
         // ── Tier 2a: short beat — enter pair-based ectopic detection ─────────
-        const isShort = lastCleanRr > 0 && deviation <= -DEV_THRESHOLD;
+        const isShort = lastCleanRr > 0 && deviationBpm >= DEV_BPM;
 
         if (isShort) {
             // ── Noise-burst guard ─────────────────────────────────────────────
@@ -493,7 +487,7 @@ function recordRrHistory(rrValuesMs, notifTs) {
             // Extra sanity: rr2 must be longer than rr1. A premature beat is always
             // followed by a longer recovery; if rr2 ≤ rr1 it is more likely two noise hits.
             const isPac = !isPvc &&
-                Math.abs(next.rr - lastCleanRr) / lastCleanRr < PAC_TOL &&
+                Math.abs((60000 / next.rr) - (60000 / lastCleanRr)) < PAC_TOL_BPM &&
                 next.rr > rr;
 
             if (isPvc) {
@@ -530,11 +524,11 @@ function recordRrHistory(rrValuesMs, notifTs) {
         }
 
         // ── Tier 2b: long beat not preceded by a classified short beat ────────
-        // Genuine HR deceleration is gradual — each step stays well within the
-        // DEV_THRESHOLD. A lone beat ≥20% longer than the baseline is almost
-        // always an orphaned compensatory pause or a sensor dropout. Synthetic-ize
-        // it so the graph only shows real HR values for classified ectopic pairs.
-        const isLong = lastCleanRr > 0 && deviation >= DEV_THRESHOLD;
+        // Genuine HR deceleration is gradual — each step stays well within DEV_BPM.
+        // A lone beat ≥ 10 bpm slower than baseline is almost always an orphaned
+        // compensatory pause or sensor dropout. Synthetize it so the graph only
+        // shows real HR values for classified ectopic pairs.
+        const isLong = lastCleanRr > 0 && deviationBpm <= -DEV_BPM;
 
         if (isLong) {
             sessionSensorArtifacts++;
@@ -587,10 +581,9 @@ function drawHrGraph() {
 
     const now = Date.now();
     const activeHistory = getActiveHrHistory();
-    // Always anchor the X-axis to wall-clock: show the most recent 90s.
-    // Data older than the window clips off the left; on first connection
-    // data builds in from the right (ECG-style) rather than the left.
-    const windowStart = now - HR_HISTORY_MS;
+    const windowStart = activeHistory.length > 0
+        ? Math.max(activeHistory[0].ts, now - HR_HISTORY_MS)
+        : now - HR_HISTORY_MS;
     function toX(ts) { return ((ts - windowStart) / HR_HISTORY_MS) * W; }
     function toY(hr)  { return H - (hr / MAX_HR) * H; }
 
@@ -1029,23 +1022,6 @@ document.addEventListener('visibilitychange', async () => {
     if (wakeLockDesired && (wakeLock === null || wakeLock.released)) {
         wakeLock = null;          // clear stale reference before re-acquiring
         await requestWakeLock();
-    }
-
-    // Eager flush if we were backgrounded long enough for the BLE queue to hold
-    // stale data. The lazy flush inside recordRrHistory only fires when the
-    // first queued packet arrives — that can leave pre-background data visible
-    // for tens/hundreds of ms. Doing it here makes the resume instantaneous-
-    // blank rather than briefly-stale. The first flood packet will still hit
-    // the isBackgroundGap branch (idempotent) and seed cleanly from notifTs.
-    const hrGap = lastHrWallClock > 0 ? Date.now() - lastHrWallClock : 0;
-    if (hrGap > BACKGROUND_GAP_MS) {
-        hrvProcessor.reset();
-        peakFreqHistory.length = 0;
-        lastRrTimestamp = 0;
-        recordRrHistory._lastCleanRr = 0;
-        recordRrHistory._pendingBeat = null;
-        rrHistory.length = 0;
-        hrHistory.length = 0;
     }
 
     // Force an immediate redraw of the HR graph. While hidden, requestAnimationFrame

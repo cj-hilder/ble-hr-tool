@@ -127,7 +127,7 @@ When connected to a sensor that exposes raw beat-to-beat RR intervals, such as t
 >- **PVC (premature ventricular contraction):** A beat that fires early. On the graph it appears as a **sharp spike upward, immediately followed by a smaller spike downward**. 
 >- **PAC (premature atrial contraction):** A beat that fires early and resets your cardiac rhythm. On the graph it appears as a **spike upward with no corresponding downward spike**.
 >
->Anything under 1% of beats being ectopic is generally considered negligible, and up to a few hundred ectopic beats a day is normal for a healthy, functioning heart. Ectopic beats can fluctuate based on sleep quality, caffeine intake, and stress. However, a sustained downwards trend might indicate improved ANS health, especially in conjunction with other signs of recovery.  If you regularly see more than 5%, a significant change in rate above 1%, or if the beats are accompanied by dizziness or fainting, it may be worth mentioning to a clinician.
+>Anything under 1% of beats being ectopic is generally considered negligible, and up to a few hundred ectopic beats a day is normal for a healthy, functioning heart. Ectopic beats can fluctuate widely based on sleep quality, caffeine intake, and stress. A sustained downwards trend might indicate improved ANS health, especially in conjunction with other signs of recovery, but observing a trend is made difficult by the comparatively small numbers of ectopic beats. If you regularly see more than 5%, a significant change in rate above 1%, or if the beats are accompanied by dizziness or fainting, it may be worth mentioning to a clinician.
 
 ---
 
