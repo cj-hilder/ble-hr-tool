@@ -292,6 +292,9 @@ function recordRrHistory(rrValuesMs, notifTs) {
     const wallNow   = Date.now();
     const wallGap   = lastRrWallClock > 0 ? wallNow - lastRrWallClock : 0;
     lastRrWallClock = wallNow;
+    // Pre-session beats are tagged 'idle' so the graph can colour them grey,
+    // distinct from both active (black) and recovery/reset (white) states.
+    const beatState = isSessionRunning ? currentState : 'idle';
 
     // Distinguish two gap scenarios using lastHrWallClock, which is updated on
     // every HR packet AFTER recordRrHistory returns, so it always holds the
@@ -415,7 +418,7 @@ function recordRrHistory(rrValuesMs, notifTs) {
             if (recordRrHistory._lastCleanRr > 0) {
                 const synth = Math.round(60000 / recordRrHistory._lastCleanRr);
                 if (synth >= 24 && synth <= 240)
-                    rrHistory.push({ hr: synth, state: currentState, ts: pendingBeat.ts });
+                    rrHistory.push({ hr: synth, state: beatState, ts: pendingBeat.ts });
             }
         }
     }
@@ -457,7 +460,7 @@ function recordRrHistory(rrValuesMs, notifTs) {
             if (lastCleanRr > 0) {
                 const syntheticHr = Math.round(60000 / lastCleanRr);
                 if (syntheticHr >= 24 && syntheticHr <= 240)
-                    rrHistory.push({ hr: syntheticHr, state: currentState, ts: t });
+                    rrHistory.push({ hr: syntheticHr, state: beatState, ts: t });
             }
             i++; continue;
         }
@@ -481,7 +484,7 @@ function recordRrHistory(rrValuesMs, notifTs) {
                 if (lastCleanRr > 0) {
                     const syntheticHr = Math.round(60000 / lastCleanRr);
                     if (syntheticHr >= 24 && syntheticHr <= 240)
-                        rrHistory.push({ hr: syntheticHr, state: currentState, ts: t });
+                        rrHistory.push({ hr: syntheticHr, state: beatState, ts: t });
                 }
                 i++; continue;
             }
@@ -510,9 +513,9 @@ function recordRrHistory(rrValuesMs, notifTs) {
                 const hrPremature = Math.round(60000 / rr);
                 const hrPause     = Math.round(60000 / next.rr);
                 if (hrPremature >= 24 && hrPremature <= 240)
-                    rrHistory.push({ hr: hrPremature, state: currentState, ts: t, ectopic: true });
+                    rrHistory.push({ hr: hrPremature, state: beatState, ts: t, ectopic: true });
                 if (hrPause >= 24 && hrPause <= 240)
-                    rrHistory.push({ hr: hrPause, state: currentState, ts: next.ts, ectopic: true });
+                    rrHistory.push({ hr: hrPause, state: beatState, ts: next.ts, ectopic: true });
                 // lastCleanRr NOT updated — baseline preserved through ectopic pair.
                 i += 2; continue;
             }
@@ -521,7 +524,7 @@ function recordRrHistory(rrValuesMs, notifTs) {
                 sessionPhysioArtifacts++;
                 const hrPremature = Math.round(60000 / rr);
                 if (hrPremature >= 24 && hrPremature <= 240)
-                    rrHistory.push({ hr: hrPremature, state: currentState, ts: t, ectopic: true });
+                    rrHistory.push({ hr: hrPremature, state: beatState, ts: t, ectopic: true });
                 // lastCleanRr NOT updated — next beat evaluated against original baseline.
                 i++; continue;
             }
@@ -532,7 +535,7 @@ function recordRrHistory(rrValuesMs, notifTs) {
             if (lastCleanRr > 0) {
                 const syntheticHr = Math.round(60000 / lastCleanRr);
                 if (syntheticHr >= 24 && syntheticHr <= 240)
-                    rrHistory.push({ hr: syntheticHr, state: currentState, ts: t });
+                    rrHistory.push({ hr: syntheticHr, state: beatState, ts: t });
             }
             i++; continue;
         }
@@ -549,7 +552,7 @@ function recordRrHistory(rrValuesMs, notifTs) {
             lastSensorArtifactTs = t;
             const syntheticHr = Math.round(60000 / lastCleanRr);
             if (syntheticHr >= 24 && syntheticHr <= 240)
-                rrHistory.push({ hr: syntheticHr, state: currentState, ts: t });
+                rrHistory.push({ hr: syntheticHr, state: beatState, ts: t });
             i++; continue;
         }
 
@@ -558,7 +561,7 @@ function recordRrHistory(rrValuesMs, notifTs) {
         hrvProcessor.addRR(rr, t);
         const instantHr = Math.round(60000 / rr);
         if (instantHr >= 24 && instantHr <= 240)
-            rrHistory.push({ hr: instantHr, state: currentState, ts: t });
+            rrHistory.push({ hr: instantHr, state: beatState, ts: t });
         i++;
     }
     recordRrHistory._lastCleanRr          = lastCleanRr;
@@ -580,7 +583,7 @@ function getActiveHrHistory() {
 
 function recordHrHistory(hr) {
     const now = Date.now();
-    hrHistory.push({ hr, state: currentState, ts: now });
+    hrHistory.push({ hr, state: isSessionRunning ? currentState : 'idle', ts: now });
     const cutoff = now - HR_HISTORY_MS;
     while (hrHistory.length > 0 && hrHistory[0].ts < cutoff) hrHistory.shift();
     drawHrGraph();
@@ -631,11 +634,14 @@ function drawHrGraph() {
 
     // ── HR line (beat-to-beat if available, averaged as fallback) ─────────────
     if (activeHistory.length >= 2) {
+        // #b0b0b0 for pre-session idle data — lighter than #888 pause text,
+        // darker than white session data, contrasts with black background.
+        const hrLineColor = s => s === 'active' ? 'black' : s === 'idle' ? '#b0b0b0' : 'white';
         ctx.globalAlpha = 0.7;
         // Beat-to-beat data is drawn thinner since it has natural jaggedness
         ctx.lineWidth = hasRrData && activeHistory === rrHistory ? 1.5 : 3;
         ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-        ctx.strokeStyle = activeHistory[0].state === 'active' ? 'black' : 'white';
+        ctx.strokeStyle = hrLineColor(activeHistory[0].state);
         const GAP_HALF = 2.0;
         ctx.beginPath();
         let pathStarted = false, prevState = null;
@@ -645,7 +651,7 @@ function drawHrGraph() {
             const isStateChange = prevState !== null && state !== prevState;
             if (isStateChange) {
                 ctx.stroke();
-                ctx.strokeStyle = state === 'active' ? 'black' : 'white';
+                ctx.strokeStyle = hrLineColor(state);
                 ctx.beginPath(); ctx.moveTo(x + GAP_HALF, y); pathStarted = true;
             } else if (!pathStarted) {
                 ctx.moveTo(x, y); pathStarted = true;
@@ -2423,11 +2429,10 @@ function startSession() {
     activePeriods = []; recoveryPeriods = []; currentPeriodType = null; sessionHrSamples = []; targetHrSamples = [];
     rfbSessionClockStart = 0; activityLimitTriggered = false; sessionHrRecording = []; rfbCoherenceRecording = [];
     rfbActiveSeconds = 0; rbSessionEndSeconds = 0;
-    // Flush HR graph history and RR pipeline so stale inter-session data
-    // (accumulated while the sensor kept broadcasting) doesn't anchor the
-    // graph window behind the new session start.
-    hrHistory.length = 0;
-    rrHistory.length = 0;
+    // Preserve hrHistory and rrHistory across session start — pre-session beats
+    // are tagged 'idle' and displayed in grey, giving up to 90s of context before
+    // the session begins. The RR pipeline (lastRrTimestamp, processor, etc.) is
+    // still reset so metrics start fresh and the first post-start packet re-anchors.
     hasRrData = false;
     lastRrTimestamp = 0;
     lastRrWallClock = 0;
