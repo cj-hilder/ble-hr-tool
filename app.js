@@ -2673,14 +2673,36 @@ document.getElementById('summaryDiscardBtn').addEventListener('click', () => {
 });
 
 document.getElementById('homeBtn').addEventListener('click', () => {
-    isManualDisconnect = true;
-    document.body.classList.remove('connected');
-    document.getElementById('homeBtn').style.display = 'none';
-    if (bluetoothDevice && bluetoothDevice.gatt.connected) bluetoothDevice.gatt.disconnect();
-    else isManualDisconnect = false;
+    if (isSessionRunning) {
+        // Session is running — just hide the connected UI. Keep the BLE
+        // connection, session interval, and all state intact so the user
+        // can return via Connect and pick up exactly where they left off.
+        // sessionSeconds continues accumulating via sessionStartTime.
+        document.body.classList.remove('connected');
+    } else {
+        // No session — full disconnect as before.
+        isManualDisconnect = true;
+        document.body.classList.remove('connected');
+        document.getElementById('homeBtn').style.display = 'none';
+        if (bluetoothDevice && bluetoothDevice.gatt.connected) bluetoothDevice.gatt.disconnect();
+        else isManualDisconnect = false;
+    }
 });
 
 document.getElementById('connectBtn').addEventListener('click', async () => {
+    // Fast-path: if a connection already exists (e.g. user hit home during a
+    // session, or returned after navigating away), skip BLE setup entirely and
+    // re-enter the connected UI directly.
+    if (bluetoothDevice && bluetoothDevice.gatt.connected) {
+        document.body.classList.add('connected');
+        if (isSessionRunning) {
+            restoreSessionUI();
+            // sessionInterval is already running — do not start a second one
+        } else {
+            document.getElementById('homeBtn').style.display = 'flex';
+        }
+        return;
+    }
     try {
         // Ensure any stale device reference is cleared before requesting a new one.
         // If the previous device was abandoned (e.g. after failed reconnection),
