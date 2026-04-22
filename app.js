@@ -2743,19 +2743,54 @@ document.getElementById('rbTimeUpExtendBtn').addEventListener('click', () => {
 document.addEventListener('DOMContentLoaded', () => { updateSpeedometer(0); tryAutoReconnect(); });
 
 async function tryAutoReconnect() {
+    // ── Session restore ───────────────────────────────────────────────────────
     const restored = restoreSession();
-    if (!restored) return;
-    document.body.classList.add('connected');
-    restoreSessionUI();
-    sessionInterval = setInterval(handleTick, 1000);
-    requestWakeLock();
-    function fallbackToHome() { clearInterval(sessionInterval); document.body.classList.remove('connected'); }
-    if (!navigator.bluetooth || !navigator.bluetooth.getDevices) { fallbackToHome(); return; }
+    if (restored) {
+        document.body.classList.add('connected');
+        restoreSessionUI();
+        sessionInterval = setInterval(handleTick, 1000);
+        requestWakeLock();
+    }
+
+    // ── Device reconnect ──────────────────────────────────────────────────────
+    // Always attempt to reclaim the previously paired device via getDevices(),
+    // regardless of whether a session was restored. This avoids the picker
+    // appearing when the user simply refreshed the page with no active session.
+    if (!navigator.bluetooth || !navigator.bluetooth.getDevices) {
+        if (restored) document.body.classList.remove('connected');
+        return;
+    }
     try {
         const devices = await navigator.bluetooth.getDevices();
-        if (devices.length === 0) { fallbackToHome(); return; }
+        if (devices.length === 0) {
+            if (restored) document.body.classList.remove('connected');
+            return;
+        }
         bluetoothDevice = devices[0];
         bluetoothDevice.addEventListener('gattserverdisconnected', handleDisconnect);
-        startReconnect();
-    } catch (e) { fallbackToHome(); }
+        if (restored) {
+            // Session is waiting — reconnect immediately via the existing flow.
+            startReconnect();
+        } else {
+            // No session — silently reconnect in the background. On success,
+            // wire up notifications and show the home button so the user can
+            // proceed normally without touching the device picker.
+            try {
+                const server = await bluetoothDevice.gatt.connect();
+                const service = await server.getPrimaryService('heart_rate');
+                const characteristic = await service.getCharacteristic('heart_rate_measurement');
+                await characteristic.startNotifications();
+                characteristic.removeEventListener('characteristicvaluechanged', handleHeartRate);
+                characteristic.addEventListener('characteristicvaluechanged', handleHeartRate);
+                document.body.classList.add('connected');
+                requestWakeLock();
+                document.getElementById('homeBtn').style.display = 'flex';
+            } catch (e) {
+                // Silent failure — user will press Connect manually which falls
+                // through to requestDevice() as before.
+            }
+        }
+    } catch (e) {
+        if (restored) document.body.classList.remove('connected');
+    }
 }
