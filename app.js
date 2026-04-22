@@ -2701,31 +2701,42 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
     // the browser still remembers the device from getDevices().
     if (navigator.bluetooth && navigator.bluetooth.getDevices) {
         try {
+            log('Looking for previously connected device...');
             const devices = await navigator.bluetooth.getDevices();
             if (devices.length > 0) {
                 const device = devices[0];
-                try {
-                    device.addEventListener('gattserverdisconnected', handleDisconnect);
-                    const server = await device.gatt.connect();
-                    const service = await server.getPrimaryService('heart_rate');
-                    const characteristic = await service.getCharacteristic('heart_rate_measurement');
-                    await characteristic.startNotifications();
-                    characteristic.removeEventListener('characteristicvaluechanged', handleHeartRate);
-                    characteristic.addEventListener('characteristicvaluechanged', handleHeartRate);
-                    bluetoothDevice = device;
-                    log('✅ Reconnected. Waiting for first heartbeat...');
-                    document.body.classList.add('connected');
-                    requestWakeLock();
-                    const restored = restoreSession();
-                    if (restored) { restoreSessionUI(); sessionInterval = setInterval(handleTick, 1000); }
-                    else document.getElementById('homeBtn').style.display = 'flex';
-                    return;
-                } catch (e) {
-                    // Device found but connect failed — fall through to picker.
+                device.addEventListener('gattserverdisconnected', handleDisconnect);
+                // Retry up to 3 times — H10 may take a few seconds to start
+                // advertising again after a disconnect / page reload.
+                let connected = false;
+                for (let attempt = 1; attempt <= 3 && !connected; attempt++) {
+                    try {
+                        log(`Reconnecting to ${device.name || 'device'}… (attempt ${attempt}/3)`);
+                        const server = await device.gatt.connect();
+                        const service = await server.getPrimaryService('heart_rate');
+                        const characteristic = await service.getCharacteristic('heart_rate_measurement');
+                        await characteristic.startNotifications();
+                        characteristic.removeEventListener('characteristicvaluechanged', handleHeartRate);
+                        characteristic.addEventListener('characteristicvaluechanged', handleHeartRate);
+                        bluetoothDevice = device;
+                        log('✅ Reconnected. Waiting for first heartbeat...');
+                        document.body.classList.add('connected');
+                        requestWakeLock();
+                        const restored = restoreSession();
+                        if (restored) { restoreSessionUI(); sessionInterval = setInterval(handleTick, 1000); }
+                        else document.getElementById('homeBtn').style.display = 'flex';
+                        connected = true;
+                    } catch (e) {
+                        if (attempt < 3) await new Promise(r => setTimeout(r, 3000));
+                    }
                 }
+                if (connected) return;
+                log('Could not reconnect automatically — please select your device below.');
+            } else {
+                log('No previous device found — please select your HR monitor.');
             }
         } catch (e) {
-            // getDevices() not available or failed — fall through to picker.
+            log('Bluetooth lookup failed — please select your device below.');
         }
     }
 
