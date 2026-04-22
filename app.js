@@ -2673,19 +2673,12 @@ document.getElementById('summaryDiscardBtn').addEventListener('click', () => {
 });
 
 document.getElementById('homeBtn').addEventListener('click', () => {
-    if (isSessionRunning) {
-        // Session is running — just hide the connected UI. Keep the BLE
-        // connection, session interval, and all state intact so the user
-        // can return via Connect and pick up exactly where they left off.
-        // sessionSeconds continues accumulating via sessionStartTime.
-        document.body.classList.remove('connected');
-    } else {
-        // No session — full disconnect as before.
-        isManualDisconnect = true;
-        document.body.classList.remove('connected');
+    // Always just hide the connected UI without disconnecting. If a session is
+    // running it continues normally; if not, the BLE connection is preserved so
+    // Connect can fast-path straight back without showing the device picker.
+    document.body.classList.remove('connected');
+    if (!isSessionRunning) {
         document.getElementById('homeBtn').style.display = 'none';
-        if (bluetoothDevice && bluetoothDevice.gatt.connected) bluetoothDevice.gatt.disconnect();
-        else isManualDisconnect = false;
     }
 });
 
