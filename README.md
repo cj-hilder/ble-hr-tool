@@ -118,9 +118,11 @@ You are currently in the active state but want to rest voluntarily — not becau
 
 ## The Live HR Graph
 
-Your heart rate is graphed continuously on screen. The display shows the last 90 secs of data. 
+Your heart rate is graphed continuously on screen. The display shows the last 90 secs of data. The graph begins as soon as you connect to your HR monitor — before any session starts. This pre-session data is shown in grey, giving you a baseline view of your resting HR and any spontaneous variability before you begin. When a session starts, the graph transitions to its normal colours.
 
-When connected to a sensor that exposes raw beat-to-beat RR intervals, such as the Polar H10, this graph shows **unsmoothed, instantaneous heart rate**. This is not the smoothed heart rate graph that most fitness apps show. It shows every little variation and will be quite jagged, especially when you are at rest or low levels of exertion. You will see involuntary sighs as smooth little dips and ectopic beats as vertical spikes. Seeing these on the graph is not a cause for concern — this is the app doing exactly what it says: showing you your cardiac data rather than hiding it. 
+When connected to a sensor that exposes raw beat-to-beat RR intervals, such as the Polar H10, this graph shows **unsmoothed, instantaneous heart rate**. This is not the smoothed heart rate graph that most fitness apps show. It shows every little variation and will be quite jagged, especially when you are at rest or low levels of exertion. You will see involuntary sighs as smooth little dips and ectopic beats as vertical spikes. Seeing these on the graph is not a cause for concern — this is the app doing exactly what it says: showing you your cardiac data rather than hiding it.
+
+>**Spontaneous sighs:** During light aerobic activity you may notice involuntary sighs — deeper breaths that appear as a brief dip on the HR graph — occurring roughly every 2–5 minutes. This is a normal physiological reflex that reinflates small areas of lung tissue and resets respiratory mechanics. Below your anaerobic threshold, breathing is comfortable and sighs occur as regular periodic maintenance. At or above the ventilatory threshold, breathing becomes effortful and driven, and the comfortable periodic sigh pattern breaks down — either suppressed, or replaced by an irregular rhythm. If you notice sighs becoming infrequent or disappearing, or your breathing feeling driven rather than comfortable, this is a useful subjective signal that you may be approaching your anaerobic threshold.
 
 >**Ectopic heart beats:**  If any are detected they will be included in the session summary. Ectopics are beats that fire outside the normal cardiac rhythm. There are two common types:
 >
