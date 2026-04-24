@@ -9,11 +9,11 @@ This app is intended to help you visualise what your heart is doing, pace yourse
 
 [Quick Start Guide here](https://manawapace.app/quick_start_guide.html)
 
-This app was built by a software developer managing their own post-concussion dysautonomia; not by a clinician or researcher. It is a best-effort personal project, grounded in published protocols and personal experience, that has worked well for its author. It may or may not work for you. Nothing here should be taken as medical advice, and it is no substitute for working with a qualified healthcare provider who understands your condition.
+I built Manawa Pace to help manage my own post-concussion dysautonomia. I am not a clinician or researcher; this is a best-effort personal project that has worked well for me. It may or may not work for you. Nothing here should be taken as medical advice, and it is no substitute for working with a qualified healthcare provider who understands your condition.
 
 Manawa Pace is free, [open source software](https://github.com/cj-hilder/ble-hr-tool).
 
-> **Note:** Wrist based (optical) heart rate sensors are not usually suitable for measuring heart rate in the presence of dysautonomia. They are misled by irregular beats, weak pulse strength, and arm movement. They will often be significantly wrong by upwards of 30 bpm. A chest strap sensor, e.g. Polar H10, is strongly recommended for HR based pacing with dysautonomia.
+> **Note:** Wrist based (optical) heart rate sensors are not usually suitable for measuring heart rate in the presence of dysautonomia. They are misled by irregular beats, weak pulse strength, and arm movement. They will often be significantly wrong. A chest strap sensor, e.g. Polar H10, is strongly recommended for HR based pacing with dysautonomia.
 
 ---
 
@@ -29,6 +29,11 @@ Patients with dysautonomia have a different experience. The autonomic nervous sy
 
 Standard apps have no way to display or respond to any of these patterns. This app is built specifically to help visualise and respond to them.
 
+In addition, this app can support recovery beyond the point where your heart regulation has become normal with these features:
+1. An activity timer based on target heart rate to help you keep to a tightly controlled exercise programme.
+2. Guided resonance frequency breathing to help restore ANS health. 
+3. HRV measurement to track daily readiness and overall recovery.
+
 ---
 
 ## The Pacing Approach
@@ -39,7 +44,7 @@ The app is based on three principles:
 2. **A dysregulated ANS means HR will sometimes go too high or too low for the level of exertion.** This cannot always be prevented through careful pacing. The goal is to make it visible and to allow you to respond when it happens.
 3. **Only exercise when the heart rate is appropriate to the level of exertion.** When HR goes outside the appropriate range, stop activity until it returns.
 
-The app implements this by monitoring your live heart rate via a Bluetooth HR monitor and alerting you — with sound and vibration — when your heart rate crosses into or out of threshold zones, allowing you to follow strict pacing without having to watch the screen continuously.
+The app monitors your live heart rate via a Bluetooth HR monitor and alerts you when your heart rate crosses into or out of threshold zones, allowing you to follow strict pacing without having to watch the screen continuously.
 
 Do not blindly follow the app. Be ready to adjust the settings, hit the reset button, or end the session if needed.
 
@@ -61,6 +66,8 @@ Clinical assessment is always preferable. The RHR + 15 rule is a conservative, a
 
 Success will appear as gradually shorter lag and recovery periods, fewer resets, and more time in the active state — all at a *fixed* threshold.
 
+Once your recovery lag times have become normal, typically less than 6 seconds, this might indicate full recovery. However, if you continue to get symptoms of PEM then continue to use the app for threshold-based pacing.
+
 ### If you do not have PEM or chronic fatigue
 
 Your active threshold is a **progressive target**. The goal is to raise it carefully over time as the ANS demonstrates it can handle the current level.
@@ -74,6 +81,8 @@ The difficulty with dysautonomia-related HR instability is that the BCTT presupp
 A practical alternative is to **start with the Workwell RHR + 15 approach as an initial ceiling**, and progressively raise the threshold as HR regulation and symptoms improve. HR regulation improvement will appear as shorter lag and recovery periods, fewer resets, and more time in the active state. Raise the threshold incrementally and monitor the response watching both HR regulation and symptoms.
 
 This approach uses the same logic as the Buffalo Protocol, sub-symptom threshold exercise to drive autonomic recovery, but replaces the clinical measurement with a conservative starting point and a methodology for ongoing progression.
+
+Once your recovery lag times have become normal, typically less than 6 seconds, it becomes possible to start following the standard Buffalo protocol. This app continues to support your recovery by letting you switch the activity timer to target mode, and carefully following a progressive programme of exercise increments.
 
 ---
 
@@ -118,11 +127,11 @@ You are currently in the active state but want to rest voluntarily — not becau
 
 ## The Live HR Graph
 
-Your heart rate is graphed continuously on screen. The display shows the last 90 secs of data. The graph begins as soon as you connect to your HR monitor — before any session starts. This pre-session data is shown in grey, giving you a baseline view of your resting HR and any spontaneous variability before you begin. When a session starts, the graph transitions to its normal colours.
+Your heart rate is graphed continuously on screen. The display shows the last 90 secs of data. The graph begins as soon as you connect to your HR monitor — before any session starts. This pre-session data is shown in grey, giving you a baseline view of your resting HR and any spontaneous variability before you begin.
 
 When connected to a sensor that exposes raw beat-to-beat RR intervals, such as the Polar H10, this graph shows **unsmoothed, instantaneous heart rate**. This is not the smoothed heart rate graph that most fitness apps show. It shows every little variation and will be quite jagged, especially when you are at rest or low levels of exertion. You will see involuntary sighs as smooth little dips and ectopic beats as vertical spikes. Seeing these on the graph is not a cause for concern — this is the app doing exactly what it says: showing you your cardiac data rather than hiding it.
 
->**Spontaneous sighs:** During light aerobic activity you may notice involuntary sighs — deeper breaths that appear as a brief dip on the HR graph — occurring roughly every 2–5 minutes. This is a normal physiological reflex that reinflates small areas of lung tissue and resets respiratory mechanics. Below your anaerobic threshold, breathing is comfortable and sighs occur as regular periodic maintenance. At or above the ventilatory threshold, breathing becomes effortful and driven, and the comfortable periodic sigh pattern breaks down — either suppressed, or replaced by an irregular rhythm. If you notice sighs becoming infrequent or disappearing, or your breathing feeling driven rather than comfortable, this is a useful subjective signal that you may be approaching your anaerobic threshold.
+>**Spontaneous sighs:** During light aerobic activity you may notice involuntary sighs — deeper breaths that appear as smooth little dips on the HR graph — occurring roughly every 2–5 minutes. This is a normal physiological reflex. These normally disappear around your anaerobic threshold. Observing the presence or absence of involuntary sighs can sometimes be a useful indicator that helps with establishing your anaerobic threshold. 
 
 >**Ectopic heart beats:**  If any are detected they will be included in the session summary. Ectopics are beats that fire outside the normal cardiac rhythm. There are two common types:
 >
@@ -290,24 +299,23 @@ The key parameters and their purpose:
 - *Upper threshold* — The ceiling for the Active state. If unsure, resting HR + 15 is a conservative starting point.
 - *Lower threshold* — HR must fall below this to transition from 'Rest or pull back' to 'Active'. Usually set just below the upper threshold.
 
+**Target zone**
+- *Target min / max* — The target zone is shown as a visual guide on the speedometer in all modes. This is a visual guide and is not used for calculations or transitions except when *Time limit type* is set to Target time. In that case any time your HR is at or above *Target min* counts toward your time limit, regardless of which state the app is in. 
+
+**Time limits**
+The time limit type defines how you count your daily exercise allowance. The right choice depends on how well your HR is regulated.
+
+When your HR is **dysregulated**, the appropriate response to 'Rest or pull back' is to stop completely — not to ease off, but to fully stop. Set *Time limit type* to **Active time**. You will only accrue exercise credit while the app is in Continue Activity. 
+
+When your HR is **regulated**, it becomes possible to stay active during 'Rest or pull back' by reducing effort slightly. In this case, meaningful exercise is happening whenever your HR is at or above your target minimum, regardless of which state the app has triggered. Set *Time limit type* to **Target time**. Any time your HR is at or above *Target min* will count towards your limit.
+
+- *Time limit type* — Selects what counts toward your daily budget. **Active time** counts time in the Continue activity state. **Target time** counts time at or above Target Min HR, regardless of state.
+- *Time limit mins* — Total number of minutes allowed per session. When reached, the app transitions to the heart rate Reset state to remind you to end the session. Set to 0 to disable. The session does not end automatically — you may choose to continue or finish.
+
 **Recovery limits**
 - *Max recovery period* — The total time allowed in 'Rest or pull back' before a forced heart rate Reset.
 - *Max response lag* — How long HR is allowed to keep rising after entering 'Rest or pull back' before a heart rate Reset is forced. This specifically targets the delayed-recovery pattern.
 - *Resets before warning* — How many heart rate Resets trigger the end-session advisory.
-
-**Time limit and budget**
-
-The time limit and the budget setting work together to define how you count your daily exercise allowance. The right choice depends on how well your HR is regulated.
-
-When your HR is **dysregulated**, the appropriate response to 'Rest or pull back' is to stop completely — not to ease off, but to fully stop. You only accrue exercise credit while the app is in the active state. Set *Budget with* to **Active time**, and your limit will count only the time your HR is actually in the Continue activity zone.
-
-When your HR is **regulated**, it becomes possible to stay active during 'Rest or pull back' by reducing effort slightly. In this case, meaningful exercise is happening whenever your HR is at or above your target minimum, regardless of which state the app has triggered. Set *Budget with* to **Target time**, and your limit will count any second your HR is at or above *Target min*, across all states.
-
-- *Budget with* — Selects what counts toward your daily budget. **Active time** counts seconds in the Continue activity state. **Target time** counts seconds at or above Target Min HR, regardless of state.
-- *Time limit* — Total budget allowed per session, in minutes. When reached, the app transitions to the heart rate Reset state. Set to 0 to disable. The session does not end automatically — you may choose to continue or finish.
-
-**Target zone**
-- *Target min / max* — The target zone is shown as a visual guide on the speedometer in all modes. This is a visual guide and is not used for calculations or transitions. In addition, when *Budget with* is set to Target time, any time your HR is at or above *Target min* counts toward your time limit, regardless of which state the app is in. 
 
 **Alerts**
 - *Vibration / Sound* — Intensity of the state-transition alerts (Off / Subtle / Intense).
@@ -379,6 +387,23 @@ To fix this:
 2. Open Bluetooth settings on your phone and unpair your watch or HR monitor there.
 3. **Crucial step:** Go into your watch or HR monitor's own settings menu and delete/unpair your phone from there.
 4. Try connecting again.
+
+---
+
+##How to contribute
+
+Send your feedback, ideas, or bug reports to **chris at manawapace.app**. If you have been using the app and have detailed experience to share, that is especially welcome.
+
+Please include:
+- What activity or session type you were using
+- What you expected to happen or what you needed
+- What actually happened
+- Your sensor (e.g. Polar H10, other chest strap, watch)
+- Your device and Android version if relevant
+
+### A note on scope
+
+This is a personal project maintained by one person. There is no guarantee that any given suggestion will be implemented, or on any particular timeline. However, if you are finding this app useful and have ideas that could make it better I will happily do what I can to improve it.
 
 ---
 
