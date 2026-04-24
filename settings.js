@@ -125,14 +125,14 @@ const FIELDS = [
     { key: 'TARGET_MIN_HR', label: 'Target min', unit: 'bpm',
       desc: 'Lower edge of the target zone shown on the speedometer. Purely a guide unless you are limiting by Target time.' },
     { key: 'TARGET_MAX_HR', label: 'Target max', unit: 'bpm',
-      desc: 'Upper edge of the target zone shown on the speedometer. Purely a guide.' } 
+      desc: 'Upper edge of the target zone shown on the speedometer. Purely a guide.' },
     { group: 'Time Limits' },
     { key: 'BUDGET_USING', label: 'Time limit type', type: 'select',
       options: [
           { value: 0, label: 'Active time' },
           { value: 1, label: 'Target time' },
       ],
-      desc: '<ul><li>Active time: limit by time spent in Continue Activity</li><li>Target time: limit by time at or above Target min' },
+      desc: '<ul><li>Active time: limit by time spent in <i>Continue Activity</i></li><li>Target time: limit by time at or above <i>Target min</i>' },
      { key: 'ACTIVE_TIME_LIMIT', label: 'Time limit mins', unit: 'min',
       desc: 'Total time allowed per session (minutes). Set to 0 for no limit.' },
     { group: 'Recovery Limits' },
