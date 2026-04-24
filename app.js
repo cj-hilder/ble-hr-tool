@@ -102,11 +102,18 @@ class HRVProcessor {
         //        but comparing it to the clean baseline correctly identifies it as physio.
         //   PAC: short beat (~-25%) followed by a normal beat. The normal beat compares
         //        cleanly to the baseline and is correctly passed through.
+        //
+        // 25% threshold (widened from 20%): this is a safety net behind the ingestion-time
+        // classifier in recordRrHistory, which already removes sensor and physio artifacts.
+        // The gate must be permissive enough to preserve legitimate large-amplitude RSA
+        // peaks during deep resonance breathing (beat-to-beat swings can approach 10–15%
+        // of RR at sustained high-amplitude breathing), while still catching gross values
+        // that slipped through ingestion.
         const outRrs = [], outTs = [];
         let lastClean = 0;
         for (let i = 0; i < rrs.length; i++) {
             const ref = lastClean || rrs[i];
-            if (Math.abs(rrs[i] - ref) / ref < 0.2) {
+            if (Math.abs(rrs[i] - ref) / ref < 0.25) {
                 outRrs.push(rrs[i]);
                 outTs.push(timestamps[i]);
                 lastClean = rrs[i];
@@ -317,6 +324,8 @@ function recordRrHistory(rrValuesMs, notifTs) {
         lastRrTimestamp = 0;
         recordRrHistory._lastCleanRr = 0;
         recordRrHistory._pendingBeat = null;
+        recordRrHistory._warmupRrs = [];
+        recordRrHistory._streak = null;
         rrHistory.length = 0;
     } else if (isSensorRrGap) {
         lastRrTimestamp = 0;
@@ -396,6 +405,16 @@ function recordRrHistory(rrValuesMs, notifTs) {
     //     beat); a lone 20%+ long beat is almost always an orphaned compensatory pause
     //     or dropout. Synthetic-izing it ensures graph/count consistency.
     //
+    // Stale-baseline recovery (consistent-streak reseed):
+    //   When lastCleanRr becomes stale (e.g. noise burst masks the start of a real
+    //   HR transition — cooldown after exercise, onset of activity), every genuine
+    //   beat at the new level is rejected as long/short with no path back to clean.
+    //   Runs of ≥5 consecutive same-direction rejections with RR spread ≤100 ms are
+    //   self-consistency incompatible with random noise: the baseline is reseeded
+    //   to the streak median and the current beat is promoted to clean. Any
+    //   successful classification (clean / PVC / PAC) or gross Tier 1 rejection
+    //   clears the streak.
+    //
     // Routing:
     //   Sensor artifact  → synthetic interpolated graph point; excluded from HRV
     //   Physio artifact  → real HR spike on graph; excluded from HRV; counted
@@ -403,6 +422,13 @@ function recordRrHistory(rrValuesMs, notifTs) {
 
     let lastCleanRr         = recordRrHistory._lastCleanRr         || 0;
     let lastSensorArtifactTs = recordRrHistory._lastSensorArtifactTs || 0;
+    // Warmup seed: until lastCleanRr is established, collect the first 3 beats
+    // that fall within a permissive physiological range (400–1500 ms, i.e. 40–150
+    // bpm) and seed lastCleanRr from their median. Trusting a single first beat
+    // as the classification baseline is unsafe — a noise beat at connection time
+    // (e.g. 1800 ms) would lock subsequent real beats into Tier 1 sensor-artifact
+    // classification with no recovery path short of a background flush.
+    if (!recordRrHistory._warmupRrs) recordRrHistory._warmupRrs = [];
 
     // Prepend any beat deferred from the previous packet, validated by timestamp.
     const pendingBeat = recordRrHistory._pendingBeat || null;
@@ -415,6 +441,7 @@ function recordRrHistory(rrValuesMs, notifTs) {
             // Gap too large — deferred beat is not adjacent to the new ones.
             sessionSensorArtifacts++;
             lastSensorArtifactTs = pendingBeat.ts;
+            recordRrHistory._streak = null;
             if (recordRrHistory._lastCleanRr > 0) {
                 const synth = Math.round(60000 / recordRrHistory._lastCleanRr);
                 if (synth >= 24 && synth <= 240)
@@ -422,6 +449,33 @@ function recordRrHistory(rrValuesMs, notifTs) {
             }
         }
     }
+
+    // ── Consistent-streak baseline re-seed helpers ────────────────────────
+    // Any rejection path that might represent a real baseline shift (rather
+    // than noise) calls tryStreakReseed with the direction of rejection. When
+    // a run of STREAK_LEN same-direction rejections accumulates with RR spread
+    // ≤ STREAK_SPREAD_MS, the beats are self-consistent enough to not be noise:
+    // the helper returns the median and the caller reseeds lastCleanRr,
+    // promoting the current beat to clean from that point forward. Any
+    // successful classification (clean / PVC / PAC) or gross Tier 1 rejection
+    // calls resetStreak to invalidate an in-progress run.
+    const STREAK_LEN       = 5;
+    const STREAK_SPREAD_MS = 100;
+    const tryStreakReseed = (rrVal, direction) => {
+        if (!recordRrHistory._streak || recordRrHistory._streak.direction !== direction) {
+            recordRrHistory._streak = { direction, rrs: [] };
+        }
+        recordRrHistory._streak.rrs.push(rrVal);
+        if (recordRrHistory._streak.rrs.length >= STREAK_LEN) {
+            const s = [...recordRrHistory._streak.rrs].sort((a, b) => a - b);
+            if (s[s.length - 1] - s[0] <= STREAK_SPREAD_MS) {
+                recordRrHistory._streak = null;
+                return s[Math.floor(s.length / 2)];
+            }
+        }
+        return null;
+    };
+    const resetStreak = () => { recordRrHistory._streak = null; };
 
     // PVC compensatory pauses are mechanistically precise (SA node fires on schedule),
     // so the pair-sum tolerance can be tight. PAC follow-up is near-normal but slightly
@@ -447,6 +501,33 @@ function recordRrHistory(rrValuesMs, notifTs) {
         const { rr, ts: t, alreadyCounted } = pairs[i];
         if (!alreadyCounted) sessionTotalBeats++;
 
+        // ── Warmup: seed lastCleanRr from median of first 3 in-range beats ────
+        // Only active when no baseline exists yet (session start with no inherited
+        // baseline, or after a background/disconnect flush). Beats inside 400–1500
+        // ms are accepted as clean (graphed + fed to HRV); beats outside that range
+        // are counted as sensor artifacts with no synthetic fill (no baseline yet
+        // to fill with). Once 3 in-range beats have accumulated, lastCleanRr is set
+        // to their median and normal classification takes over on subsequent beats.
+        if (lastCleanRr === 0) {
+            if (rr >= 400 && rr <= 1500) {
+                recordRrHistory._warmupRrs.push(rr);
+                const instantHr = Math.round(60000 / rr);
+                if (instantHr >= 24 && instantHr <= 240)
+                    rrHistory.push({ hr: instantHr, state: beatState, ts: t });
+                hrvProcessor.addRR(rr, t);
+                if (recordRrHistory._warmupRrs.length >= 3) {
+                    const sorted = [...recordRrHistory._warmupRrs].sort((a, b) => a - b);
+                    lastCleanRr = sorted[1]; // median of 3
+                    recordRrHistory._warmupRrs = [];
+                }
+            } else {
+                sessionSensorArtifacts++;
+                lastSensorArtifactTs = t;
+                // No synthetic fill — no baseline established yet to fill from.
+            }
+            i++; continue;
+        }
+
         // ── Tier 1: sensor artifact — outside physiological range or gross dropout ──
         // Require both relative deviation ≥ 50% AND absolute delta > 250 ms to avoid
         // misclassifying large RFB HR swings at low HR as sensor artifacts.
@@ -457,6 +538,7 @@ function recordRrHistory(rrValuesMs, notifTs) {
         if (isSensorArtifact) {
             sessionSensorArtifacts++;
             lastSensorArtifactTs = t;
+            resetStreak();
             if (lastCleanRr > 0) {
                 const syntheticHr = Math.round(60000 / lastCleanRr);
                 if (syntheticHr >= 24 && syntheticHr <= 240)
@@ -477,8 +559,19 @@ function recordRrHistory(rrValuesMs, notifTs) {
             // artifact it is almost certainly the tail of the same noise burst
             // rather than a genuine ectopic. Skip both deferral and PVC/PAC
             // evaluation and force a sensor-artifact classification immediately.
+            // A run of such rejections can still trigger the streak-reseed path
+            // if the underlying data is a real baseline shift masked by noise.
             const NOISE_BURST_MS = 1500;
             if (lastSensorArtifactTs > 0 && t - lastSensorArtifactTs <= NOISE_BURST_MS) {
+                const reseed = tryStreakReseed(rr, 'short');
+                if (reseed !== null) {
+                    lastCleanRr = reseed;
+                    const instantHr = Math.round(60000 / rr);
+                    if (instantHr >= 24 && instantHr <= 240)
+                        rrHistory.push({ hr: instantHr, state: beatState, ts: t });
+                    hrvProcessor.addRR(rr, t);
+                    i++; continue;
+                }
                 sessionSensorArtifacts++;
                 lastSensorArtifactTs = t;
                 if (lastCleanRr > 0) {
@@ -507,9 +600,45 @@ function recordRrHistory(rrValuesMs, notifTs) {
                 Math.abs((60000 / next.rr) - (60000 / lastCleanRr)) < PAC_TOL_BPM &&
                 next.rr > rr;
 
+            // ── Symmetric noise-burst guard ────────────────────────────────
+            // Complement to the forward-looking guard above: if the beat
+            // IMMEDIATELY AFTER a classified PVC/PAC pair is itself a sensor
+            // artifact, the pair is more likely the leading edge of a noise
+            // burst than a genuine ectopic. Roll back to sensor-artifact
+            // classification for the short beat; normal flow will reclassify
+            // the subsequent pause/follow-up on the next loop iteration
+            // (long-beat Tier 2b → sensor for a PVC pause; near-baseline
+            // → clean for a PAC follow-up). The guard only fires when
+            // look-ahead is available in the current packet; a pair at the
+            // very end of a packet is classified as before.
+            if ((isPvc || isPac) && (i + 2) < pairs.length) {
+                const after = pairs[i + 2];
+                const afterAbsDiff = Math.abs(after.rr - lastCleanRr);
+                const afterIsSensor = after.rr < 250 || after.rr > 2000 ||
+                    (afterAbsDiff / lastCleanRr >= 0.5 && afterAbsDiff > 250);
+                if (afterIsSensor) {
+                    const reseed = tryStreakReseed(rr, 'short');
+                    if (reseed !== null) {
+                        lastCleanRr = reseed;
+                        const instantHr = Math.round(60000 / rr);
+                        if (instantHr >= 24 && instantHr <= 240)
+                            rrHistory.push({ hr: instantHr, state: beatState, ts: t });
+                        hrvProcessor.addRR(rr, t);
+                        i++; continue;
+                    }
+                    sessionSensorArtifacts++;
+                    lastSensorArtifactTs = t;
+                    const syntheticHr = Math.round(60000 / lastCleanRr);
+                    if (syntheticHr >= 24 && syntheticHr <= 240)
+                        rrHistory.push({ hr: syntheticHr, state: beatState, ts: t });
+                    i++; continue;
+                }
+            }
+
             if (isPvc) {
                 if (!next.alreadyCounted) sessionTotalBeats++;
                 sessionPhysioArtifacts++;
+                resetStreak();
                 const hrPremature = Math.round(60000 / rr);
                 const hrPause     = Math.round(60000 / next.rr);
                 if (hrPremature >= 24 && hrPremature <= 240)
@@ -522,6 +651,7 @@ function recordRrHistory(rrValuesMs, notifTs) {
 
             if (isPac) {
                 sessionPhysioArtifacts++;
+                resetStreak();
                 const hrPremature = Math.round(60000 / rr);
                 if (hrPremature >= 24 && hrPremature <= 240)
                     rrHistory.push({ hr: hrPremature, state: beatState, ts: t, ectopic: true });
@@ -529,7 +659,17 @@ function recordRrHistory(rrValuesMs, notifTs) {
                 i++; continue;
             }
 
-            // Short beat matching neither pattern → sensor artifact.
+            // Short beat matching neither pattern → sensor artifact, unless it is
+            // part of a coherent streak that represents a real baseline shift.
+            const reseed = tryStreakReseed(rr, 'short');
+            if (reseed !== null) {
+                lastCleanRr = reseed;
+                const instantHr = Math.round(60000 / rr);
+                if (instantHr >= 24 && instantHr <= 240)
+                    rrHistory.push({ hr: instantHr, state: beatState, ts: t });
+                hrvProcessor.addRR(rr, t);
+                i++; continue;
+            }
             sessionSensorArtifacts++;
             lastSensorArtifactTs = t;
             if (lastCleanRr > 0) {
@@ -544,10 +684,22 @@ function recordRrHistory(rrValuesMs, notifTs) {
         // Genuine HR deceleration is gradual — each step stays well within DEV_BPM.
         // A lone beat ≥ 10 bpm slower than baseline is almost always an orphaned
         // compensatory pause or sensor dropout. Synthetize it so the graph only
-        // shows real HR values for classified ectopic pairs.
+        // shows real HR values for classified ectopic pairs. A run of long beats
+        // with tight spread is handled by the streak-reseed path below — the
+        // common case is a post-exercise cooldown masked by a transient noise
+        // burst, after which every real (slower) beat looks like an orphaned pause.
         const isLong = lastCleanRr > 0 && deviationBpm <= -DEV_BPM;
 
         if (isLong) {
+            const reseed = tryStreakReseed(rr, 'long');
+            if (reseed !== null) {
+                lastCleanRr = reseed;
+                const instantHr = Math.round(60000 / rr);
+                if (instantHr >= 24 && instantHr <= 240)
+                    rrHistory.push({ hr: instantHr, state: beatState, ts: t });
+                hrvProcessor.addRR(rr, t);
+                i++; continue;
+            }
             sessionSensorArtifacts++;
             lastSensorArtifactTs = t;
             const syntheticHr = Math.round(60000 / lastCleanRr);
@@ -557,6 +709,7 @@ function recordRrHistory(rrValuesMs, notifTs) {
         }
 
         // ── Clean beat ────────────────────────────────────────────────────────
+        resetStreak();
         lastCleanRr = rr;
         hrvProcessor.addRR(rr, t);
         const instantHr = Math.round(60000 / rr);
@@ -1058,6 +1211,8 @@ document.addEventListener('visibilitychange', async () => {
         lastRrTimestamp = 0;
         recordRrHistory._lastCleanRr = 0;
         recordRrHistory._pendingBeat = null;
+        recordRrHistory._warmupRrs = [];
+        recordRrHistory._streak = null;
         rrHistory.length = 0;
         hrHistory.length = 0;
     }
@@ -2436,7 +2591,6 @@ function startSession() {
     hasRrData = false;
     lastRrTimestamp = 0;
     lastRrWallClock = 0;
-    recordRrHistory._lastAcceptedRr = 0;
     peakFreqHistory.length = 0;
     hrvProcessor.reset();
     document.getElementById('homeBtn').style.display = 'none';
