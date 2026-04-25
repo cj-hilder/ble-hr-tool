@@ -125,6 +125,50 @@ You are currently in the active state but want to rest voluntarily — not becau
 
 ---
 
+## Settings
+
+You must adjust the settings to suit your personal situation. Changes take effect immediately and are saved per activity type. The defaults correspond to an 80 BPM upper threshold protocol, which is a reasonable starting point for many people with post-concussion or ME/CFS-related dysautonomia, but individual variation is significant and you should expect some trial and error.
+
+The key parameters and their purpose:
+
+**Heart rate range**
+- *Max HR* — Used to scale the speedometer and history graph. Use a calculator based on your age and sex (in dysautonomia, formula-derived estimates are generally more meaningful than a measured maximum). This is not used in any state transitions so it is not critical that it is your *correct* maximum HR; you might want to round it to the nearest 10.
+- *Bradycardia threshold* — HR below this during activity triggers a heart rate Reset. Set it to a level that represents a clearly abnormal low for your resting state.
+
+**Resting HR**
+- *Resting HR* and *Bandwidth* — The target you must return to during a heart rate Reset, and the window around it. HR must stay within this band for 15 consecutive seconds for a heart rate Reset to complete.
+
+**Active thresholds**
+- *Upper threshold* — The ceiling for the Active state. If unsure, resting HR + 15 is a conservative starting point.
+- *Lower threshold* — HR must fall below this to transition from 'Rest or pull back' to 'Active'. Usually set just below the upper threshold.
+
+**Target zone**
+- *Target min / max* — The target zone is shown as a visual guide on the speedometer in all modes. This is a visual guide and is not used for calculations or transitions except when *Time limit type* is set to Target time. In that case any time your HR is at or above *Target min* counts toward your time limit, regardless of which state the app is in. 
+
+**Time limits**
+The time limit type defines how you count your daily exercise allowance. The right choice depends on how well your HR is regulated.
+
+When your HR is **dysregulated**, the appropriate response to 'Rest or pull back' is to stop completely — not to ease off, but to fully stop. Set *Time limit type* to **Active time**. You will only accrue exercise credit while the app is in *Continue Activity*. 
+
+When your HR is **regulated**, it becomes possible to stay active during 'Rest or pull back' by reducing effort slightly. In this case, meaningful exercise is happening whenever your HR is at or above your target minimum, regardless of which state the app has triggered. Set *Time limit type* to **Target time**. Any time your HR is at or above *Target min* will count towards your limit.
+
+- *Time limit type* — Selects what counts toward your daily budget. **Active time** counts time in the *Continue activity* state. **Target time** counts time at or above *Target min* HR, regardless of state.
+- *Time limit mins* — Total number of minutes allowed per session. When reached, the app transitions to the heart rate Reset state to remind you to end the session. Set to 0 to disable. The session does not end automatically — you may choose to continue or finish.
+
+**Recovery limits**
+Adjust these according to how long it typically takes your heart to respond when you stop activity, then fine tune until you maximise the amount of exercise you are getting while minimising adverse symptoms.
+- *Max recovery period* — The total time allowed in 'Rest or pull back' before a forced heart rate Reset.
+- *Max response lag* — How long HR is allowed to keep rising after entering 'Rest or pull back' before a heart rate Reset is forced. 
+- *Resets before warning* — How many heart rate Resets trigger the end-session advisory.
+
+**Alerts**
+- *Vibration / Sound* — Intensity of the state-transition alerts (Off / Subtle / Intense).
+
+**Resonance Frequency Breathing**
+- See the dedicated RFB section below.
+
+---
+
 ## The Live HR Graph
 
 Your heart rate is graphed continuously on screen. The display shows the last 90 secs of data. The graph begins as soon as you connect to your HR monitor — before any session starts. This pre-session data is shown in grey, giving you a baseline view of your resting HR and any spontaneous variability before you begin.
@@ -138,7 +182,9 @@ When connected to a sensor that exposes raw beat-to-beat RR intervals, such as t
 >- **PVC (premature ventricular contraction):** A beat that fires early. On the graph it appears as a **sharp spike upward, immediately followed by a smaller spike downward**. 
 >- **PAC (premature atrial contraction):** A beat that fires early and resets your cardiac rhythm. On the graph it appears as a **spike upward with no corresponding downward spike**.
 >
->Anything under 1% of beats being ectopic is generally considered negligible, and up to a few hundred ectopic beats a day is normal for a healthy, functioning heart. Ectopic beats can fluctuate widely based on sleep quality, caffeine intake, and stress. A sustained downwards trend might indicate improved ANS health, especially in conjunction with other signs of recovery, but observing a trend is made difficult by the comparatively small numbers of ectopic beats. If you regularly see more than 5%, a significant change in rate above 1%, or if the beats are accompanied by dizziness or fainting, it may be worth mentioning to a clinician.
+>Not everything that looks like an ectopic beat is counted. Only beats that are both sufficiently premature and match the PVC or PAC pattern within tight tolerances are included.
+>
+>Anything under 1% of beats being ectopic is generally considered negligible, and up to several hundred ectopic beats a day is normal for a healthy, functioning heart. Ectopic beats can fluctuate widely based on sleep quality, caffeine intake, and stress. A sustained downwards trend might indicate improved ANS health, especially in conjunction with other signs of recovery, but observing a trend is made difficult by the comparatively small numbers of ectopic beats. The count is most trustworthy from HRV or RFB sessions, and trends are only meaningful when comparing similar session types. If you regularly see more than 5%, a significant change in rate above 1%, or if the beats are accompanied by dizziness or fainting, it may be worth mentioning to a clinician.
 
 ---
 
@@ -279,49 +325,6 @@ Manawa Pace HRV scores are directly comparable with EliteHRV and Visible HRV sco
 ### Hardware requirement
 
 Like the RFB resonance score, the HRV Index requires a sensor that exposes raw RR intervals. The **Polar H10** chest strap is strongly recommended. Optical wrist sensors and most sports watches that report only a rolling-averaged HR cannot be used for HRV readings.
-
----
-
-## Settings
-
-You must adjust the settings to suit your personal situation. Changes take effect immediately and are saved per activity type. The defaults correspond to an 80 BPM upper threshold protocol, which is a reasonable starting point for many people with post-concussion or ME/CFS-related dysautonomia, but individual variation is significant and you should expect some trial and error.
-
-The key parameters and their purpose:
-
-**Heart rate range**
-- *Max HR* — Used to scale the speedometer and history graph. Use a calculator based on your age and sex (in dysautonomia, formula-derived estimates are generally more meaningful than a measured maximum). This is not used in any state transitions so it is not critical that it is your *correct* maximum HR.
-- *Bradycardia threshold* — HR below this during activity triggers a heart rate Reset. Set it to a level that represents a clearly abnormal low for your resting state.
-
-**Resting HR**
-- *Resting HR* and *Bandwidth* — The target you must return to during a heart rate Reset, and the window around it. HR must stay within this band for 15 consecutive seconds for a heart rate Reset to complete.
-
-**Active thresholds**
-- *Upper threshold* — The ceiling for the Active state. If unsure, resting HR + 15 is a conservative starting point.
-- *Lower threshold* — HR must fall below this to transition from 'Rest or pull back' to 'Active'. Usually set just below the upper threshold.
-
-**Target zone**
-- *Target min / max* — The target zone is shown as a visual guide on the speedometer in all modes. This is a visual guide and is not used for calculations or transitions except when *Time limit type* is set to Target time. In that case any time your HR is at or above *Target min* counts toward your time limit, regardless of which state the app is in. 
-
-**Time limits**
-The time limit type defines how you count your daily exercise allowance. The right choice depends on how well your HR is regulated.
-
-When your HR is **dysregulated**, the appropriate response to 'Rest or pull back' is to stop completely — not to ease off, but to fully stop. Set *Time limit type* to **Active time**. You will only accrue exercise credit while the app is in Continue Activity. 
-
-When your HR is **regulated**, it becomes possible to stay active during 'Rest or pull back' by reducing effort slightly. In this case, meaningful exercise is happening whenever your HR is at or above your target minimum, regardless of which state the app has triggered. Set *Time limit type* to **Target time**. Any time your HR is at or above *Target min* will count towards your limit.
-
-- *Time limit type* — Selects what counts toward your daily budget. **Active time** counts time in the Continue activity state. **Target time** counts time at or above Target Min HR, regardless of state.
-- *Time limit mins* — Total number of minutes allowed per session. When reached, the app transitions to the heart rate Reset state to remind you to end the session. Set to 0 to disable. The session does not end automatically — you may choose to continue or finish.
-
-**Recovery limits**
-- *Max recovery period* — The total time allowed in 'Rest or pull back' before a forced heart rate Reset.
-- *Max response lag* — How long HR is allowed to keep rising after entering 'Rest or pull back' before a heart rate Reset is forced. This specifically targets the delayed-recovery pattern.
-- *Resets before warning* — How many heart rate Resets trigger the end-session advisory.
-
-**Alerts**
-- *Vibration / Sound* — Intensity of the state-transition alerts (Off / Subtle / Intense).
-
-**Resonance Frequency Breathing**
-- See the dedicated RFB section above.
 
 ---
 
