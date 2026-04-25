@@ -45,7 +45,7 @@ In addition, this app provides features that may be useful beyond the point wher
 The app is built around two goals you may have:
 
 1. **Maintaining or building activity within your tolerance.**
-2. **Only exercise within the heart rate range you have established as appropriate for you.**
+2. **Only exercising within the heart rate range you have established as appropriate for you.**
 
 If these two goals are appropriate for you, using your own judgement and your healthcare provider's guidance, then this app provides information you can use when working towards those goals.
 
