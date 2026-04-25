@@ -110,7 +110,7 @@ const FIELDS = [
     { key: 'MAX_HR', label: 'Max HR', unit: 'bpm',
       desc: 'Your personal maximum heart rate. Used to scale the speedometer and the HR history graph. Calculate it with <a href="https://www.targetheartratecalculator.org/">this tool</a>.' },
     { key: 'BRADYCARDIA_THRESHOLD', label: 'Bradycardia threshold', unit: 'bpm',
-      desc: 'If HR drops below this it triggers a heart rate reset — sometimes a marker of overexertion or heart rate recovery undershoot.' },
+      desc: 'If HR drops below this it triggers a heart rate reset — set to below your resting heart rate to potentially alert you to heart rate recovery undershoot.' },
     { group: 'Resting HR' },
     { key: 'RESTING_HR', label: 'Resting HR', unit: 'bpm',
       desc: 'Your typical resting heart rate. Used as the target to return to during a heart rate reset.' },
@@ -164,7 +164,7 @@ const FIELDS = [
     { key: 'RFB_VIBRATION', label: 'Inhale vibration guide', type: 'toggle',
       desc: 'An initial pulse, followed by buzzing that accelerates through the inhale, then a closing pulse.' },
     { key: 'RFB_SHOW_DEBUG', label: 'Display details', type: 'toggle',
-      desc: 'Display wave coherence, frequency stability, and phase lag — the components that are used to calculate the resonance index.' },
+      desc: 'Display wave coherence, amplitude, frequency stability, and phase lag — the components that are used to calculate the resonance index.' },
     { group: 'HRV Reading' },
     { key: 'HRV_DURATION', label: 'Session length', type: 'select',
       options: [

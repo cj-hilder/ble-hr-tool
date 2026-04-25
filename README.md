@@ -137,7 +137,7 @@ The key parameters and their purpose:
 
 **Heart rate range**
 - *Max HR* — Used to scale the speedometer and history graph. Use a calculator based on your age and sex (in dysautonomia, formula-derived estimates are generally more meaningful than a measured maximum). This is not used in any state transitions so it is not critical that it is your *correct* maximum HR; you might want to round it to the nearest 10.
-- *Bradycardia threshold* — HR below this during activity triggers a heart rate Reset. Set it to a level that you consider notably below your normal resting range, in consultation with your healthcare provider if you are unsure.
+- *Bradycardia threshold* — HR below this during activity triggers a heart rate Reset. Set it to a level that you consider notably below your normal resting range, in consultation with your healthcare provider if you are unsure. This is normally set to  alert you to potential heart rate recovery undershoot.
 
 **Resting HR**
 - *Resting HR* and *Bandwidth* — The target you must return to during a heart rate Reset, and the window around it. HR must stay within this band for 15 consecutive seconds for a heart rate Reset to complete.
@@ -429,12 +429,17 @@ This is a personal project maintained by one person. There is no guarantee that 
 
 ## Licence
 
-This project is licenced under the **Creative Commons Attribution 4.0 International (CC BY 4.0)** licence.
+This project is dual-licensed:
 
-You are free to share and adapt this work for any purpose, including commercially, as long as you give appropriate credit to **Chris Hilder** and indicate if changes were made.
+- **Source code** is licenced under the **Apache License, Version 2.0**.
+- **Documentation, prose content, and other non-code material** (this README, the quick start guide, and similar) is licenced under the **Creative Commons Attribution 4.0 International (CC BY 4.0)** licence.
 
-The CC BY 4.0 licence includes a disclaimer of warranties and a limitation of liability (Section 5 of the licence text). The software is provided "as-is" with no warranty of any kind, express or implied, including warranties of fitness for a particular purpose. To the extent permitted by applicable law, the author is not liable for any damages arising from use of the software. Use of this software is at your own risk and remains your responsibility.
+In both cases, you are free to share and adapt the work for any purpose, including commercially, as long as you give appropriate credit to **Chris Hilder** and indicate if changes were made. Apache 2.0 additionally requires that modified source files carry a notice stating that they were modified, and that any redistribution preserves the licence text and any NOTICE file.
 
-[![CC BY 4.0](https://licensebuttons.net/l/by/4.0/88x31.png)](https://creativecommons.org/licenses/by/4.0/)
+Both licences include explicit disclaimers of warranty and limitations of liability. The software and documentation are provided "as is", without warranty of any kind, express or implied, including warranties of merchantability, fitness for a particular purpose, and non-infringement. To the maximum extent permitted by applicable law, the author is not liable for any damages, claims, or other liabilities arising from use of the software or documentation, whether in contract, tort, or otherwise. Use is at your own risk and remains your responsibility.
 
-Full licence text: [creativecommons.org/licenses/by/4.0](https://creativecommons.org/licenses/by/4.0/)
+Full licence texts:
+- Apache 2.0: [apache.org/licenses/LICENSE-2.0](https://www.apache.org/licenses/LICENSE-2.0) — also included in the project as `LICENSE`
+- CC BY 4.0: [creativecommons.org/licenses/by/4.0](https://creativecommons.org/licenses/by/4.0/) — also included in the project as `LICENSE-DOCS`
+
+[![Apache 2.0](https://img.shields.io/badge/license--code-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0) [![CC BY 4.0](https://licensebuttons.net/l/by/4.0/88x31.png)](https://creativecommons.org/licenses/by/4.0/)
