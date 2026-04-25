@@ -3,19 +3,19 @@
 
 **[Launch Manawa Pace here](https://manawapace.app)**
 
-A web-based heart rate pacing and breathing tool, built around the unstable HR patterns that can occur with autonomic nervous system dysregulation. People managing conditions such as POTS, Long COVID, ME/CFS, and Post-Concussion Syndrome may find it relevant, alongside anyone working with dysautonomia, post-exertional malaise, orthostatic intolerance, or autonomic recovery more generally.
+Manawa Pace helps you visualise what your heart is doing, pace exercise within heart rate thresholds you define, and practice resonance frequency breathing. 
 
-The app does not diagnose, monitor for, or treat any condition. It is a self-directed tool for visualising heart rate, pacing exercise, and guided breathing, intended to be used alongside your own judgement and your healthcare provider's guidance.
+It is built around the unstable HR patterns that can occur with autonomic nervous system dysregulation. People managing conditions such as POTS, Long COVID, ME/CFS, and Post-Concussion Syndrome may find it relevant, alongside anyone working with dysautonomia, post-exertional malaise, orthostatic intolerance, or autonomic recovery more generally.
+
+Manawa Pace is intended to be used alongside your own judgement and your healthcare provider's guidance. It does not diagnose, monitor for, or treat any condition. It does not log symptoms or analyse data and offer advice. To use it effectively you need to be aware of your own diagnosis and symptoms, and understand how to pace your activity.
 
 > **⚠️ Important:** This application is provided for informational and educational purposes only. It is not a medical device, nor is it intended to diagnose, treat, cure, or prevent any disease. Always consult with a qualified healthcare provider before beginning any new exercise regimen, especially if you have dysautonomia or other cardiovascular or neurological conditions. See full disclaimer at the end of this document.
 
 [Quick Start Guide here](https://manawapace.app/quick_start_guide.html)
 
-I built Manawa Pace to help manage my own post-concussion dysautonomia. I am not a clinician or researcher; this is a best-effort personal project that has worked well for me. It may or may not work for you. Nothing here should be taken as medical advice, and it is no substitute for working with a qualified healthcare provider who understands your condition.
+I built Manawa Pace to help manage my own post-concussion symptoms. I am not a clinician or researcher; this is a best-effort personal project that has worked well for me. It may or may not work for you. Nothing here should be taken as medical advice, and it is no substitute for working with a qualified healthcare provider who understands your condition.
 
 Manawa Pace is free, [open source software](https://github.com/cj-hilder/ble-hr-tool).
-
-The app helps you visualise what your heart is doing, pace exercise within heart rate thresholds you define, and practice resonance frequency breathing. It does not log symptoms or analyse data and offer advice. To use it effectively you need to be aware of your own symptoms and understand how to pace your activity.
 
 > **Note:** Wrist based (optical) heart rate sensors are not usually suitable for measuring heart rate in the presence of dysautonomia. They are misled by irregular beats, weak pulse strength, and arm movement. They will often be significantly wrong. A chest strap sensor, e.g. Polar H10, is strongly recommended for HR based pacing with dysautonomia.
 
@@ -42,11 +42,12 @@ In addition, this app provides features that may be useful beyond the point wher
 
 ## The Pacing Approach
 
-The app is based on three principles:
+The app is built around two goals you may have:
 
-1. **Maintaining activity within tolerance can be valuable.** For some people with autonomic dysregulation, prolonged complete rest can contribute to deconditioning. This is more nuanced for people with PEM or severe ME/CFS, where activity must be carefully bounded to avoid triggering symptoms — work with your healthcare provider to understand what is appropriate for your situation.
-2. **A dysregulated ANS means HR will sometimes go too high or too low for the level of exertion.** This cannot always be prevented through careful pacing. The goal is to make it visible and to allow you to respond when it happens.
-3. **Only exercise within the heart rate range you have established as appropriate for you.** When HR goes outside that range, stop activity until it returns.
+1. **Maintaining or building activity within your tolerance.**
+2. **Only exercise within the heart rate range you have established as appropriate for you.**
+
+If these two goals are appropriate for you, using your own judgement and your healthcare provider's guidance, then this app provides information you can use when working towards those goals.
 
 The app monitors your live heart rate via a Bluetooth HR monitor and alerts you when your heart rate crosses into or out of threshold zones, allowing you to follow strict pacing without having to watch the screen continuously.
 
@@ -56,11 +57,11 @@ Do not blindly follow the app. Be ready to adjust the settings, hit the reset bu
 
 ## Two Recovery Contexts
 
-How you should use the app depends on where you are in your recovery. The two contexts require fundamentally different approaches.
+How to use the app depends on where you are in your health journey.
 
 ### If you have PEM or chronic fatigue
 
-Your active threshold is a **ceiling, not a target**. With PEM/CFS, consistent compliance with the limit matters more than progression. Avoid raising the threshold based on a feeling of readiness — any change should be made cautiously and ideally in consultation with your healthcare provider.
+Your active threshold is a **ceiling, not a target**. With PEM/CFS, consistent compliance with the limit matters more than progression. Avoid raising the threshold based on a feeling of readiness — any change should be made cautiously and in consultation with your healthcare provider.
 
 **Setting the threshold: the Workwell Foundation protocol**
 
@@ -68,13 +69,13 @@ The standard for determining a HR ceiling for ME/CFS pacing is a two-day Cardiop
 
 Clinical assessment is always preferable. The RHR + 15 starting point is a conservative, accessible alternative that errs on the side of caution rather than maximising activity.
 
-Success will appear as gradually shorter lag and recovery periods, fewer resets, and more time in the active state — all at a *fixed* threshold.
+Improvements in HR regulation typically appear as gradually shorter lag and recovery periods, fewer resets, and more time in the active state — all at a *fixed* threshold.
 
-Once recovery lag times have become consistently short — typically less than 6 seconds — this is consistent with patterns sometimes observed in well-regulated autonomic function. However, if you continue to get symptoms of PEM then continue to use the app for threshold-based pacing.
+Once recovery lag times have become consistently short — typically less than 6 seconds — this is consistent with patterns sometimes observed in well-regulated autonomic function. However, if you continue to get symptoms of PEM you may wish to continue to use the app for threshold-based pacing.
 
 ### If you do not have PEM or chronic fatigue
 
-Your active threshold is a **progressive target**. The goal is to raise it carefully over time as the ANS demonstrates it can handle the current level.
+Your active threshold can function as a **progressive target** — one that you raise gradually over time as HR regulation patterns improve, in consultation with your healthcare provider.
 
 **The Buffalo Protocol — and why it needs adaptation**
 
@@ -98,7 +99,7 @@ The app operates in four states.
 
 Your heart rate is within the range you have configured — above the bradycardia threshold and below your active threshold. The app tracks total activity time to help you budget the amount of daily exertion.
 
-If your heart rate drops *below* the bradycardia threshold during activity, the app forces a heart rate Reset. This is intended to flag the HR overshoot pattern that some people with dysautonomia experience, where an unexpectedly low reading during exertion can be a sign that activity should stop.
+If your heart rate drops *below* the bradycardia threshold during activity, the app forces a heart rate Reset. This is intended to flag the HR overshoot pattern that some people with dysautonomia experience, where an unexpectedly low reading during exertion may indicate the activity should be paused.
 
 An optional **activity time limit** can be configured (see Settings). When your active time for the session reaches that limit, the app automatically triggers a heart rate reset as a reminder to end the session.
 
@@ -214,7 +215,7 @@ You can choose "Resonance Breathing" from the activity drop-down menu, or for an
 - **A sine wave overlay** appears on the HR graph, showing the HR pattern your heart *could* produce if breathing is well coupled to the breath pacer. This gives you a visual target for coherence. The overlay is only shown when connected to an RR-capable sensor such as the Polar H10 — a rolling-averaged HR signal from a watch cannot meaningfully track these oscillations.
 - **Sound guidance** — a rising filtered noise during each inhale, brightening in frequency as the inhale progresses, then falling silent during the exhale. Allows you to follow the breath without watching the screen.
 - **Vibration guidance** — an opening pulse at the start of each inhale, followed by a buzzing that accelerates in frequency through the inhale, and a closing pulse at the end. Provides a tactile breath guide.
-- **During heart rate Reset, once your HR has returned to your resting HR**, the app enters an extended RFB phase — shown as a countdown timer — before returning you to Continue activity. The default is 2 minutes. This promotes staying in the resonance breathing state after the HR has settled, deepening the  recovery before returning to exertion.
+- **During heart rate Reset, once your HR has returned to your resting HR**, the app enters an extended RFB phase — shown as a countdown timer — before returning you to Continue activity. The default is 2 minutes. This promotes staying in the resonance breathing state after the HR has settled, extending the breathing practice before returning to exertion.
 
 ### Resonance score
 
@@ -275,7 +276,7 @@ The most common mistake is taking large, heavy breaths. Over-breathing blows off
 
 ### Knowing When to Stop
 
-If your nervous system is currently deconditioned, it will fatigue quickly. Pushing through that fatigue will backfire and produce a stress response. Stop the RFB session and consider it a success if you notice any of the following:
+If your nervous system is currently deconditioned, it will fatigue quickly. Pushing through that fatigue may backfire and produce a stress response. Consider stopping the RFB session if you notice any of the following:
 
 **The resonance crash.** If your score has been sitting in the ★☆☆ or ★★☆ range and then suddenly drops to ☆☆☆ or near-zero, this may suggest your autonomic system is tiring — analogous to muscular fatigue. A reasonable response is to stop for the day.
 
@@ -291,7 +292,7 @@ Two minutes of comfortable, high-quality breathing is vastly superior to ten min
 
 An HRV Reading gives you a single number that summarises your heart rate variability. It is useful as a longitudinal recovery signal, provided you take readings under similar circumstances. 
 
-Consistent morning readings, taken at the same time each day — before getting up or after a few minutes of quiet rest — will give the most comparable longitudinal data. There is no 'correct' HRV that you should aim for, but as your autonomic health improves your HRV is expected to also improve. 
+Consistent morning readings, taken at the same time each day — before getting up or after a few minutes of quiet rest — will give the most comparable longitudinal data. There is no 'correct' HRV that you should aim for. HRV scores often rise over time as autonomic regulation patterns improve.
 
 Select **"HRV Reading"** from the activity drop-down menu to start a new reading.
 
@@ -307,7 +308,7 @@ Wait until your heart rate has settled to your resting heart rate before startin
 
 ### The HRV number
 
-This section is a little technical. Skip it of you just want to get your HRV.
+This section is a little technical. Skip it if you just want to get your HRV.
 
 The HRV is calculated from RMSSD and SDNN.
 
@@ -319,35 +320,17 @@ The index is computed as:
 > **HRV Index = ln(RMSSD) × 15.3 × balanceFactor**
 
 - **ln(RMSSD) × 15.3** is the core vagal tone signal, scaled to produce values in a practical range.
-- **balanceFactor** (0–1) adjusts for sympathetic dominance. It is derived from the RMSSD/SDNN ratio: a healthy ANS produces relatively high RMSSD for its total variability. When the sympathetic system dominates — as it often does in dysautonomia — SDNN is elevated while RMSSD stays low, reducing the index.
+- **balanceFactor** (0–1) adjusts for sympathetic dominance. It is derived from the RMSSD/SDNN ratio: a healthy ANS produces relatively high RMSSD for its total variability. Sympathetic dominance — a pattern often described in the dysautonomia literature — produces elevated SDNN with low RMSSD, which reduces the index.
 
 ### What to expect
 
 For broad orientation: HRV index scores broadly comparable to those produced by other consumer HRV platforms tend to fall in the 40–70 range for healthy adults at rest. With active dysautonomia, scores in the 10–25 range are commonly reported and are not necessarily concerning on their own — they reflect a current state rather than a permanent ceiling. Lower scores tend to be associated with sympathetic dominance or fatigue states. These ranges are general orientations rather than clinical thresholds; what matters longitudinally is your own trend over time, which is more informative than any single reading.
 
-Manawa Pace HRV scores use the same underlying ln(RMSSD) scaling as EliteHRV and Visible HRV, so scores are on a comparable scale. Exact agreement between platforms can vary because of differences in windowing, artifact handling, and minor scaling choices.
+Manawa Pace HRV scores use the same underlying ln(RMSSD) scaling as EliteHRV and Visible HRV, so scores are on a broadly comparable scale. Exact correspondence between platforms will vary because of differences in windowing, artifact handling, and scaling choices.
 
 ### Hardware requirement
 
 Like the RFB resonance score, the HRV Index requires a sensor that exposes raw RR intervals. The **Polar H10** chest strap is strongly recommended. Optical wrist sensors and most sports watches that report only a rolling-averaged HR cannot be used for HRV readings.
-
----
-
-## ✨ Features
-
-- **Direct Bluetooth Low Energy (BLE) connection** — Connects directly to standard BLE heart rate monitors (like Polar straps or watches) via the browser. Compatible with any device that implements the standard Heart Rate Measurement characteristic.
-- **Raw RR interval support** — For devices that expose beat-to-beat RR data (such as the Polar H10), the app uses instantaneous heart rate on the HR graph rather than the sensor's rolling average. This higher-resolution signal is required for the RFB coherence score and HRV readings.
-- **Sound and vibration alerts** — Configurable intensity on both, designed to be usable while active without watching the screen.
-- **Progressive Web App (PWA)** — Installable directly to an Android home screen for fullscreen, app-like behaviour.
-- **Multiple activity profiles** — Different threshold sets for different activities (e.g. walking, cycling, housework), switchable at session start.
-- **Time limit** — Optional per-session cap on total time. When reached, the app transitions to the heart rate Reset state automatically.
-- **Resonance Frequency Breathing** — Integrated breath pacer, sound and vibration guides, resonance scoring, and extended RFB phase during the Reset state. See dedicated section above.
-- **HRV Reading** — A dedicated 3-minute resting measurement that produces a single HRV Index from RMSSD and SDNN. It is designed for consistent longitudinal tracking of ANS recovery. Requires a Polar H10 or equivalent RR-capable sensor.
-- **Ectopic beat tracking** — Every session that uses an RR-capable sensor records the count and percentage of ectopic beats (PVCs, PACs). Reported in the session summary for all session types.
-- **Session HR recording and graph export** — Every session records 1Hz heart rate data alongside state transitions. Saved sessions can be exported as a landscape A4 PDF graph showing HR over time with colour-coded state background bands, axes, and a resting HR reference line.
-- **Session history and trend graphs** — Each session can be saved with notes. History graphs allow you to track recovery metrics over time.
-- **Response lag and HR overshoot tracking** — Per-session statistics on recovery lag, HR peak during rest, and active/recovery time ratios.
-- **Minimalist design** — Large, accessible UI with clear visualisation of live heart rate and state.
 
 ---
 
@@ -363,6 +346,24 @@ The graph shows:
 - **HR axis** in bpm with auto-scaled gridlines
 - **Session metadata** in the header: date, time, activity type, duration, average HR, etc
 - **Legend** showing the states that occurred in the session
+
+---
+
+## ✨ Features
+
+- **Direct Bluetooth Low Energy (BLE) connection** — Connects directly to standard BLE heart rate monitors (like Polar straps or watches) via the browser. Compatible with any device that implements the standard Heart Rate Measurement characteristic.
+- **Raw RR interval support** — For devices that expose beat-to-beat RR data (such as the Polar H10), the app uses instantaneous heart rate on the HR graph rather than the sensor's rolling average. This higher-resolution signal is required for the RFB coherence score and HRV readings.
+- **Sound and vibration alerts** — Configurable intensity on both, designed to be usable while active without watching the screen.
+- **Progressive Web App (PWA)** — Installable directly to an Android home screen for fullscreen, app-like behaviour.
+- **Multiple activity profiles** — Different threshold sets for different activities (e.g. walking, cycling, housework), switchable at session start.
+- **Time limit** — Optional per-session cap on total time. When reached, the app transitions to the heart rate Reset state automatically.
+- **Resonance Frequency Breathing** — Integrated breath pacer, sound and vibration guides, resonance scoring, and extended RFB phase during the Reset state. See dedicated section above.
+- **HRV Reading** — A dedicated 3-5 minute resting measurement that produces a single HRV Index from RMSSD and SDNN. It is designed for consistent longitudinal tracking of ANS recovery. Requires a Polar H10 or equivalent RR-capable sensor.
+- **Ectopic beat tracking** — Every session that uses an RR-capable sensor records the count and percentage of ectopic beats (PVCs, PACs). Reported in the session summary for all session types.
+- **Session HR recording and graph export** — Every session records 1Hz heart rate data alongside state transitions. Saved sessions can be exported as a landscape A4 PDF graph showing HR over time with colour-coded state background bands, axes, and a resting HR reference line.
+- **Session history and trend graphs** — Each session can be saved with notes. History graphs allow you to track recovery metrics over time.
+- **Response lag and HR overshoot tracking** — Per-session statistics on recovery lag, HR peak during rest, and active/recovery time ratios.
+- **Minimalist design** — Large, accessible UI with clear visualisation of live heart rate and state.
 
 ---
 
