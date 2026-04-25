@@ -60,7 +60,7 @@ How you should use the app depends on where you are in your recovery. The two co
 
 ### If you have PEM or chronic fatigue
 
-Your active threshold is a **ceiling, not a target**. The goal is consistent compliance with the limit, not progression. Do not raise the threshold because you feel ready for more.
+Your active threshold is a **ceiling, not a target**. With PEM/CFS, consistent compliance with the limit matters more than progression. Avoid raising the threshold based on a feeling of readiness — any change should be made cautiously and ideally in consultation with your healthcare provider.
 
 **Setting the threshold: the Workwell Foundation protocol**
 
@@ -150,17 +150,18 @@ The key parameters and their purpose:
 - *Target min / max* — The target zone is shown as a visual guide on the speedometer in all modes. This is a visual guide and is not used for calculations or transitions except when *Time limit type* is set to Target time. In that case any time your HR is at or above *Target min* counts toward your time limit, regardless of which state the app is in. 
 
 **Time limits**
-The time limit type defines how you count your daily exercise allowance. The right choice depends on how well your HR is regulated.
+The time limit type controls what counts toward your daily exercise allowance. Two options are available:
 
-When your HR is **dysregulated**, the appropriate response to 'Rest or pull back' is to stop completely — not to ease off, but to fully stop. Set *Time limit type* to **Active time**. You will only accrue exercise credit while the app is in *Continue Activity*. 
+- **Active time** counts only time spent in *Continue Activity*. With this setting, time during *Rest or pull back* does not count toward the limit. This is the more conservative choice and is appropriate when reaching *Rest or pull back* should result in fully stopping activity.
+- **Target time** counts any time your HR is at or above *Target min*, regardless of state. With this setting, time spent reducing effort rather than fully stopping during *Rest or pull back* continues to count toward the limit, provided HR remains at or above the target. This may be appropriate when partial effort reduction (rather than full stop) is suitable for your situation.
 
-When your HR is **regulated**, it becomes possible to stay active during 'Rest or pull back' by reducing effort slightly. In this case, meaningful exercise is happening whenever your HR is at or above your target minimum, regardless of which state the app has triggered. Set *Time limit type* to **Target time**. Any time your HR is at or above *Target min* will count towards your limit.
+Which setting is right for you depends on your own situation and any guidance from your healthcare provider. As a general orientation: *Active time* tends to suit contexts where HR is poorly regulated and stopping fully is the safer response; *Target time* tends to suit contexts where HR is well regulated and continued reduced-effort activity is appropriate.
 
 - *Time limit type* — Selects what counts toward your daily budget. **Active time** counts time in the *Continue activity* state. **Target time** counts time at or above *Target min* HR, regardless of state.
 - *Time limit mins* — Total number of minutes allowed per session. When reached, the app transitions to the heart rate Reset state to remind you to end the session. Set to 0 to disable. The session does not end automatically — you may choose to continue or finish.
 
 **Recovery limits**
-Adjust these according to how long it typically takes your heart to respond when you stop activity, then fine tune until you maximise the amount of exercise you are getting while minimising adverse symptoms.
+Adjust these based on how long it typically takes your heart to respond when you stop activity. Tuning these settings is a personal trade-off between exercise volume and symptom load; adjust based on your own observation, your tolerance, and any guidance from your healthcare provider.
 - *Max recovery period* — The total time allowed in 'Rest or pull back' before a forced heart rate Reset.
 - *Max response lag* — How long HR is allowed to keep rising after entering 'Rest or pull back' before a heart rate Reset is forced. 
 - *Resets before warning* — How many heart rate Resets trigger the end-session advisory.
@@ -230,7 +231,7 @@ Once enough data has been gathered, the score appears as a number and a star rat
 | ★★☆ | ≥ 45 | Moderate |
 | ★★★ | ≥ 65 | Strong |
 
-**Important:** Do not stress over achieving a high score. Stressing about the number will actively lower it. A healthy nervous system is, with practice, usually capable of scores over 65 or three stars. With dysautonomia scores of 20–30 early on are common and a reasonable starting point. The goal is stability and a slow upward trend over weeks, not an impressive number in any individual session. A low score, or even a flat HR line, is commonly observed when the ANS is fatigued or depleted. Scores often rise as autonomic function improves.
+**A note on the score:** The score is a feedback signal, not a target to chase. Stress about the number tends to lower it. With practice, healthy nervous systems are commonly capable of scores above 65 (three stars). With dysautonomia, scores in the 20–30 range early on are common and a reasonable starting point. What is informative longitudinally is stability and trend over weeks rather than any individual session score. A low score, or a flat HR line, is commonly observed when the ANS is fatigued or depleted. Scores often rise over time as the practice develops.
 
 Changes in the score during a session or during the day may be a useful cue to stop for the day, particularly if you have achieved a stable score that then declines during the session or over the day.
 
