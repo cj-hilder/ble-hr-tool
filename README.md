@@ -1,17 +1,21 @@
 # Manawa Pace v1.2
-### MEASURE. PACE. RECOVER.
+### MEASURE. PACE. IMPROVE.
 
 **[Launch Manawa Pace here](https://manawapace.app)**
 
-A specialised, web-based heart rate pacing app designed for individuals with dysautonomia (such as POTS, Long COVID, ME/CFS, or Post-Concussion Syndrome).
+A web-based heart rate pacing and breathing tool, built around the unstable HR patterns that can occur with autonomic nervous system dysregulation. People managing conditions such as POTS, Long COVID, ME/CFS, and Post-Concussion Syndrome may find it relevant, alongside anyone working with dysautonomia, post-exertional malaise, orthostatic intolerance, or autonomic recovery more generally.
 
-This app is intended to help you visualise what your heart is doing, pace yourself during exercise, and track your recovery. It is not intended for logging symptoms, nor does it analyse the data and offer advice. To use this app effectively you need to be aware of your symptoms, and understand how to pace your progress. 
+The app does not diagnose, monitor for, or treat any condition. It is a self-directed tool for visualising heart rate, pacing exercise, and guided breathing, intended to be used alongside your own judgement and your healthcare provider's guidance.
+
+> **⚠️ Important:** This application is provided for informational and educational purposes only. It is not a medical device, nor is it intended to diagnose, treat, cure, or prevent any disease. Always consult with a qualified healthcare provider before beginning any new exercise regimen, especially if you have dysautonomia or other cardiovascular or neurological conditions. See full disclaimer at the end of this document.
 
 [Quick Start Guide here](https://manawapace.app/quick_start_guide.html)
 
 I built Manawa Pace to help manage my own post-concussion dysautonomia. I am not a clinician or researcher; this is a best-effort personal project that has worked well for me. It may or may not work for you. Nothing here should be taken as medical advice, and it is no substitute for working with a qualified healthcare provider who understands your condition.
 
 Manawa Pace is free, [open source software](https://github.com/cj-hilder/ble-hr-tool).
+
+The app helps you visualise what your heart is doing, pace exercise within heart rate thresholds you define, and practice resonance frequency breathing. It does not log symptoms or analyse data and offer advice. To use it effectively you need to be aware of your own symptoms and understand how to pace your activity.
 
 > **Note:** Wrist based (optical) heart rate sensors are not usually suitable for measuring heart rate in the presence of dysautonomia. They are misled by irregular beats, weak pulse strength, and arm movement. They will often be significantly wrong. A chest strap sensor, e.g. Polar H10, is strongly recommended for HR based pacing with dysautonomia.
 
@@ -21,7 +25,7 @@ Manawa Pace is free, [open source software](https://github.com/cj-hilder/ble-hr-
 
 Most commercial exercise apps and smart watches are built for healthy individuals with well-regulated autonomic nervous systems. They assume your heart rate will rise predictably when you exert yourself and drop predictably when you stop.
 
-Patients with dysautonomia have a different experience. The autonomic nervous system (ANS) loses its normal control, producing three characteristic patterns:
+People with dysautonomia have a different experience. The autonomic nervous system (ANS) loses its normal control, producing three characteristic patterns:
 
 - **HR rises faster and higher than the exertion warrants.**
 - **HR recovery is delayed and is slower than normal.** Heart rate continues to go up for a time after stopping exertion, and then comes down slowly.
@@ -29,10 +33,10 @@ Patients with dysautonomia have a different experience. The autonomic nervous sy
 
 Standard apps have no way to display or respond to any of these patterns. This app is built specifically to help visualise and respond to them.
 
-In addition, this app can support recovery beyond the point where your heart regulation has become normal with these features:
+In addition, this app provides features that may be useful beyond the point where your heart regulation has become normal:
 1. An activity timer based on target heart rate to help you keep to a tightly controlled exercise programme.
-2. Guided resonance frequency breathing to help restore ANS health. 
-3. HRV measurement to track daily readiness and overall recovery.
+2. A guided resonance frequency breathing practice. RFB has been studied as a method for influencing autonomic balance and is associated in the research literature with improvements in vagal tone over time.
+3. HRV measurement to track daily readiness and longitudinal autonomic trends.
 
 ---
 
@@ -40,9 +44,9 @@ In addition, this app can support recovery beyond the point where your heart reg
 
 The app is based on three principles:
 
-1. **Staying as active as possible is essential.** Complete rest leads to deconditioning that worsens the situation. 
+1. **Maintaining activity within tolerance can be valuable.** For some people with autonomic dysregulation, prolonged complete rest can contribute to deconditioning. This is more nuanced for people with PEM or severe ME/CFS, where activity must be carefully bounded to avoid triggering symptoms — work with your healthcare provider to understand what is appropriate for your situation.
 2. **A dysregulated ANS means HR will sometimes go too high or too low for the level of exertion.** This cannot always be prevented through careful pacing. The goal is to make it visible and to allow you to respond when it happens.
-3. **Only exercise when the heart rate is appropriate to the level of exertion.** When HR goes outside the appropriate range, stop activity until it returns.
+3. **Only exercise within the heart rate range you have established as appropriate for you.** When HR goes outside that range, stop activity until it returns.
 
 The app monitors your live heart rate via a Bluetooth HR monitor and alerts you when your heart rate crosses into or out of threshold zones, allowing you to follow strict pacing without having to watch the screen continuously.
 
@@ -60,13 +64,13 @@ Your active threshold is a **ceiling, not a target**. The goal is consistent com
 
 **Setting the threshold: the Workwell Foundation protocol**
 
-The standard for determining your safe HR ceiling is a two-day Cardiopulmonary Exercise Test (CPET) administered by a specialist, which identifies your individual anaerobic threshold — the point at which your body shifts to less efficient energy production and PEM risk rises sharply. The [Workwell Foundation](https://workwellfoundation.org/pacing-with-a-heart-rate-monitor-to-minimize-post-exertional-malaise-pem-in-me-cfs-and-long-covid/), which pioneered this testing for ME/CFS, recommends that where CPET is unavailable, a safe and practical alternative is to set your threshold at **resting HR + 15 bpm**, using a 7-day average of your waking resting HR as the baseline.
+The standard for determining a HR ceiling for ME/CFS pacing is a two-day Cardiopulmonary Exercise Test (CPET) administered by a specialist, which identifies the individual anaerobic threshold — the point at which the body shifts to less efficient energy production and PEM risk rises sharply. The [Workwell Foundation](https://workwellfoundation.org/pacing-with-a-heart-rate-monitor-to-minimize-post-exertional-malaise-pem-in-me-cfs-and-long-covid/), which pioneered this testing for ME/CFS, suggests that where CPET is unavailable a starting point of **resting HR + 15 bpm** can be used, based on a 7-day average of waking resting HR.
 
-Clinical assessment is always preferable. The RHR + 15 rule is a conservative, accessible alternative that errs on the side of safety rather than maximising your activity.
+Clinical assessment is always preferable. The RHR + 15 starting point is a conservative, accessible alternative that errs on the side of caution rather than maximising activity.
 
 Success will appear as gradually shorter lag and recovery periods, fewer resets, and more time in the active state — all at a *fixed* threshold.
 
-Once your recovery lag times have become normal, typically less than 6 seconds, this might indicate full recovery. However, if you continue to get symptoms of PEM then continue to use the app for threshold-based pacing.
+Once recovery lag times have become consistently short — typically less than 6 seconds — this is consistent with patterns sometimes observed in well-regulated autonomic function. However, if you continue to get symptoms of PEM then continue to use the app for threshold-based pacing.
 
 ### If you do not have PEM or chronic fatigue
 
@@ -78,11 +82,11 @@ The standard clinical approach for post-concussion autonomic rehabilitation is t
 
 The difficulty with dysautonomia-related HR instability is that the BCTT presupposes a reasonably stable and predictable HR response to exertion. When the heart is poorly regulated it is difficult to either establish, or exercise within, an appropriate threshold. 
 
-A practical alternative is to **start with the Workwell RHR + 15 approach as an initial ceiling**, and progressively raise the threshold as HR regulation and symptoms improve. HR regulation improvement will appear as shorter lag and recovery periods, fewer resets, and more time in the active state. Raise the threshold incrementally and monitor the response watching both HR regulation and symptoms.
+A practical alternative is to **start with the Workwell RHR + 15 starting point as an initial ceiling**, and progressively raise the threshold as HR regulation and symptoms improve. HR regulation improvement may appear as shorter lag and recovery periods, fewer resets, and more time in the active state. Adjustments to the threshold should be made incrementally and in consultation with your healthcare provider, watching both HR regulation and symptoms.
 
-This approach uses the same logic as the Buffalo Protocol, sub-symptom threshold exercise to drive autonomic recovery, but replaces the clinical measurement with a conservative starting point and a methodology for ongoing progression.
+This approach draws on the underlying logic of the Buffalo Protocol — sub-symptom threshold exercise as a context for autonomic adaptation — but replaces the clinical measurement with a conservative starting point and ongoing self-observation. It is not the Buffalo Protocol and has not been clinically validated as equivalent to it.
 
-Once your recovery lag times have become normal, typically less than 6 seconds, it becomes possible to start following the standard Buffalo protocol. This app continues to support your recovery by letting you switch the activity timer to target mode, and carefully following a progressive programme of exercise increments.
+Once your recovery lag times have become consistently short, typically less than 6 seconds, it may become possible to follow the standard Buffalo Protocol with appropriate clinical guidance. This app continues to be useful by letting you switch the activity timer to target mode and follow a progressive programme of exercise increments.
 
 ---
 
@@ -92,9 +96,9 @@ The app operates in four states.
 
 ### 🟢 Continue activity
 
-Your heart rate is within your physiological exercise zone — above the bradycardia threshold and below your active threshold. The app tracks total activity time to help you budget the amount of daily exertion.
+Your heart rate is within the range you have configured — above the bradycardia threshold and below your active threshold. The app tracks total activity time to help you budget the amount of daily exertion.
 
-If your heart rate drops *below* the bradycardia threshold during activity, the app forces a heart rate Reset. This catches the HR overshoot pattern — an unusually low reading during exertion can indicate that the ANS has already lost control.
+If your heart rate drops *below* the bradycardia threshold during activity, the app forces a heart rate Reset. This is intended to flag the HR overshoot pattern that some people with dysautonomia experience, where an unexpectedly low reading during exertion can be a sign that activity should stop.
 
 An optional **activity time limit** can be configured (see Settings). When your active time for the session reaches that limit, the app automatically triggers a heart rate reset as a reminder to end the session.
 
@@ -102,16 +106,16 @@ An optional **activity time limit** can be configured (see Settings). When your 
 
 Your heart rate has hit your active threshold. Stop or significantly reduce activity. The app now tracks two things independently:
 
-- **Response lag:** How many seconds pass before your HR actually starts falling. In a well-regulated ANS this happens within seconds. In dysautonomia it is often delayed. If the lag exceeds your configured limit, the app forces a heart rate Reset.
+- **Response lag:** How many seconds pass before your HR actually starts falling. In typical autonomic function this happens within seconds; with dysautonomia it can be delayed. If the lag exceeds your configured limit, the app forces a heart rate Reset.
 - **Total recovery time:** If your HR is falling but takes too long to reach your active threshold again, the app also forces a heart rate Reset.
 
-Both are independent safeguards. The response lag catches the delayed-response pattern. The maximum recovery period catches a slow but ultimately failed recovery.
+Both are independent triggers based on the limits you have configured. The response lag trigger flags a delayed HR response; the maximum recovery period trigger flags a slow but ultimately incomplete recovery.
 
 If your HR falls back below your active threshold quickly enough, you are returned to Continue activity.
 
 ### 🔴 / 🔵 Reset to resting HR
 
-You have pushed too far and failed to recover in time, or you have manually triggered a reset. The app now waits for your HR to return to your resting HR band and stay there for 15 consecutive seconds before returning you to Continue activity.
+Your HR has exceeded your configured limits, or you have manually triggered a reset. The app now waits for your HR to return to your resting HR band and stay there for 15 consecutive seconds before returning you to Continue activity.
 
 This may require you to completely stop and sit down.
 
@@ -133,7 +137,7 @@ The key parameters and their purpose:
 
 **Heart rate range**
 - *Max HR* — Used to scale the speedometer and history graph. Use a calculator based on your age and sex (in dysautonomia, formula-derived estimates are generally more meaningful than a measured maximum). This is not used in any state transitions so it is not critical that it is your *correct* maximum HR; you might want to round it to the nearest 10.
-- *Bradycardia threshold* — HR below this during activity triggers a heart rate Reset. Set it to a level that represents a clearly abnormal low for your resting state.
+- *Bradycardia threshold* — HR below this during activity triggers a heart rate Reset. Set it to a level that you consider notably below your normal resting range, in consultation with your healthcare provider if you are unsure.
 
 **Resting HR**
 - *Resting HR* and *Bandwidth* — The target you must return to during a heart rate Reset, and the window around it. HR must stay within this band for 15 consecutive seconds for a heart rate Reset to complete.
@@ -173,7 +177,7 @@ Adjust these according to how long it typically takes your heart to respond when
 
 Your heart rate is graphed continuously on screen. The display shows the last 90 secs of data. The graph begins as soon as you connect to your HR monitor — before any session starts. This pre-session data is shown in grey, giving you a baseline view of your resting HR and any spontaneous variability before you begin.
 
-When connected to a sensor that exposes raw beat-to-beat RR intervals, such as the Polar H10, this graph shows **unsmoothed, instantaneous heart rate**. This is not the smoothed heart rate graph that most fitness apps show. It shows every little variation and will be quite jagged, especially when you are at rest or low levels of exertion. You will see involuntary sighs as smooth little dips and ectopic beats as vertical spikes. Seeing these on the graph is not a cause for concern — this is the app doing exactly what it says: showing you your cardiac data rather than hiding it.
+When connected to a sensor that exposes raw beat-to-beat RR intervals, such as the Polar H10, this graph shows **unsmoothed, instantaneous heart rate**. This is not the smoothed heart rate graph that most fitness apps show. It shows every little variation and will be quite jagged, especially when you are at rest or low levels of exertion. You will see involuntary sighs as smooth little dips and ectopic beats as vertical spikes. The graph is intended to display your cardiac data rather than hide it; minor variations and occasional ectopic spikes are commonly observed in healthy hearts, but anything that worries you is worth raising with a clinician.
 
 >**Spontaneous sighs:** During light aerobic activity you may notice involuntary sighs — deeper breaths that appear as smooth little dips on the HR graph — occurring roughly every 2–5 minutes. This is a normal physiological reflex. These normally disappear around your anaerobic threshold. Observing the presence or absence of involuntary sighs can sometimes be a useful indicator that helps with establishing your anaerobic threshold. 
 
@@ -182,15 +186,15 @@ When connected to a sensor that exposes raw beat-to-beat RR intervals, such as t
 >- **PVC (premature ventricular contraction):** A beat that fires early. On the graph it appears as a **sharp spike upward, immediately followed by a smaller spike downward**. 
 >- **PAC (premature atrial contraction):** A beat that fires early and resets your cardiac rhythm. On the graph it appears as a **spike upward with no corresponding downward spike**.
 >
->Not everything that looks like an ectopic beat is counted. Only beats that are both sufficiently premature and match the PVC or PAC pattern within tight tolerances are included.
+>Not everything that looks like an ectopic beat is counted. Only beats that are both sufficiently premature and match the PVC or PAC pattern within tight tolerances are included. Runs, couplets, and triplets are not detected.
 >
->Anything under 1% of beats being ectopic is generally considered negligible, and up to several hundred ectopic beats a day is normal for a healthy, functioning heart. Ectopic beats can fluctuate widely based on sleep quality, caffeine intake, and stress. A sustained downwards trend might indicate improved ANS health, especially in conjunction with other signs of recovery, but observing a trend is made difficult by the comparatively small numbers of ectopic beats. The count is most trustworthy from HRV or RFB sessions, and trends are only meaningful when comparing similar session types. If you regularly see more than 5%, a significant change in rate above 1%, or if the beats are accompanied by dizziness or fainting, it may be worth mentioning to a clinician.
+>As a general rule of thumb often cited in cardiology literature, an ectopic burden of under 1% of total beats is generally considered negligible, and a modest number of ectopic beats per day is normal for a healthy heart. These figures vary across sources and populations and are presented here for general orientation rather than as a clinical guideline. Ectopic beats can fluctuate widely based on sleep quality, caffeine intake, and stress. A sustained downwards trend over time may be of interest as one of several markers of autonomic state, but observing a trend is made difficult by the comparatively small numbers of ectopic beats. Trends are only meaningful when comparing similar session types under similar conditions. If you regularly see more than around 5%, a significant change in rate above 1%, or if the beats are accompanied by dizziness, fainting, a palpitation sensation lasting more than one beat, or an experience of sustained skipping, it is worth raising with a clinician.
 
 ---
 
 ## Resonance Frequency Breathing (RFB)
 
-Resonance Frequency Breathing is a biofeedback technique. Regular RFB practice has evidence of increasing vagal tone over time.
+Resonance Frequency Breathing is a biofeedback technique. RFB has been studied extensively (notably by Lehrer and Gevirtz and colleagues) as a method for influencing autonomic balance, and is associated in the research literature with increases in vagal tone over time with regular practice.
 
 At a particular breathing rate respiratory and cardiac rhythms enter resonance. This is typically around 6 breaths per minute, but varying between individuals in the range of 4.5–7 bpm. The heart rate rises during each inhale and falls during each exhale. When breathing rate matches the body's resonance frequency the amplitude of these oscillations is maximised.
 
@@ -226,11 +230,11 @@ Once enough data has been gathered, the score appears as a number and a star rat
 | ★★☆ | ≥ 45 | Moderate |
 | ★★★ | ≥ 65 | Strong |
 
-**Important:** Do not stress over achieving a high score. Stressing about the number will actively lower it. A healthy nervous system is, with practice, usually capable of scores over 65 or three stars. With dysautonomia scores of 20–30 early in your recovery are completely normal and a solid starting point. The goal is stability and a slow upward trend over weeks, not an impressive number in any individual session. A low score, or even a flat HR line, is physiologically expected when the ANS is depleted. The score will increase as ANS function recovers.
+**Important:** Do not stress over achieving a high score. Stressing about the number will actively lower it. A healthy nervous system is, with practice, usually capable of scores over 65 or three stars. With dysautonomia scores of 20–30 early on are common and a reasonable starting point. The goal is stability and a slow upward trend over weeks, not an impressive number in any individual session. A low score, or even a flat HR line, is commonly observed when the ANS is fatigued or depleted. Scores often rise as autonomic function improves.
 
-Changes in the score during a session or during the day can be used to detect ANS fatigue and may be useful as a cue to stop for the day. This applies if you have achieved a stable score which then declines during the session or over the day.
+Changes in the score during a session or during the day may be a useful cue to stop for the day, particularly if you have achieved a stable score that then declines during the session or over the day.
 
-Tracking your star rating and score over weeks may be of use for tracking your recovery. However the main expected benefit of  resonance frequency breathing is that it promotes recovery, not that it is a recovery tracking tool.
+Tracking your star rating and score over weeks may be of interest as one of several markers of autonomic state. The primary value of resonance frequency breathing is the practice itself rather than the score it produces.
 
 ### Finding your personal resonance frequency
 
@@ -266,13 +270,13 @@ The most common mistake is taking large, heavy breaths. Over-breathing blows off
 
 **Exhale passively.** Do not use your muscles to push the air out. Just relax your airways and let the air fall out naturally, like a tyre slowly deflating.
 
-> **Note:** You may feel a mild sensation of "air hunger" — a slight urge to take a bigger breath. This is actually a good sign that your blood vessels are relaxing. Tolerate it gently. Never push into discomfort or panic.
+> **Note:** You may feel a mild sensation of "air hunger" — a slight urge to take a bigger breath. This is generally considered a normal sensation during slow breathing practice and not a cause for concern at mild levels. Tolerate it gently. Never push into discomfort or panic.
 
 ### Knowing When to Stop
 
 If your nervous system is currently deconditioned, it will fatigue quickly. Pushing through that fatigue will backfire and produce a stress response. Stop the RFB session and consider it a success if you notice any of the following:
 
-**The resonance crash.** If your score has been sitting in the ★☆☆ or ★★☆ range and then suddenly drops to ☆☆☆ or near-zero, your autonomic nervous system has fatigued. This is the equivalent of muscular failure — time to stop for the day.
+**The resonance crash.** If your score has been sitting in the ★☆☆ or ★★☆ range and then suddenly drops to ☆☆☆ or near-zero, this may suggest your autonomic system is tiring — analogous to muscular fatigue. A reasonable response is to stop for the day.
 
 **Brain fog or frustration.** Paced breathing requires sustained focus. If your mind is wandering, you feel agitated, or you are struggling to hold the rhythm, your cognitive battery is empty.
 
@@ -318,9 +322,9 @@ The index is computed as:
 
 ### What to expect
 
-A healthy adult at rest typically scores in the range of 40–70. With active dysautonomia, scores of 10–25 are common and are not cause for alarm — they reflect the current state of the ANS, not a permanent ceiling. Scores below 10 suggest significant sympathetic dominance or ANS depletion.
+For broad orientation: HRV index scores broadly comparable to those produced by other consumer HRV platforms tend to fall in the 40–70 range for healthy adults at rest. With active dysautonomia, scores in the 10–25 range are commonly reported and are not necessarily concerning on their own — they reflect a current state rather than a permanent ceiling. Lower scores tend to be associated with sympathetic dominance or fatigue states. These ranges are general orientations rather than clinical thresholds; what matters longitudinally is your own trend over time, which is more informative than any single reading.
 
-Manawa Pace HRV scores are directly comparable with EliteHRV and Visible HRV scores.
+Manawa Pace HRV scores use the same underlying ln(RMSSD) scaling as EliteHRV and Visible HRV, so scores are on a comparable scale. Exact agreement between platforms can vary because of differences in windowing, artifact handling, and minor scaling choices.
 
 ### Hardware requirement
 
@@ -393,9 +397,11 @@ To fix this:
 
 ---
 
-##How to contribute
+## How to contribute
 
 Send your feedback, ideas, or bug reports to **chris at manawapace.app**. If you have been using the app and have detailed experience to share, that is especially welcome.
+
+> **Please note:** This is not a channel for medical concerns. If you are experiencing symptoms or believe you may be having a medical event, contact your healthcare provider or local emergency services. Reports about the app's behaviour are welcome; reports about your health should go to a clinician.
 
 Please include:
 - What activity or session type you were using
@@ -425,6 +431,8 @@ This is a personal project maintained by one person. There is no guarantee that 
 This project is licenced under the **Creative Commons Attribution 4.0 International (CC BY 4.0)** licence.
 
 You are free to share and adapt this work for any purpose, including commercially, as long as you give appropriate credit to **Chris Hilder** and indicate if changes were made.
+
+The CC BY 4.0 licence includes a disclaimer of warranties and a limitation of liability (Section 5 of the licence text). The software is provided "as-is" with no warranty of any kind, express or implied, including warranties of fitness for a particular purpose. To the extent permitted by applicable law, the author is not liable for any damages arising from use of the software. Use of this software is at your own risk and remains your responsibility.
 
 [![CC BY 4.0](https://licensebuttons.net/l/by/4.0/88x31.png)](https://creativecommons.org/licenses/by/4.0/)
 
