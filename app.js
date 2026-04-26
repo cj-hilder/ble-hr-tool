@@ -330,6 +330,37 @@ function recordRrHistory(rrValuesMs, notifTs) {
     } else if (isSensorRrGap) {
         lastRrTimestamp = 0;
         recordRrHistory._pendingBeat = null;
+
+        // Retroactively trim the last 3s of pre-gap data. A drift in the seconds
+        // before the gap often escapes beat-by-beat artifact classification (each
+        // step is small relative to its predecessor) but reflects the same sensor
+        // degradation that produced the gap — the gap is the late-arriving evidence
+        // that those preceding beats were already corrupted. Without this trim,
+        // the post-gap graph bridges from the drift's peak rather than from clean
+        // baseline, producing a tabletop. Anchor on gapStart (= previous
+        // lastRrWallClock, recovered as wallNow - wallGap) rather than
+        // lastHrWallClock — the latter has been advancing through the gap on
+        // HR-only packets and would point inside the silence, not at its onset.
+        const PRE_GAP_TRIM_MS = 3000;
+        const gapStart        = wallNow - wallGap;
+        const trimBoundary    = gapStart - PRE_GAP_TRIM_MS;
+        while (rrHistory.length > 0 && rrHistory[rrHistory.length - 1].ts > trimBoundary) {
+            rrHistory.pop();
+        }
+        // Parallel trim of the HRV processor's buffer so the corrupted pre-gap
+        // beats do not feed RMSSD/SDNN/coherence. buffer and timestamps are kept
+        // in lockstep by addRR; pop both together.
+        while (hrvProcessor.timestamps.length > 0 &&
+               hrvProcessor.timestamps[hrvProcessor.timestamps.length - 1] > trimBoundary) {
+            hrvProcessor.timestamps.pop();
+            hrvProcessor.buffer.pop();
+        }
+        // Clear the artifact-classifier baseline so resumed beats reseed via the
+        // existing warmup path rather than being compared against a reference
+        // that may itself have been a drift-corrupted beat we just discarded.
+        recordRrHistory._lastCleanRr = 0;
+        recordRrHistory._warmupRrs   = [];
+        recordRrHistory._streak      = null;
     }
     const pairs = [];
     const totalRrMs = rrValuesMs.reduce((sum, val) => sum + val, 0);
