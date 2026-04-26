@@ -45,13 +45,29 @@ In addition, this app provides features that may be useful beyond the point wher
 The app is built around two goals you may have:
 
 1. **Maintaining or building activity within your tolerance.**
-2. **Only exercising within the heart rate range you have established as appropriate for you.**
+2. **Only exercise within the heart rate range you have established as appropriate for you.**
 
 If these two goals are appropriate for you, using your own judgement and your healthcare provider's guidance, then this app provides information you can use when working towards those goals.
 
 The app monitors your live heart rate via a Bluetooth HR monitor and alerts you when your heart rate crosses into or out of threshold zones, allowing you to follow strict pacing without having to watch the screen continuously.
 
 Do not blindly follow the app. Be ready to adjust the settings, hit the reset button, or end the session if needed.
+
+---
+
+## A note on perceived exertion
+
+Rating of perceived exertion (RPE) — paying attention to how hard activity feels and adjusting accordingly — is increasingly recognised as the most effective pacing approach for both general fitness training and conditions like ME/CFS and post-exertional malaise. When it works well it is the simplest and most flexible method.
+
+Heart rate pacing remains useful in situations where RPE is harder to apply, including:
+
+- When you are still building familiarity with your own perceived exertion signals
+- When cognitive symptoms (brain fog, difficulty concentrating) make self-assessment unreliable
+- When other symptoms — pain, dizziness, breathlessness, anxiety — dominate perceived effort independently of cardiovascular load
+- When sustained low-intensity activity makes subjective effort an unreliable guide to cardiovascular strain
+- When you simply prefer the objectivity of a measured number
+
+The two approaches are complementary, not competing. Many people use HR data as an objective check on subjective effort, or rely on HR while building confidence with RPE and shift toward RPE over time. Use whichever serves you, or both.
 
 ---
 
@@ -442,5 +458,7 @@ Both licences include explicit disclaimers of warranty and limitations of liabil
 Full licence texts:
 - Apache 2.0: [apache.org/licenses/LICENSE-2.0](https://www.apache.org/licenses/LICENSE-2.0) — also included in the project as `LICENSE`
 - CC BY 4.0: [creativecommons.org/licenses/by/4.0](https://creativecommons.org/licenses/by/4.0/) — also included in the project as `LICENSE-DOCS`
+
+**A note on the project name:** "Manawa Pace" is the name of this project, used by Chris Hilder. Apache 2.0 Section 6 does not grant permission to use this name, or related branding, in derivative works or to suggest endorsement. Forks and derivatives are welcome under the licence — please choose a different name for your fork. Mentioning "Manawa Pace" in attribution (e.g. "based on Manawa Pace by Chris Hilder") is the intended use and is fine.
 
 [![Apache 2.0](https://img.shields.io/badge/license--code-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0) [![CC BY 4.0](https://licensebuttons.net/l/by/4.0/88x31.png)](https://creativecommons.org/licenses/by/4.0/)
