@@ -619,17 +619,27 @@ document.addEventListener('DOMContentLoaded', () => {
     // (consumed by app.js timing) and the virtual RFB_BPM / RFB_INHALE_PCT
     // values that the UI presents. Storage stays in seconds; the UI is
     // computed both ways at load and change time.
+    //
+    // Numeric coercion is defensive: storage values may have come from older
+    // versions of the app where values could be saved as strings, in which
+    // case "6" + 7 would concatenate to "67" rather than summing to 13.
     function secondsToBpmPct(inhaleSec, exhaleSec) {
-        const total = inhaleSec + exhaleSec;
-        if (!(total > 0)) return { bpm: 6.0, pct: 50 };
+        const i = Number(inhaleSec);
+        const e = Number(exhaleSec);
+        if (!isFinite(i) || !isFinite(e) || i <= 0 || e <= 0) {
+            return { bpm: 6.0, pct: 50 };
+        }
+        const total = i + e;
         const bpm = Math.round((60 / total) * 10) / 10;       // 1 dp
-        const pct = Math.round((100 * inhaleSec) / total);    // integer percent
+        const pct = Math.round((100 * i) / total);            // integer percent
         return { bpm, pct };
     }
     function bpmPctToSeconds(bpm, pct) {
-        if (!(bpm > 0)) bpm = 6.0;
-        const total = 60 / bpm;
-        const inhaleSec = +(total * pct / 100).toFixed(2);
+        const b = Number(bpm);
+        const p = Number(pct);
+        if (!isFinite(b) || b <= 0) return { inhaleSec: 5.0, exhaleSec: 5.0 };
+        const total = 60 / b;
+        const inhaleSec = +(total * p / 100).toFixed(2);
         const exhaleSec = +(total - inhaleSec).toFixed(2);
         return { inhaleSec, exhaleSec };
     }
