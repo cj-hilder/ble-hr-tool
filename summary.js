@@ -230,14 +230,21 @@ window.RFB_STAR_LEVELS = {
                 ];
             } else if (isRFB) {
                 // Resonance Breathing: breathing parameters only
-                const inhale  = ss.RFB_INHALE_SEC || '--';
-                const exhale  = ss.RFB_EXHALE_SEC || '--';
-                const rateBpm = (inhale !== '--' && exhale !== '--')
-                    ? (60 / (inhale + exhale)).toFixed(1) + ' bpm'
-                    : '--';
+                const inhale = ss.RFB_INHALE_SEC;
+                const exhale = ss.RFB_EXHALE_SEC;
+                let breathingLine;
+                if (inhale > 0 && exhale > 0) {
+                    const total  = inhale + exhale;
+                    const bpm    = (60 / total).toFixed(1);
+                    const pct    = Math.round((100 * inhale) / total);
+                    const secStr = `${inhale.toFixed(1)}s in / ${exhale.toFixed(1)}s out`;
+                    breathingLine = `Rate: ${bpm} bpm \u00b7 Inhale: ${pct}% \u00b7 ${secStr}`;
+                } else {
+                    breathingLine = 'Rate: -- \u00b7 Inhale: -- \u00b7 --';
+                }
                 lines = [
                     `Max HR: ${ss.MAX_HR || '--'} \u00b7 Resting HR: ${ss.RESTING_HR || '--'} \u00b1${ss.RESTING_HR_BANDWIDTH || '--'}`,
-                    `Inhale: ${inhale}s \u00b7 Exhale: ${exhale}s \u00b7 Rate: ${rateBpm}`,
+                    breathingLine,
                 ];
             } else {
                 // Standard activity

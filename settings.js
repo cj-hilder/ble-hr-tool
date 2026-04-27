@@ -151,12 +151,12 @@ const FIELDS = [
     { group: 'Resonance Frequency Breathing' },
     { key: 'RFB_ENABLED', label: 'Enable RFB', type: 'toggle',
       desc: 'During the reset state the status dot turns blue and pulses as a breath pacer. A sine-wave overlay on the graph shows the expected HR coherence pattern.' },
-    { key: 'RFB_INHALE_SEC', label: 'Inhale', unit: 's',
-      desc: 'Duration of each inhale in seconds. Longer inhales are associated with parasympathetic activation.' },
-    { key: 'RFB_EXHALE_SEC', label: 'Exhale', unit: 's',
-      desc: 'Duration of each exhale in seconds. Longer exhales are associated with increased vagal tone.' },
-    { type: 'display', id: 'rfbRateDisplay', label: 'Breathing rate',
-      desc: 'Calculated from inhale + exhale. 6.0 bpm is the classic adult resonance frequency.' },
+    { key: 'RFB_BPM', label: 'Breaths per minute', unit: 'bpm', virtual: true,
+      desc: 'Slow breathing pace, typically 5–6 bpm. Find your resonance frequency by trying a few paces and seeing which produces the highest resonance score while feeling effortless.' },
+    { key: 'RFB_INHALE_PCT', label: 'Inhale percentage', unit: '%', virtual: true,
+      desc: 'What fraction of each breath is the inhale. 50% is symmetric. Lower values give a longer exhale (e.g. 40% gives a 4-in/6-out feel), which some practitioners find produces a stronger response.' },
+    { type: 'display', id: 'rfbSecondsDisplay', label: 'Inhale / exhale',
+      desc: 'Calculated from breaths per minute and inhale percentage.' },
     { key: 'RFB_DURATION', label: 'RFB duration', unit: 'min',
       desc: 'Extra minutes to spend in resonance breathing after heart rate returns to resting.' },
     { key: 'RFB_SOUND', label: 'Inhale sound guide', type: 'toggle',
@@ -600,7 +600,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // breathing settings below the toggle are hidden (they are irrelevant).
     // Not called for RB or HRV activities — their visibility is fully controlled
     // by RESONANCE_HIDDEN_KEYS and HRV_SHOWN_KEYS respectively.
-    const RFB_DEP_KEYS = ['RFB_INHALE_SEC', 'RFB_EXHALE_SEC', 'RFB_DURATION',
+    const RFB_DEP_KEYS = ['RFB_BPM', 'RFB_INHALE_PCT', 'RFB_DURATION',
                           'RFB_SOUND', 'RFB_VIBRATION', 'RFB_SHOW_DEBUG'];
     function updateRfbSubVisibility(act, isRB, isHRV) {
         if (isRB || isHRV) return; // handled by activity-level logic
@@ -615,14 +615,35 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function updateRfbRateDisplay() {
-        const el = document.getElementById('rfbRateDisplay');
+    // Conversion between canonical RFB_INHALE_SEC/RFB_EXHALE_SEC storage
+    // (consumed by app.js timing) and the virtual RFB_BPM / RFB_INHALE_PCT
+    // values that the UI presents. Storage stays in seconds; the UI is
+    // computed both ways at load and change time.
+    function secondsToBpmPct(inhaleSec, exhaleSec) {
+        const total = inhaleSec + exhaleSec;
+        if (!(total > 0)) return { bpm: 6.0, pct: 50 };
+        const bpm = Math.round((60 / total) * 10) / 10;       // 1 dp
+        const pct = Math.round((100 * inhaleSec) / total);    // integer percent
+        return { bpm, pct };
+    }
+    function bpmPctToSeconds(bpm, pct) {
+        if (!(bpm > 0)) bpm = 6.0;
+        const total = 60 / bpm;
+        const inhaleSec = +(total * pct / 100).toFixed(2);
+        const exhaleSec = +(total - inhaleSec).toFixed(2);
+        return { inhaleSec, exhaleSec };
+    }
+
+    function updateRfbSecondsDisplay() {
+        const el = document.getElementById('rfbSecondsDisplay');
         if (!el) return;
-        const inhaleEl = document.getElementById('sg_RFB_INHALE_SEC');
-        const exhaleEl = document.getElementById('sg_RFB_EXHALE_SEC');
-        const i = inhaleEl ? parseFloat(inhaleEl.value) || 5 : 5;
-        const e = exhaleEl ? parseFloat(exhaleEl.value) || 5 : 5;
-        el.textContent = (60 / (i + e)).toFixed(2) + ' bpm';
+        const bpmEl = document.getElementById('sg_RFB_BPM');
+        const pctEl = document.getElementById('sg_RFB_INHALE_PCT');
+        const bpm = bpmEl ? parseFloat(bpmEl.value) : NaN;
+        const pct = pctEl ? parseFloat(pctEl.value) : NaN;
+        if (!(bpm > 0) || !(pct >= 0)) { el.textContent = ''; return; }
+        const { inhaleSec, exhaleSec } = bpmPctToSeconds(bpm, pct);
+        el.textContent = `${inhaleSec.toFixed(1)} s in / ${exhaleSec.toFixed(1)} s out`;
     }
 
     function loadActivityIntoPanel(act) {
@@ -633,12 +654,23 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!item.key) continue;
             const el = document.getElementById(`sg_${item.key}`);
             if (!el) continue;
+            if (item.virtual) continue; // populated below from canonical storage
             const val = (act.settings && item.key in act.settings)
                 ? act.settings[item.key] : DEFAULTS[item.key];
             if (el.type === 'checkbox') { el.checked = !!Number(val); }
             else { el.value = String(val); }
         }
-        updateRfbRateDisplay();
+        // Populate the virtual RFB fields from the canonical seconds storage.
+        const inhaleSec = (act.settings && 'RFB_INHALE_SEC' in act.settings)
+            ? act.settings.RFB_INHALE_SEC : DEFAULTS.RFB_INHALE_SEC;
+        const exhaleSec = (act.settings && 'RFB_EXHALE_SEC' in act.settings)
+            ? act.settings.RFB_EXHALE_SEC : DEFAULTS.RFB_EXHALE_SEC;
+        const { bpm, pct } = secondsToBpmPct(inhaleSec, exhaleSec);
+        const bpmEl = document.getElementById('sg_RFB_BPM');
+        const pctEl = document.getElementById('sg_RFB_INHALE_PCT');
+        if (bpmEl) bpmEl.value = String(bpm);
+        if (pctEl) pctEl.value = String(pct);
+        updateRfbSecondsDisplay();
         updatePanelForActivity(act);
     }
 
@@ -710,6 +742,34 @@ document.addEventListener('DOMContentLoaded', () => {
             else { v = Number(el.value); if (isNaN(v)) return; }
             const act = getSelectedActivity();
             if (!act.settings) act.settings = {};
+
+            if (item.virtual && (item.key === 'RFB_BPM' || item.key === 'RFB_INHALE_PCT')) {
+                // Clamp to sensible bounds, then compute seconds from the
+                // current bpm + pct UI values and write to canonical storage.
+                const bpmEl = document.getElementById('sg_RFB_BPM');
+                const pctEl = document.getElementById('sg_RFB_INHALE_PCT');
+                let bpm = parseFloat(bpmEl.value);
+                let pct = parseFloat(pctEl.value);
+                if (!(bpm >= 4 && bpm <= 10)) bpm = Math.min(10, Math.max(4, bpm || 6));
+                if (!(pct >= 30 && pct <= 70)) pct = Math.min(70, Math.max(30, pct || 50));
+                bpm = Math.round(bpm * 10) / 10;
+                pct = Math.round(pct);
+                bpmEl.value = String(bpm);
+                pctEl.value = String(pct);
+                const { inhaleSec, exhaleSec } = bpmPctToSeconds(bpm, pct);
+                act.settings.RFB_INHALE_SEC = inhaleSec;
+                act.settings.RFB_EXHALE_SEC = exhaleSec;
+                persistActivities();
+                const sessionRunning = (typeof isSessionRunning !== 'undefined') && isSessionRunning;
+                const sameActivity   = (typeof currentActivityId !== 'undefined') && currentActivityId === selectedActivityId;
+                if (!sessionRunning || sameActivity) {
+                    window.RFB_INHALE_SEC = inhaleSec;
+                    window.RFB_EXHALE_SEC = exhaleSec;
+                }
+                updateRfbSecondsDisplay();
+                return;
+            }
+
             // Resonance Breathing always has RFB_ENABLED = 1
             if (act.id === RESONANCE_BREATHING_ID && item.key === 'RFB_ENABLED') { v = 1; }
             act.settings[item.key] = v;
@@ -725,7 +785,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     updateSpeedometer(latestHR);
                 }
             }
-            if (item.key === 'RFB_INHALE_SEC' || item.key === 'RFB_EXHALE_SEC') updateRfbRateDisplay();
         });
     }
 

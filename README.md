@@ -9,15 +9,15 @@ It is built around the unstable HR patterns that can occur with autonomic nervou
 
 Manawa Pace is intended to be used alongside your own judgement and your healthcare provider's guidance. It does not diagnose, monitor for, or treat any condition. It does not log symptoms or analyse data and offer advice. To use it effectively you need to be aware of your own diagnosis and symptoms, and understand how to pace your activity.
 
-> **⚠️ Important:** This application is provided for informational and educational purposes only. It is not a medical device, nor is it intended to diagnose, treat, cure, or prevent any disease. Always consult with a qualified healthcare provider before beginning any new exercise regimen, especially if you have dysautonomia or other cardiovascular or neurological conditions. See full disclaimer at the end of this document.
+I built Manawa Pace to help manage my own post-concussion symptoms. I am not a clinician or researcher; this is a best-effort personal project that has worked well for me. It may or may not work for you. Nothing here should be taken as medical advice, and it is no substitute for working with a qualified healthcare provider who understands your condition.
 
 [Quick Start Guide here](https://manawapace.app/quick_start_guide.html)
 
-I built Manawa Pace to help manage my own post-concussion symptoms. I am not a clinician or researcher; this is a best-effort personal project that has worked well for me. It may or may not work for you. Nothing here should be taken as medical advice, and it is no substitute for working with a qualified healthcare provider who understands your condition.
-
 Manawa Pace is free, [open source software](https://github.com/cj-hilder/ble-hr-tool).
 
-> **Note:** Wrist based (optical) heart rate sensors are not usually suitable for measuring heart rate in the presence of dysautonomia. They are misled by irregular beats, weak pulse strength, and arm movement. They will often be significantly wrong. A chest strap sensor, e.g. Polar H10, is strongly recommended for HR based pacing with dysautonomia.
+> **Note:** Wrist based (optical) heart rate sensors are not usually suitable for measuring heart rate in the presence of dysautonomia. They are misled by irregular beats, weak pulse strength, and arm movement. They can be significantly wrong. A chest strap sensor, e.g. Polar H10, is strongly recommended for HR based pacing with dysautonomia.
+>
+> **⚠️ Important:** This application is provided for informational and educational purposes only. It is not a medical device, nor is it intended to diagnose, treat, cure, or prevent any disease. Always consult with a qualified healthcare provider before beginning any new exercise regimen, especially if you have dysautonomia or other cardiovascular or neurological conditions. See full disclaimer at the end of this document.
 
 ---
 
@@ -55,25 +55,25 @@ Do not blindly follow the app. Be ready to adjust the settings, hit the reset bu
 
 ---
 
-## A note on perceived exertion
+## Why heart rate pacing?
 
 Rating of perceived exertion (RPE) — paying attention to how hard activity feels and adjusting accordingly — is increasingly recognised as the most effective pacing approach for both general fitness training and conditions like ME/CFS and post-exertional malaise. When it works well it is the simplest and most flexible method.
 
 Heart rate pacing remains useful in situations where RPE is harder to apply, including:
 
-- When you are still building familiarity with your own perceived exertion signals
 - When cognitive symptoms (brain fog, difficulty concentrating) make self-assessment unreliable
-- When other symptoms — pain, dizziness, breathlessness, anxiety — dominate perceived effort independently of cardiovascular load
-- When sustained low-intensity activity makes subjective effort an unreliable guide to cardiovascular strain
+- When other symptoms (pain, dizziness, lightheadedness, breathlessness, anxiety) dominate perceived effort independently of cardiovascular load
+- When sustained low-intensity activity or cardiac dysregulation makes subjective effort an unreliable guide to cardiovascular strain
+- When you are still building familiarity with your own perceived exertion signals
 - When you simply prefer the objectivity of a measured number
 
-The two approaches are complementary, not competing. Many people use HR data as an objective check on subjective effort, or rely on HR while building confidence with RPE and shift toward RPE over time. Use whichever serves you, or both.
+Many people rely on HR until symptoms resolve or while building confidence with RPE and shift toward RPE over time.  Others use HR data as an objective check on subjective effort, or by personal preference. Manawa Pace is a tool for HR pacing.
 
 ---
 
 ## Two Recovery Contexts
 
-How to use the app depends on where you are in your health journey.
+How to use Manawa Pace depends on where you are in your health journey.
 
 ### If you have PEM or chronic fatigue
 
@@ -204,7 +204,7 @@ When connected to a sensor that exposes raw beat-to-beat RR intervals, such as t
 >- **PVC (premature ventricular contraction):** A beat that fires early. On the graph it appears as a **sharp spike upward, immediately followed by a smaller spike downward**. 
 >- **PAC (premature atrial contraction):** A beat that fires early and resets your cardiac rhythm. On the graph it appears as a **spike upward with no corresponding downward spike**.
 >
->Not everything that looks like an ectopic beat is counted. Only beats that are both sufficiently premature and match the PVC or PAC pattern within tight tolerances are included. Runs, couplets, and triplets are not detected.
+>Not everything that looks like an ectopic beat is counted. Only beats that are both sufficiently premature and match the PVC or PAC pattern within tight tolerances are included. Runs, couplets, and triplets are not detected. Additionally, sometimes sensor noise can be mistakenly counted as an ectopic beat. The count is provided because you might find it interesting or informative, but it is no substitute for a clinical assessment.
 >
 >As a general rule of thumb often cited in cardiology literature, an ectopic burden of under 1% of total beats is generally considered negligible, and a modest number of ectopic beats per day is normal for a healthy heart. These figures vary across sources and populations and are presented here for general orientation rather than as a clinical guideline. Ectopic beats can fluctuate widely based on sleep quality, caffeine intake, and stress. A sustained downwards trend over time may be of interest as one of several markers of autonomic state, but observing a trend is made difficult by the comparatively small numbers of ectopic beats. Trends are only meaningful when comparing similar session types under similar conditions. If you regularly see more than around 5%, a significant change in rate above 1%, or if the beats are accompanied by dizziness, fainting, a palpitation sensation lasting more than one beat, or an experience of sustained skipping, it is worth raising with a clinician.
 
@@ -252,24 +252,37 @@ Once enough data has been gathered, the score appears as a number and a star rat
 
 Changes in the score during a session or during the day may be a useful cue to stop for the day, particularly if you have achieved a stable score that then declines during the session or over the day.
 
-Tracking your star rating and score over weeks may be of interest as one of several markers of autonomic state. The primary value of resonance frequency breathing is the practice itself rather than the score it produces.
+Tracking your star rating and score over weeks may be of interest as one of several markers of autonomic state. However, the primary value of resonance frequency breathing is the practice itself; the score is intended to help you improve your practice.
 
 ### Finding your personal resonance frequency
 
-Your resonance frequency is the exact breathing rate at which your cardiovascular and autonomic nervous systems fall into sync — the rate that produces your highest resonance score. For most adults this falls between 4.5 and 7.0 breaths per minute, but it is individual and worth finding precisely.
+Each person has a slightly different resonance frequency. Most people find theirs between 5 and 6 breaths per minute; some find theirs slower with practice.
 
-**Practical method:**
+Try a few paces across consecutive sessions and compare your average resonance score:
 
-1. Breathe at 6.0 bpm (the 5s/5s default) for one full RFB session and note your average resonance score.
-2. The next session, try 5.5 bpm. The session after, try 5.0 bpm.
-3. Compare the scores. Your true resonance frequency is the pace that produces your highest score while feeling the most effortless and natural.
+1. Set *Breaths per minute* to 6.0 with *Inhale percentage* at 50%. Run a full RFB session and note your score.
+2. Next session, try 5.5 bpm.
+3. The session after, try 5.0 bpm.
 
-Adjust the breathing rate using the **Inhale / Exhale** fields in RFB settings, stepping in 0.5 bpm increments. Once found, your resonance frequency is likely to remain relatively stable — lock it in and use it for all future sessions.
+Settle on the bpm value that produces your highest score while feeling the most effortless and natural.
+
+**Asymmetric breathing.** Some practitioners find that a longer exhale than inhale produces a stronger response. Once you've found your bpm, try lowering the inhale percentage to 40 — this gives you a longer exhale relative to your inhale.
+
+**Going slower than 5 bpm.** A small number of people find their resonance frequency below 5 breaths per minute. If you want to explore this, do so with care:
+
+- Don't increase tidal volume to compensate. Slow breathing combined with deeper breaths leads to over-breathing and CO₂ depletion, which causes lightheadedness, tingling, or feeling spacey. The breathing should still feel light.
+- Stop or step back if you feel strained, anxious, or notice persistent air hunger that doesn't settle within the first minute or two of practice.
+- If you have orthostatic intolerance, very slow breathing can transiently affect blood pressure. Practice seated or lying down rather than standing.
+- If your score *drops* as you go slower, that is the signal to step back. Resonance frequency is the rate at which your score is highest, not the slowest rate you can sustain.
+
+Your resonance frequency is generally fairly stable, but can shift gradually over time — especially during periods of autonomic change or recovery. It's worth re-checking periodically, particularly if your scores start to drift downwards.
 
 ### RFB Settings
 
 - **Enable RFB** — Master toggle. When off, the Reset state behaves as a stop activity state (red dot, no breath pacer).
-- **Inhale / Exhale** — The duration of each phase in seconds. The resulting breathing rate in bpm is shown below these fields. The default 4s inhale and 6s exhale produces a 6 bpm cycle.
+- **Breaths per minute** — Slow breathing pace, typically 5–6 bpm. Adjustable in 0.1 bpm steps.
+- **Inhale percentage** — What fraction of each breath is the inhale. 50% is symmetric. Lower values give a proportionally longer exhale.
+- **Inhale / exhale** — Display only. Shows the seconds per half-breath calculated from the bpm and inhale percentage.
 - **RFB duration** — How long to remain in the RFB phase after resting HR is achieved. Default is 2 minutes.
 - **Inhale sound guide** — Toggle the rising noise guide.
 - **Inhale vibration guide** — Toggle the tactile buzz guide.
@@ -459,6 +472,6 @@ Full licence texts:
 - Apache 2.0: [apache.org/licenses/LICENSE-2.0](https://www.apache.org/licenses/LICENSE-2.0) — also included in the project as `LICENSE`
 - CC BY 4.0: [creativecommons.org/licenses/by/4.0](https://creativecommons.org/licenses/by/4.0/) — also included in the project as `LICENSE-DOCS`
 
-**A note on the project name:** "Manawa Pace" is the name of this project, used by Chris Hilder. Apache 2.0 Section 6 does not grant permission to use this name, or related branding, in derivative works or to suggest endorsement. Forks and derivatives are welcome under the licence — please choose a different name for your fork. Mentioning "Manawa Pace" in attribution (e.g. "based on Manawa Pace by Chris Hilder") is the intended use and is fine.
+**A note on the project name:** "Manawa Pace" is the name of this project, used by Chris Hilder. Apache 2.0 Section 6 does not grant permission to use this name, or related branding, in derivative works or to suggest endorsement. Forks and derivatives are welcome under the licence, but please choose a different name for your fork. Mentioning "Manawa Pace" in attribution (e.g. "based on Manawa Pace by Chris Hilder") is the intended use and is fine.
 
 [![Apache 2.0](https://img.shields.io/badge/license--code-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0) [![CC BY 4.0](https://licensebuttons.net/l/by/4.0/88x31.png)](https://creativecommons.org/licenses/by/4.0/)
