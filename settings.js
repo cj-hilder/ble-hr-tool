@@ -473,6 +473,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <button id="sgDeleteActivityBtn">🗑 Delete</button>
             </div>
         </div>
+        <pre id="rfbLoadDebug" style="white-space:pre-wrap; font-family:monospace; font-size:11px; background:#fff8c5; color:#333; border:1px solid #d4b800; padding:6px; margin:8px 0; border-radius:4px; max-width:100%; overflow-wrap:break-word;"></pre>
     `;
 
     // Settings fields
@@ -680,6 +681,18 @@ document.addEventListener('DOMContentLoaded', () => {
         const pctEl = document.getElementById('sg_RFB_INHALE_PCT');
         if (bpmEl) bpmEl.value = String(bpm);
         if (pctEl) pctEl.value = String(pct);
+        // Diagnostic trace into a visible DOM strip so it can be read on mobile.
+        const dbg = document.getElementById('rfbLoadDebug');
+        if (dbg) {
+            const lines = [
+                `act: ${act.id || '?'} (${act.name || '?'})`,
+                `storage: inhale=${JSON.stringify(inhaleSec)} (${typeof inhaleSec}), exhale=${JSON.stringify(exhaleSec)} (${typeof exhaleSec})`,
+                `computed: bpm=${bpm}, pct=${pct}`,
+                `els found: bpm=${!!bpmEl}, pct=${!!pctEl}`,
+                `post-set: bpmEl.value=${bpmEl ? bpmEl.value : 'n/a'}, pctEl.value=${pctEl ? pctEl.value : 'n/a'}`,
+            ];
+            dbg.textContent = lines.join('\n');
+        }
         updateRfbSecondsDisplay();
         updatePanelForActivity(act);
     }
