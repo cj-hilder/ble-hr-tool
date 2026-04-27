@@ -473,7 +473,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 <button id="sgDeleteActivityBtn">🗑 Delete</button>
             </div>
         </div>
-        <pre id="rfbLoadDebug" style="white-space:pre-wrap; font-family:monospace; font-size:11px; background:#fff8c5; color:#333; border:1px solid #d4b800; padding:6px; margin:8px 0; border-radius:4px; max-width:100%; overflow-wrap:break-word;"></pre>
     `;
 
     // Settings fields
@@ -672,27 +671,30 @@ document.addEventListener('DOMContentLoaded', () => {
             else { el.value = String(val); }
         }
         // Populate the virtual RFB fields from the canonical seconds storage.
-        const inhaleSec = (act.settings && 'RFB_INHALE_SEC' in act.settings)
-            ? act.settings.RFB_INHALE_SEC : DEFAULTS.RFB_INHALE_SEC;
-        const exhaleSec = (act.settings && 'RFB_EXHALE_SEC' in act.settings)
-            ? act.settings.RFB_EXHALE_SEC : DEFAULTS.RFB_EXHALE_SEC;
+        let inhaleSec = (act.settings && 'RFB_INHALE_SEC' in act.settings)
+            ? Number(act.settings.RFB_INHALE_SEC) : DEFAULTS.RFB_INHALE_SEC;
+        let exhaleSec = (act.settings && 'RFB_EXHALE_SEC' in act.settings)
+            ? Number(act.settings.RFB_EXHALE_SEC) : DEFAULTS.RFB_EXHALE_SEC;
+        // Self-heal: if stored seconds are corrupted (NaN, non-positive, or
+        // outside any plausible breathing range), reset to defaults and
+        // persist. Plausible range: 2–15 seconds per half-breath, total
+        // 4–30 seconds (≈2–15 bpm). Anything outside this is corruption,
+        // typically from an earlier version of the code with a write-path bug.
+        const isPlausible = (s) => isFinite(s) && s >= 2 && s <= 15;
+        const total = inhaleSec + exhaleSec;
+        if (!isPlausible(inhaleSec) || !isPlausible(exhaleSec) ||
+            !(total >= 4 && total <= 30)) {
+            inhaleSec = DEFAULTS.RFB_INHALE_SEC;
+            exhaleSec = DEFAULTS.RFB_EXHALE_SEC;
+            act.settings.RFB_INHALE_SEC = inhaleSec;
+            act.settings.RFB_EXHALE_SEC = exhaleSec;
+            persistActivities();
+        }
         const { bpm, pct } = secondsToBpmPct(inhaleSec, exhaleSec);
         const bpmEl = document.getElementById('sg_RFB_BPM');
         const pctEl = document.getElementById('sg_RFB_INHALE_PCT');
         if (bpmEl) bpmEl.value = String(bpm);
         if (pctEl) pctEl.value = String(pct);
-        // Diagnostic trace into a visible DOM strip so it can be read on mobile.
-        const dbg = document.getElementById('rfbLoadDebug');
-        if (dbg) {
-            const lines = [
-                `act: ${act.id || '?'} (${act.name || '?'})`,
-                `storage: inhale=${JSON.stringify(inhaleSec)} (${typeof inhaleSec}), exhale=${JSON.stringify(exhaleSec)} (${typeof exhaleSec})`,
-                `computed: bpm=${bpm}, pct=${pct}`,
-                `els found: bpm=${!!bpmEl}, pct=${!!pctEl}`,
-                `post-set: bpmEl.value=${bpmEl ? bpmEl.value : 'n/a'}, pctEl.value=${pctEl ? pctEl.value : 'n/a'}`,
-            ];
-            dbg.textContent = lines.join('\n');
-        }
         updateRfbSecondsDisplay();
         updatePanelForActivity(act);
     }
@@ -780,6 +782,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 bpmEl.value = String(bpm);
                 pctEl.value = String(pct);
                 const { inhaleSec, exhaleSec } = bpmPctToSeconds(bpm, pct);
+                // Final guard: refuse to persist obviously-bad seconds. The
+                // bpm/pct clamps above should make this unreachable, but a
+                // belt-and-braces check here protects storage from any future
+                // bypass of the clamping.
+                const totalSec = inhaleSec + exhaleSec;
+                if (!isFinite(inhaleSec) || !isFinite(exhaleSec) ||
+                    inhaleSec < 2 || inhaleSec > 15 ||
+                    exhaleSec < 2 || exhaleSec > 15 ||
+                    totalSec < 4 || totalSec > 30) {
+                    updateRfbSecondsDisplay();
+                    return;
+                }
                 act.settings.RFB_INHALE_SEC = inhaleSec;
                 act.settings.RFB_EXHALE_SEC = exhaleSec;
                 persistActivities();
