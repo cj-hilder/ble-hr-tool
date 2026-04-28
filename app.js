@@ -270,6 +270,13 @@ const RFB_DEBUG_SEC      = 30;  // when debug line switches from "collecting" to
 // artefact at rest, but well below clinical RSA amplitude. It blocks scoring only
 // when there is essentially no discernible HR oscillation at all.
 const RFB_AMP_GATE = 2.0;
+// Engagement detection (general activity RFB only):
+// After the 65-s lead-in, require RFB_ENGAGE_STREAK consecutive seconds where
+// coherence >= RFB_ENGAGE_COHERENCE AND |peakFreq - guideFreq| <= 0.010 Hz
+// before opening the recording window. Once engaged, recording continues for
+// the rest of the reset period regardless of subsequent coherence.
+const RFB_ENGAGE_COHERENCE = 0.15; // half the HeartMath "very low" threshold
+const RFB_ENGAGE_STREAK    = 5;    // consecutive qualifying seconds required
 
 // Returns a 0–1 stability value (1 = stable, 0 = wandering).
 // Thresholds are calibrated for the full PEAK_FREQ_MAX_HISTORY window:
@@ -971,6 +978,8 @@ let maxHrInRest = 0, timeOfMaxHrInRest = 0, isRecoveryState = false;
 let activityLimitTriggered = false;
 let sessionHrRecording = [];   // 1Hz HR log: {t, hr, state} — attached to summary on save
 let rfbCoherenceRecording = []; // ~1Hz coherence log during valid RFB: {t, c} — c is 0-100 integer
+let rfbEngaged         = false; // latched true once engagement confirmed; reset each new RFB phase
+let rfbEngagementStreak = 0;    // consecutive qualifying seconds toward engagement threshold
 
 // ─── Activity tracking ────────────────────────────────────────────────────────
 let currentActivityId   = null;
@@ -1643,34 +1652,66 @@ function updateCoherenceDisplay() {
             }
 
         } else {
-            // 75s+: full coherence-based RI; recording active.
+            // 65s+: FFT window is full.
             if (progressEl) progressEl.style.display = 'none';
 
             if (r === null || !r.validRate) {
                 if (coherEl) coherEl.style.display = 'none';
                 if (showDebug) dbg.textContent = 'collecting data…';
             } else {
-                if (coherEl) coherEl.style.display = 'flex';
-                const riPct  = Math.round(r.ri * 100);
-                const amp    = r.amplitudeBpm;
-                coherVal.textContent = riPct > 0
-                    ? `${riPct} ${window.rfbRating(riPct, true)}`
-                    : window.rfbRating(0, true);
-                if (showDebug) {
-                    const relLagSec = r.phaseDiffDeg != null ? (r.phaseDiffDeg / 360 * (rfbBreathPeriodMs() / 1000)) : null;
-                    const lagStr   = relLagSec != null ? `${relLagSec >= 0 ? '+' : ''}${relLagSec.toFixed(1)}s` : '--';
-                    const stabStr  = r.stabilityReady ? `${Math.round(r.stability * 100)}%` : '--';
-                    dbg.textContent = `coherence:${Math.round(r.coherence * 100)}% ampl:${amp.toFixed(1)} stability:${stabStr} lag:${lagStr}`;
+                // Engagement gate — general activity only. isResonanceBreathing users
+                // opted in explicitly so record unconditionally after the lead-in.
+                // For general activity, require RFB_ENGAGE_STREAK consecutive seconds
+                // of coherence >= RFB_ENGAGE_COHERENCE and peak frequency within
+                // 0.010 Hz of the guide frequency. Once latched, rfbEngaged stays
+                // true for the rest of this reset period.
+                if (!isResonanceBreathing && !rfbEngaged) {
+                    const guideFreq  = 1 / (rfbGetInhaleSec() + rfbGetExhaleSec());
+                    const freqMatch  = Math.abs(r.peakFreq - guideFreq) <= 0.010;
+                    const coherOk    = r.coherence >= RFB_ENGAGE_COHERENCE;
+                    if (freqMatch && coherOk) {
+                        rfbEngagementStreak++;
+                        if (rfbEngagementStreak >= RFB_ENGAGE_STREAK) rfbEngaged = true;
+                    } else {
+                        rfbEngagementStreak = 0;
+                    }
                 }
-                // Recording starts at RFB_DISPLAY_SEC — only settled data in summaries.
-                if (isSessionRunning) rfbCoherenceRecording.push({
-                    t:    sessionSeconds,
-                    c:    Math.round(r.coherence * 100),
-                    ri:   riPct,
-                    stab: Math.round(r.stability * 100),
-                    ph:   r.phaseDiffDeg ?? null,
-                    amp:  Math.round(r.amplitudeBpm * 10) / 10,
-                });
+
+                if (!isResonanceBreathing && !rfbEngaged) {
+                    // Waiting for engagement confirmation.
+                    if (coherEl) coherEl.style.display = 'flex';
+                    coherVal.textContent = 'Waiting…';
+                    if (showDebug) {
+                        const amp = r.amplitudeBpm;
+                        const relLagSec = r.phaseDiffDeg != null ? (r.phaseDiffDeg / 360 * (rfbBreathPeriodMs() / 1000)) : null;
+                        const lagStr   = relLagSec != null ? `${relLagSec >= 0 ? '+' : ''}${relLagSec.toFixed(1)}s` : '--';
+                        const stabStr  = r.stabilityReady ? `${Math.round(r.stability * 100)}%` : '--';
+                        dbg.textContent = `coherence:${r.coherence.toFixed(2)} ampl:${amp.toFixed(1)} stability:${stabStr} lag:${lagStr} streak:${rfbEngagementStreak}/${RFB_ENGAGE_STREAK}`;
+                    }
+                } else {
+                    // Engaged (or Resonance Breathing): show RI and record.
+                    if (coherEl) coherEl.style.display = 'flex';
+                    const riPct = Math.round(r.ri * 100);
+                    const amp   = r.amplitudeBpm;
+                    coherVal.textContent = riPct > 0
+                        ? `${riPct} ${window.rfbRating(riPct, true)}`
+                        : window.rfbRating(0, true);
+                    if (showDebug) {
+                        const relLagSec = r.phaseDiffDeg != null ? (r.phaseDiffDeg / 360 * (rfbBreathPeriodMs() / 1000)) : null;
+                        const lagStr   = relLagSec != null ? `${relLagSec >= 0 ? '+' : ''}${relLagSec.toFixed(1)}s` : '--';
+                        const stabStr  = r.stabilityReady ? `${Math.round(r.stability * 100)}%` : '--';
+                        dbg.textContent = `coherence:${Math.round(r.coherence * 100)}% ampl:${amp.toFixed(1)} stability:${stabStr} lag:${lagStr}`;
+                    }
+                    // Recording starts only once engaged — keeps summary data honest.
+                    if (isSessionRunning) rfbCoherenceRecording.push({
+                        t:    sessionSeconds,
+                        c:    Math.round(r.coherence * 100),
+                        ri:   riPct,
+                        stab: Math.round(r.stability * 100),
+                        ph:   r.phaseDiffDeg ?? null,
+                        amp:  Math.round(r.amplitudeBpm * 10) / 10,
+                    });
+                }
             }
         }
         coherVal.style.color = stateColor;
@@ -2223,6 +2264,8 @@ if (currentState === 'reset' && rfbOnNow && rfbWallStartTime > 0) {
                         // Enter RFB hold period — don't switch to active yet
                         rfbPhase = true;
                         rfbSecondsRemaining = rfbDurMin * 60;
+                        // Fresh RFB phase — engagement must be re-demonstrated.
+                        rfbEngaged = false; rfbEngagementStreak = 0;
                     } else if (!rfbOn) {
                         switchState('active', false);
                     }
@@ -2596,6 +2639,7 @@ function startSession() {
     activePeriods = []; recoveryPeriods = []; currentPeriodType = null; sessionHrSamples = []; targetHrSamples = [];
     rfbSessionClockStart = 0; activityLimitTriggered = false; sessionHrRecording = []; rfbCoherenceRecording = [];
     rfbActiveSeconds = 0; rbSessionEndSeconds = 0;
+    rfbEngaged = false; rfbEngagementStreak = 0;
     // Preserve hrHistory and rrHistory across session start — pre-session beats
     // are tagged 'idle' and displayed in grey, giving up to 90s of context before
     // the session begins. The RR pipeline (lastRrTimestamp, processor, etc.) is
