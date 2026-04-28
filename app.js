@@ -27,7 +27,7 @@ let deviceSupportsRR = false;
 
 // ─── HRV Pipeline (HRVProcessor) ─────────────────────────────────────────────
 // Spectral coherence: interpolates RR to 4 Hz, Hanning-windowed FFT,
-// peak power ratio in the 0.04–0.15 Hz LF band (covers 4.5–7 bpm breathing).
+// HeartMath Coherence Ratio in the 0.04–0.26 Hz LF band (64-s window).
 class HRVProcessor {
     constructor(options = {}) {
         this.sampleRate    = options.sampleRate    || 4;    // Hz after interpolation
@@ -65,14 +65,18 @@ class HRVProcessor {
         const freqs     = this._frequencyAxis(fftResult.magnitude.length);
         const { peakFreq, peakBin, peakBandPower, totalPower } = this._computeBandMetrics(freqs, fftResult.magnitude);
         if (totalPower === 0) return null;
-        // HeartMath standard formula: peak band power as a fraction of total power (0–1).
-        const coherenceRaw = peakBandPower / totalPower;
+        // HeartMath published Coherence Ratio: peak band power relative to all
+        // remaining spectral power. A narrow dominant peak at the breathing
+        // frequency drives the ratio high; background noise drives it toward zero.
+        //   CR = PeakBandPower / (totalPower − PeakBandPower)
+        //   (McCraty et al. 2009; McCraty & Childre 2010)
+        const coherenceRaw = peakBandPower / Math.max(totalPower - peakBandPower, 1e-9);
         // Validate that the spectral peak lies within the physiological RFB range
         // (0.07–0.12 Hz = 4.2–7.2 bpm). A peak outside this range means the algorithm
         // has latched onto LF noise or slow HR drift, not a real breathing oscillation.
         const validBreathingRate = peakFreq >= 0.07 && peakFreq <= 0.12;
         const now      = this.timestamps.length ? this.timestamps[this.timestamps.length - 1] : Date.now();
-        // No confidence ramp: FFT coherence is only displayed from 75s onwards (via the
+        // No confidence ramp: FFT coherence is only displayed from 65s onwards (via the
         // phase-gated display in updateCoherenceDisplay), so early underestimation from
         // short windows is never shown. The ramp was suppressing a problem that no longer
         // exists and was persistently biasing the score at 90–120s.
@@ -161,20 +165,23 @@ class HRVProcessor {
     }
     _computeBandMetrics(freqs, magnitudes) {
         const N = freqs.length;
-        // Only sum positive frequencies (i <= N/2) for totalPower.
+        // Only sum positive frequencies (i <= N/2) for power calculations.
         // The FFT of a real signal produces mirror-image bins for i > N/2 — summing
         // all N bins doubles totalPower and halves every coherence value. Literature
-        // values (healthy adults 0.7–0.9) use positive frequencies only, so restricting
-        // to i <= N/2 brings our scale into alignment with published benchmarks.
+        // values use positive frequencies only, so restricting to i <= N/2 keeps our
+        // scale in alignment with published benchmarks.
         let totalPower = 0, peakPower = 0, peakFreq = 0, peakBin = 0;
         for (let i = 0; i < freqs.length; i++) {
             const f = freqs[i], p = magnitudes[i] ** 2;
-            if (f >= 0.04 && f <= 0.15 && p > peakPower) { peakPower = p; peakFreq = f; peakBin = i; }
+            if (f >= 0.04 && f <= 0.26 && p > peakPower) { peakPower = p; peakFreq = f; peakBin = i; }
             if (i <= N / 2) totalPower += p;
         }
+        // Peak band: ±0.020 Hz around the dominant peak, positive frequencies only.
+        // 0.020 Hz gives ~2.6 bins at 64-s/4-Hz resolution (bin width 0.015625 Hz),
+        // preserving equivalent spectral capture to the prior 0.015 Hz / 120-s setup.
         let peakBandPower = 0;
-        const bandWidth = 0.015;
-        for (let i = 0; i < freqs.length; i++) {
+        const bandWidth = 0.020;
+        for (let i = 0; i <= N / 2; i++) {
             if (Math.abs(freqs[i] - peakFreq) <= bandWidth) peakBandPower += magnitudes[i] ** 2;
         }
         return { peakFreq, peakBin, peakBandPower, totalPower };
@@ -243,7 +250,7 @@ class HRVProcessor {
 
 
 
-const hrvProcessor = new HRVProcessor({ sampleRate: 4, windowSeconds: 120 });
+const hrvProcessor = new HRVProcessor({ sampleRate: 4, windowSeconds: 64 });
 
 // Rolling history of valid in-band spectral peak frequencies, used for the
 // instability indicator only — not used to modify the coherence score.
@@ -253,17 +260,16 @@ const PEAK_FREQ_MAX_HISTORY = 120; // ~1 Hz update rate → ~2 min of history
 // ─── RFB display phase thresholds ─────────────────────────────────────────────
 // t < RFB_DISPLAY_SEC : progress animation shown; debug shows coherence from 30s
 // t ≥ RFB_DISPLAY_SEC : headline RI + stars shown; recording begins
-const RFB_DISPLAY_SEC    = 75;  // when headline number and recording activate
+const RFB_DISPLAY_SEC    = 65;  // 64-s window + 1-s grace; when headline number and recording activate
 const RFB_DEBUG_SEC      = 30;  // when debug line switches from "collecting" to coherence stats
-// Amplitude gate: linear ramp from 0 → full credit at 7.5 bpm.
-// 7.5 bpm = 50% of the Hirsch & Bishop (1981) healthy adult floor of 15 bpm
-// for controlled slow breathing. Amplitudes below this receive a proportional
-// penalty, reflecting the established association between reduced RSA amplitude
-// and impaired cardiac vagal tone. Full credit at ≥ 7.5 bpm; zero below 0.
-// Empirical anchor (age 67, post-viral ANS recovery, 2025): peak amplitudes
-// of 8–10 bpm at coherence ~0.8, consistent with the expected ~50% attenuation
-// of RSA amplitude in older adults relative to the young adult floor.
-const RFB_MIN_AMPLITUDE  = 7.5;
+// Amplitude gate (go/no-go): RSA oscillation must exceed this floor before any
+// RI score is awarded. Below the threshold the signal is too weak to distinguish
+// genuine entrainment from noise, so RI is forced to zero. Amplitude is still
+// reported in the debug line regardless of gate state.
+// 2.0 bpm is a minimal-detectable-signal floor — above sensor noise and motion
+// artefact at rest, but well below clinical RSA amplitude. It blocks scoring only
+// when there is essentially no discernible HR oscillation at all.
+const RFB_AMP_GATE = 2.0;
 
 // Returns a 0–1 stability value (1 = stable, 0 = wandering).
 // Thresholds are calibrated for the full PEAK_FREQ_MAX_HISTORY window:
@@ -1519,34 +1525,13 @@ function computeResonance() {
         phaseDiffDeg = Math.round(rawPhaseDeg - expectedLagDeg);
     }
 
-    // Amplitude gate: low RSA oscillation amplitude penalises high coherence,
-    // but does not penalise emerging coherence (< COHERENCE_AMP_FLOOR).
-    // The rationale: a small, consistent oscillation is a genuine if weak vagal
-    // signal; penalising it would discourage early-session or low-capacity data.
-    // Only coherence above the floor — the "premium" earned by good technique —
-    // is discounted when amplitude is insufficient to support it.
-    //
-    // Formula: min(coherence, FLOOR + (coherence − FLOOR) × amplitudeMult)
-    //   amplitudeMult = 0 → coherence collapses to FLOOR regardless of raw value
-    //   amplitudeMult = 1 → no change
-    //   coherence ≤ FLOOR → min() always returns coherence unchanged (no penalty)
-    //
-    // Amplitude is estimated from instantaneous beat-to-beat HR values in rrHistory
-    // (computed as 60000/RR, not the BLE-averaged HR integer which is attenuated by
-    // the sensor's internal smoothing). The window is sliced into 20-second blocks;
-    // max-min is computed per block and the results averaged. This captures local
-    // oscillation amplitude while remaining immune to slow HR drift that would
-    // inflate a single window-wide max-min.
-    //
-    // RFB_MIN_AMPLITUDE = 7.5 bpm = 50% of the Hirsch & Bishop (1981) healthy adult
-    // floor of 15 bpm for controlled slow breathing. Full credit at ≥ 7.5 bpm;
-    // linear ramp to zero below.
-    //   amplitudeMult = clamp(amplitudeBpm / RFB_MIN_AMPLITUDE, 0, 1)
-    const COHERENCE_AMP_FLOOR = 0.3; // HeartMath published low-coherence threshold
-                                      // (= STAR1 = 30). Coherence below this is
-                                      // never penalised — amplitude measurement is
-                                      // unreliable at low coherence, and the score
-                                      // is already capturing poor vagal entrainment.
+    // Amplitude gate (go/no-go): measure RSA oscillation amplitude from instantaneous
+    // beat-to-beat HR values in rrHistory (60000/RR — not BLE-averaged integers, which
+    // are attenuated by sensor smoothing). The window is sliced into 20-second blocks;
+    // max−min per block is averaged to capture local oscillation while staying immune
+    // to slow HR drift that would inflate a single window-wide max−min.
+    // If amplitude is below RFB_AMP_GATE the signal is too weak to confirm entrainment
+    // and RI is forced to zero. Above the gate, amplitude does not affect the score.
     let amplitudeBpm = 0;
     {
         const BLOCK_MS = 20000;
@@ -1568,20 +1553,16 @@ function computeResonance() {
             }
         }
     }
-    const amplitudeMult  = Math.min(1, Math.max(0, amplitudeBpm / RFB_MIN_AMPLITUDE));
-    const coherenceGated = Math.min(
-        result.coherence,
-        COHERENCE_AMP_FLOOR + (result.coherence - COHERENCE_AMP_FLOOR) * amplitudeMult
-    );
-
-    const ri = computeResonanceIndex(coherenceGated, stabilityForIndex, phaseDiffDeg);
+    const amplitudeOk = amplitudeBpm >= RFB_AMP_GATE;
+    const ri = amplitudeOk
+        ? computeResonanceIndex(result.coherence, stabilityForIndex, phaseDiffDeg)
+        : 0;
 
     return {
         ri,
         coherence:    result.coherence,
-        coherenceGated,
         amplitudeBpm,
-        amplitudeMult,
+        amplitudeOk,
         stability,
         stabilityReady,
         phaseDiffDeg,

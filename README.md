@@ -206,7 +206,11 @@ When connected to a sensor that exposes raw beat-to-beat RR intervals, such as t
 >
 >Not everything that looks like an ectopic beat is counted. Only beats that are both sufficiently premature and match the PVC or PAC pattern within tight tolerances are included. Runs, couplets, and triplets are not detected. Additionally, sometimes sensor noise can be mistakenly counted as an ectopic beat. The count is provided because you might find it interesting or informative, but it is no substitute for a clinical assessment.
 >
->As a general rule of thumb often cited in cardiology literature, an ectopic burden of under 1% of total beats is generally considered negligible, and a modest number of ectopic beats per day is normal for a healthy heart. These figures vary across sources and populations and are presented here for general orientation rather than as a clinical guideline. Ectopic beats can fluctuate widely based on sleep quality, caffeine intake, and stress. A sustained downwards trend over time may be of interest as one of several markers of autonomic state, but observing a trend is made difficult by the comparatively small numbers of ectopic beats. Trends are only meaningful when comparing similar session types under similar conditions. If you regularly see more than around 5%, a significant change in rate above 1%, or if the beats are accompanied by dizziness, fainting, a palpitation sensation lasting more than one beat, or an experience of sustained skipping, it is worth raising with a clinician.
+>As a general rule of thumb often cited in cardiology literature, an ectopic burden of under 1% of total beats is generally considered negligible, and a modest number of ectopic beats per day is normal for a healthy heart. These figures vary across sources and populations and are presented here for general orientation rather than as a clinical guideline.
+>
+>Ectopic beats can fluctuate widely based on sleep quality, caffeine intake, and stress. A sustained downwards trend over time may be of interest as one of several markers of autonomic state, but observing a trend is made difficult by the comparatively small numbers of ectopic beats. Trends are only meaningful when comparing similar session types under similar conditions.
+>
+>If you regularly see more than around 5%, a significant change in rate above 1%, or if the beats are accompanied by dizziness, fainting, a palpitation sensation lasting more than one beat, or an experience of sustained skipping, it is worth raising with a clinician.
 
 ---
 
@@ -214,7 +218,7 @@ When connected to a sensor that exposes raw beat-to-beat RR intervals, such as t
 
 Resonance Frequency Breathing is a biofeedback technique. RFB has been studied extensively (notably by Lehrer and Gevirtz and colleagues) as a method for influencing autonomic balance, and is associated in the research literature with increases in vagal tone over time with regular practice.
 
-At a particular breathing rate respiratory and cardiac rhythms enter resonance. This is typically around 6 breaths per minute, but varying between individuals in the range of 4.5–7 bpm. The heart rate rises during each inhale and falls during each exhale. When breathing rate matches the body's resonance frequency the amplitude of these oscillations is maximised.
+At a particular breathing rate respiratory and cardiac rhythms enter resonance. This is typically around 5–6 breaths per minute, but varying between individuals in the range of 4.5–7 bpm. The heart rate rises during each inhale and falls during each exhale. When breathing rate matches the body's resonance frequency the amplitude of these oscillations is maximised.
 
 This app integrates RFB directly into the Reset state, turning a  rest period into a structured, guided recovery practice.
 
@@ -235,9 +239,7 @@ You can choose "Resonance Breathing" from the activity drop-down menu, or for an
 
 ### Resonance score
 
-If you are using a **Polar H10** chest strap (or any sensor that exposes raw RR intervals via the Bluetooth Heart Rate Measurement characteristic), the app can calculate a **live resonance score**. This is a combination of wave coherence, amplitude, frequency stability, and phase lag. It takes more than 60 seconds to gather enough data to calculate a score
-
->Amplitudes below 7.5 bpm receive a proportional penalty, reflecting the established association between reduced amplitude and impaired cardiac vagal tone. (7.5 bpm = 50% of the Hirsch & Bishop (1981) healthy adult floor of 15 bpm.)
+If you are using a **Polar H10** chest strap (or any sensor that exposes raw RR intervals via the Bluetooth Heart Rate Measurement characteristic), the app can calculate a **live resonance score**. This is a combination of wave coherence, frequency stability, and phase lag. It takes more than 60 seconds to gather enough data to calculate a score
 
 Once enough data has been gathered, the score appears as a number and a star rating beneath the state description. 
 
