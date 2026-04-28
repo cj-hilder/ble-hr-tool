@@ -321,9 +321,11 @@ Two minutes of comfortable, high-quality breathing is vastly superior to ten min
 
 ## HRV Reading
 
-An HRV Reading gives you a single number that summarises your heart rate variability. It is useful as a longitudinal recovery signal, provided you take readings under similar circumstances. 
+An HRV Reading gives you a single number that summarises your heart rate variability. To get meaningful data, take readings first thing in the morning, before coffee, food, or significant activity. Consistency of conditions matters more than any single number — the goal is a comparable baseline, not a peak score. On a daily basis the HRV score compared to baseline is often used as a guide to nightly recovery and readiness for activity, while a rising trend can indicate improvement in fitness or autonomic regulation.
 
-Consistent morning readings, taken at the same time each day — before getting up or after a few minutes of quiet rest — will give the most comparable longitudinal data. There is no 'correct' HRV that you should aim for. HRV scores often rise over time as autonomic regulation patterns improve.
+It's tempting to take readings later in the day when HRV is typically higher, but those numbers are heavily shaped by short-term factors (meals, posture, caffeine, recent stress, hydration) and tell you little about recovery state. 
+
+This convention follows established research practice: standardised morning, supine measurement is the protocol used in autonomic research and athlete monitoring. Afternoon or evening readings can still be useful for tracking reactivity (e.g. morning-to-afternoon delta, or response to a specific stressor), but they are best treated as a separate metric rather than a substitute for the morning baseline.
 
 Select **"HRV Reading"** from the activity drop-down menu to start a new reading.
 
