@@ -55,7 +55,7 @@ window.RFB_STAR_LEVELS = {
     }
 
     // ─── Session type helpers ─────────────────────────────────────────────────
-    function isHRVSession(s)  { return s.activityId === 'hrv_reading' || !!s.activityIsHRV; }
+    function isHRVSession(s)  { return s.activityId === 'hrv_reading' || s.activityId === 'daytime_hrv' || !!s.activityIsHRV; }
     function isRFBSession(s)  { return s.activityId === 'resonance_breathing'; }
     function hasTargetZone(s) { return s.budgetUsing === 1 && (s.totalTargetSec || 0) > 0; }
 
@@ -305,7 +305,7 @@ window.RFB_STAR_LEVELS = {
         if (isHRV) {
             const hrvVal = s.hvIndexFinal != null ? String(Math.round(s.hvIndexFinal)) : null;
             chips = `
-                <span class="chip chip-hrv">HRV Reading</span>
+                <span class="chip chip-hrv">${actName || 'HRV Reading'}</span>
                 <span class="chip chip-duration">${durationMin} min</span>
                 ${hrvVal ? `<span class="chip chip-hrv-index">HRV ${hrvVal}</span>` : ''}`;
         } else if (isRFB) {

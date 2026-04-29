@@ -981,7 +981,8 @@ function hrvSessionDurationSec() {
     return (typeof HRV_DURATION !== 'undefined' && HRV_DURATION === 5) ? 300 : 180;
 }
 
-const HRV_READING_ID = 'hrv_reading';
+const HRV_READING_ID  = 'hrv_reading';  // Morning HRV
+const DAYTIME_HRV_ID  = 'daytime_hrv'; // Daytime HRV
 
 // Per-session artifact counters (reset in startSession, incremented in recordRrHistory)
 let sessionTotalBeats     = 0;
@@ -2719,7 +2720,7 @@ function startSession() {
     document.getElementById('toggleSessionBtn').classList.add('running');
     updateActivityDisplay();
     isResonanceBreathing = (currentActivityId === 'resonance_breathing');
-    isHRVReading         = (currentActivityId === HRV_READING_ID);
+    isHRVReading         = (currentActivityId === HRV_READING_ID || currentActivityId === DAYTIME_HRV_ID);
     rfbExtended = false;
     // Reset artifact counters and HRV index for fresh session
     sessionTotalBeats = 0; sessionSensorArtifacts = 0; sessionPhysioArtifacts = 0;
