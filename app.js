@@ -61,7 +61,13 @@ class HRVProcessor {
         const mean     = interpolated.reduce((s, x) => s + x, 0) / interpolated.length;
         const detrended = interpolated.map(x => x - mean);
         const windowed  = this._applyHanning(detrended);
-        const fftResult = this._fft(windowed);
+        // Zero-pad to 4× length (256 → 1024 samples) before the FFT.
+        // Bin width drops from 0.9375 bpm to 0.234 bpm, giving enough resolution
+        // to distinguish e.g. 4.8 from 5.0 bpm without changing the underlying
+        // data or information content. All downstream code is length-agnostic.
+        const padded    = new Float64Array(windowed.length * 4);
+        padded.set(windowed);
+        const fftResult = this._fft(padded);
         const freqs     = this._frequencyAxis(fftResult.magnitude.length);
         const { peakFreq, peakBin, peakBandPower, totalPower } = this._computeBandMetrics(freqs, fftResult.magnitude, guideFreq);
         if (totalPower === 0) return null;
@@ -144,17 +150,47 @@ class HRVProcessor {
     }
     _fft(signal) {
         const N = signal.length;
-        const re = new Array(N).fill(0), im = new Array(N).fill(0);
-        for (let k = 0; k < N; k++) {
-            let sumRe = 0, sumIm = 0;
-            for (let n = 0; n < N; n++) {
-                const angle = (2 * Math.PI * k * n) / N;
-                sumRe += signal[n] * Math.cos(angle);
-                sumIm -= signal[n] * Math.sin(angle);
+        // Cooley-Tukey iterative radix-2 DIT FFT. O(N log N) vs the previous O(N²) DFT.
+        // N must be a power of 2 — guaranteed by the 4× zero-padding in computeCoherence
+        // (64s × 4Hz = 256 samples → padded to 1024 = 2¹⁰).
+        const re = new Float64Array(N);
+        const im = new Float64Array(N);
+        for (let i = 0; i < N; i++) re[i] = signal[i];
+
+        // Bit-reversal permutation.
+        const bits = Math.log2(N);
+        for (let i = 0; i < N; i++) {
+            let rev = 0;
+            for (let b = 0; b < bits; b++) rev = (rev << 1) | ((i >> b) & 1);
+            if (rev > i) {
+                [re[i], re[rev]] = [re[rev], re[i]];
+                // im is all zeros at this stage so no swap needed
             }
-            re[k] = sumRe; im[k] = sumIm;
         }
-        const magnitude = re.map((r, i) => Math.sqrt(r * r + im[i] * im[i]));
+
+        // Butterfly stages.
+        for (let len = 2; len <= N; len <<= 1) {
+            const half  = len >> 1;
+            const angle = -2 * Math.PI / len;
+            const wRe   = Math.cos(angle);
+            const wIm   = Math.sin(angle);
+            for (let i = 0; i < N; i += len) {
+                let curRe = 1, curIm = 0;
+                for (let j = 0; j < half; j++) {
+                    const uRe = re[i + j],        uIm = im[i + j];
+                    const vRe = re[i + j + half] * curRe - im[i + j + half] * curIm;
+                    const vIm = re[i + j + half] * curIm + im[i + j + half] * curRe;
+                    re[i + j]        = uRe + vRe;  im[i + j]        = uIm + vIm;
+                    re[i + j + half] = uRe - vRe;  im[i + j + half] = uIm - vIm;
+                    const nextRe = curRe * wRe - curIm * wIm;
+                    curIm = curRe * wIm + curIm * wRe;
+                    curRe = nextRe;
+                }
+            }
+        }
+
+        const magnitude = new Array(N);
+        for (let i = 0; i < N; i++) magnitude[i] = Math.sqrt(re[i] * re[i] + im[i] * im[i]);
         return { magnitude, re, im };
     }
     _frequencyAxis(N) {
