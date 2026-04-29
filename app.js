@@ -51,7 +51,7 @@ class HRVProcessor {
         this.timestamps.push(timestamp);
         this._trimBuffer();
     }
-    computeCoherence() {
+    computeCoherence(guideFreq) {
         if (this.buffer.length < 10) return null;
         const { rrs: cleaned, timestamps: cleanedTs } = this._removeArtifacts(this.buffer, this.timestamps);
         const interpolated = this._interpolate(cleaned, cleanedTs);
@@ -63,7 +63,7 @@ class HRVProcessor {
         const windowed  = this._applyHanning(detrended);
         const fftResult = this._fft(windowed);
         const freqs     = this._frequencyAxis(fftResult.magnitude.length);
-        const { peakFreq, peakBin, peakBandPower, totalPower } = this._computeBandMetrics(freqs, fftResult.magnitude);
+        const { peakFreq, peakBin, peakBandPower, totalPower } = this._computeBandMetrics(freqs, fftResult.magnitude, guideFreq);
         if (totalPower === 0) return null;
         // HeartMath Coherence Ratio, normalised form: PBP / totalPower.
         // Algebraically equivalent to CR/(1+CR) where CR = PBP/(totalPower−PBP),
@@ -72,10 +72,8 @@ class HRVProcessor {
         // background noise drives it toward 0.
         //   (McCraty et al. 2009; McCraty & Childre 2010)
         const coherenceRaw = peakBandPower / totalPower;
-        // Validate that the spectral peak lies within the physiological RFB range
-        // (0.07–0.12 Hz = 4.2–7.2 bpm). A peak outside this range means the algorithm
-        // has latched onto LF noise or slow HR drift, not a real breathing oscillation.
-        const validBreathingRate = peakFreq >= 0.07 && peakFreq <= 0.12;
+        // validBreathingRate is removed: the peak search is now anchored to guideFreq
+        // ± 0.020 Hz by construction, so any returned peak is by definition in-band.
         const now      = this.timestamps.length ? this.timestamps[this.timestamps.length - 1] : Date.now();
         // No confidence ramp: FFT coherence is only displayed from 65s onwards (via the
         // phase-gated display in updateCoherenceDisplay), so early underestimation from
@@ -90,7 +88,7 @@ class HRVProcessor {
         const windowCenterTime  = cleanedTs.length > 1
             ? (cleanedTs[0] + cleanedTs[cleanedTs.length - 1]) / 2
             : cleanedTs[0] || 0;
-        return { coherence, peakFreq, breathingRate: peakFreq * 60, validBreathingRate, peakPhaseRad, windowCenterTime };
+        return { coherence, peakFreq, breathingRate: peakFreq * 60, peakPhaseRad, windowCenterTime };
     }
     _isValidRR(rr)    { return rr > 300 && rr < 2000; }
     _trimBuffer() {
@@ -164,24 +162,32 @@ class HRVProcessor {
         for (let i = 0; i < N; i++) freqs.push((i * this.sampleRate) / N);
         return freqs;
     }
-    _computeBandMetrics(freqs, magnitudes) {
+    _computeBandMetrics(freqs, magnitudes, guideFreq) {
         const N = freqs.length;
         // Only sum positive frequencies (i <= N/2) for power calculations.
         // The FFT of a real signal produces mirror-image bins for i > N/2 — summing
         // all N bins doubles totalPower and halves every coherence value. Literature
         // values use positive frequencies only, so restricting to i <= N/2 keeps our
         // scale in alignment with published benchmarks.
-        let totalPower = 0, peakPower = 0, peakFreq = 0, peakBin = 0;
+        //
+        // Peak search is constrained to guideFreq ± 0.020 Hz — wide enough to
+        // accommodate slight user drift from the guide pace (~±1.2 bpm at 6 bpm),
+        // tight enough to exclude unrelated LF artefacts and slow HR drift that
+        // previously inflated coherence when the FFT latched onto the wrong peak.
+        const SEARCH_WIDTH = 0.020;
+        let totalPower = 0, peakPower = 0, peakFreq = guideFreq, peakBin = 0;
         for (let i = 0; i < freqs.length; i++) {
             const f = freqs[i], p = magnitudes[i] ** 2;
-            if (f >= 0.04 && f <= 0.26 && p > peakPower) { peakPower = p; peakFreq = f; peakBin = i; }
+            if (Math.abs(f - guideFreq) <= SEARCH_WIDTH && p > peakPower) {
+                peakPower = p; peakFreq = f; peakBin = i;
+            }
             if (i <= N / 2) totalPower += p;
         }
-        // Peak band: ±0.020 Hz around the dominant peak, positive frequencies only.
-        // 0.020 Hz gives ~2.6 bins at 64-s/4-Hz resolution (bin width 0.015625 Hz),
-        // preserving equivalent spectral capture to the prior 0.015 Hz / 120-s setup.
+        // Peak band: ±0.010 Hz around the dominant peak, positive frequencies only.
+        // At 64-s/4-Hz resolution (bin width 0.015625 Hz) this captures approximately
+        // the peak bin alone, minimising spectral leakage contamination of peakBandPower.
         let peakBandPower = 0;
-        const bandWidth = 0.020;
+        const bandWidth = 0.010;
         for (let i = 0; i <= N / 2; i++) {
             if (Math.abs(freqs[i] - peakFreq) <= bandWidth) peakBandPower += magnitudes[i] ** 2;
         }
@@ -1495,15 +1501,17 @@ function updateHRVDisplay() {
 }
 function computeResonance() {
     if (!hasRrData) return null;
-    const result = hrvProcessor.computeCoherence();
+    // Guide frequency derived from current inhale/exhale settings — passed into
+    // computeCoherence so the FFT peak search is anchored to the breathing pace
+    // the user is following, rather than searching the whole LF band.
+    const guideFreq = 1 / (rfbGetInhaleSec() + rfbGetExhaleSec());
+    const result = hrvProcessor.computeCoherence(guideFreq);
     if (result === null) return null;
 
-    // Track in-band peaks only — out-of-band readings are noise and would
-    // inflate the std dev even when breathing technique is sound.
-    if (result.validBreathingRate) {
-        peakFreqHistory.push(result.peakFreq);
-        if (peakFreqHistory.length > PEAK_FREQ_MAX_HISTORY) peakFreqHistory.shift();
-    }
+    // All returned peaks are now in-band by construction (search is guideFreq ± 0.020 Hz),
+    // so every reading is valid for stability tracking.
+    peakFreqHistory.push(result.peakFreq);
+    if (peakFreqHistory.length > PEAK_FREQ_MAX_HISTORY) peakFreqHistory.shift();
 
     const stability = computeStability(peakFreqHistory);
 
@@ -1571,12 +1579,12 @@ function computeResonance() {
     return {
         ri,
         coherence:    result.coherence,
+        peakFreq:     result.peakFreq,
         amplitudeBpm,
         amplitudeOk,
         stability,
         stabilityReady,
         phaseDiffDeg,
-        validRate:    result.validBreathingRate,
     };
 }
 
@@ -1609,6 +1617,7 @@ function updateCoherenceDisplay() {
     // Resonance row — only during reset + RFB
     if (coherEl) coherEl.style.display = inRfb ? 'flex' : 'none';
     if (inRfb && coherVal) {
+        const guideFreq = 1 / (rfbGetInhaleSec() + rfbGetExhaleSec());
         const r = computeResonance();
         const showDebug = (typeof RFB_SHOW_DEBUG !== 'undefined') && RFB_SHOW_DEBUG;
 
@@ -1622,15 +1631,14 @@ function updateCoherenceDisplay() {
         }
         dbg.style.display = showDebug ? '' : 'none';
 
-        // Compute elapsed time upfront — progress arc must show regardless of r.validRate.
-        // During the first 75s the FFT often hasn't locked onto a valid breathing rate yet,
-        // so r.validRate is false, but the arc should still fill.
+        // Compute elapsed time upfront — progress arc fills during the lead-in regardless
+        // of FFT state; coherence is only displayed from 65s onwards.
         const rfbElapsedSec = rfbWallStartTime > 0 ? (Date.now() - rfbWallStartTime) / 1000 : 0;
         const progressEl    = document.getElementById('rfbProgress');
         const arc           = document.getElementById('rfbProgressArc');
 
         if (rfbElapsedSec < RFB_DISPLAY_SEC) {
-            // Progress arc phase — headline suppressed until FFT is reliable at 75s.
+            // Progress arc phase — headline suppressed until FFT window is full at 65s.
             if (coherEl) coherEl.style.display = 'none';
             if (progressEl) progressEl.style.display = 'flex';
             if (arc) {
@@ -1641,7 +1649,7 @@ function updateCoherenceDisplay() {
             }
             // Debug: "collecting data…" for first 30s, then live coherence (even if jumpy).
             if (showDebug) {
-                if (rfbElapsedSec < RFB_DEBUG_SEC || r === null || !r.validRate) {
+                if (rfbElapsedSec < RFB_DEBUG_SEC || r === null) {
                     dbg.textContent = 'collecting data…';
                 } else {
                     const amp = r.amplitudeBpm;
@@ -1656,7 +1664,7 @@ function updateCoherenceDisplay() {
             // 65s+: FFT window is full.
             if (progressEl) progressEl.style.display = 'none';
 
-            if (r === null || !r.validRate) {
+            if (r === null) {
                 if (coherEl) coherEl.style.display = 'none';
                 if (showDebug) dbg.textContent = 'collecting data…';
             } else {
@@ -1667,7 +1675,6 @@ function updateCoherenceDisplay() {
                 // 0.010 Hz of the guide frequency. Once latched, rfbEngaged stays
                 // true for the rest of this reset period.
                 if (!isResonanceBreathing && !rfbEngaged) {
-                    const guideFreq  = 1 / (rfbGetInhaleSec() + rfbGetExhaleSec());
                     const freqMatch  = Math.abs(r.peakFreq - guideFreq) <= 0.010;
                     const coherOk    = r.coherence >= RFB_ENGAGE_COHERENCE;
                     if (freqMatch && coherOk) {
@@ -1687,7 +1694,7 @@ function updateCoherenceDisplay() {
                         const relLagSec = r.phaseDiffDeg != null ? (r.phaseDiffDeg / 360 * (rfbBreathPeriodMs() / 1000)) : null;
                         const lagStr   = relLagSec != null ? `${relLagSec >= 0 ? '+' : ''}${relLagSec.toFixed(1)}s` : '--';
                         const stabStr  = r.stabilityReady ? `${Math.round(r.stability * 100)}%` : '--';
-                        dbg.textContent = `coherence:${r.coherence.toFixed(2)} ampl:${amp.toFixed(1)} stability:${stabStr} lag:${lagStr} streak:${rfbEngagementStreak}/${RFB_ENGAGE_STREAK}`;
+                        dbg.textContent = `c:${r.coherence.toFixed(2)} f:${r.peakFreq.toFixed(3)}Hz ampl:${amp.toFixed(1)} stab:${stabStr} lag:${lagStr} streak:${rfbEngagementStreak}/${RFB_ENGAGE_STREAK}`;
                     }
                 } else {
                     // Engaged (or Resonance Breathing): show RI and record.
@@ -1701,7 +1708,7 @@ function updateCoherenceDisplay() {
                         const relLagSec = r.phaseDiffDeg != null ? (r.phaseDiffDeg / 360 * (rfbBreathPeriodMs() / 1000)) : null;
                         const lagStr   = relLagSec != null ? `${relLagSec >= 0 ? '+' : ''}${relLagSec.toFixed(1)}s` : '--';
                         const stabStr  = r.stabilityReady ? `${Math.round(r.stability * 100)}%` : '--';
-                        dbg.textContent = `coherence:${Math.round(r.coherence * 100)}% ampl:${amp.toFixed(1)} stability:${stabStr} lag:${lagStr}`;
+                        dbg.textContent = `c:${Math.round(r.coherence * 100)}% f:${r.peakFreq.toFixed(3)}Hz ampl:${amp.toFixed(1)} stab:${stabStr} lag:${lagStr}`;
                     }
                     // Recording starts only once engaged — keeps summary data honest.
                     if (isSessionRunning) rfbCoherenceRecording.push({
