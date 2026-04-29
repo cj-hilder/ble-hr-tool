@@ -61,11 +61,12 @@ class HRVProcessor {
         const mean     = interpolated.reduce((s, x) => s + x, 0) / interpolated.length;
         const detrended = interpolated.map(x => x - mean);
         const windowed  = this._applyHanning(detrended);
-        // Zero-pad to 4× length (256 → 1024 samples) before the FFT.
-        // Bin width drops from 0.9375 bpm to 0.234 bpm, giving enough resolution
-        // to distinguish e.g. 4.8 from 5.0 bpm without changing the underlying
-        // data or information content. All downstream code is length-agnostic.
-        const padded    = new Float64Array(windowed.length * 4);
+        // Zero-pad to the next power of 2 that is at least 4× the windowed length.
+        // 4× padding drops bin width from ~0.9 bpm to ~0.23 bpm — enough to distinguish
+        // e.g. 4.8 from 5.0 bpm. Rounding up to a power of 2 is required by Cooley-Tukey;
+        // _interpolate returns a variable sample count so we can't assume a fixed length.
+        const targetLen = Math.pow(2, Math.ceil(Math.log2(windowed.length * 4)));
+        const padded    = new Float64Array(targetLen);
         padded.set(windowed);
         const fftResult = this._fft(padded);
         const freqs     = this._frequencyAxis(fftResult.magnitude.length);
