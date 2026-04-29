@@ -303,9 +303,12 @@ window.RFB_STAR_LEVELS = {
 
         let chips = '';
         if (isHRV) {
-            const hrvVal = s.hvIndexFinal != null ? String(Math.round(s.hvIndexFinal)) : null;
+            const hrvVal     = s.hvIndexFinal != null ? String(Math.round(s.hvIndexFinal)) : null;
+            const hrvLabel   = s.activityId === 'hrv_reading' ? 'Morning HRV'
+                             : s.activityId === 'daytime_hrv'  ? 'Daytime HRV'
+                             : actName || 'HRV Reading';
             chips = `
-                <span class="chip chip-hrv">${actName || 'HRV Reading'}</span>
+                <span class="chip chip-hrv">${hrvLabel}</span>
                 <span class="chip chip-duration">${durationMin} min</span>
                 ${hrvVal ? `<span class="chip chip-hrv-index">HRV ${hrvVal}</span>` : ''}`;
         } else if (isRFB) {

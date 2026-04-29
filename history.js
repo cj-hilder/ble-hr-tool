@@ -29,6 +29,13 @@ function shortLabel(iso) {
     const d = new Date(iso);
     return `${d.getMonth() + 1}/${d.getDate()}`;
 }
+// Resolves the display name for a session, normalising legacy activityName
+// values that predate the Morning HRV / Daytime HRV rename.
+function resolveActivityName(session) {
+    if (session.activityId === 'hrv_reading') return 'Morning HRV';
+    if (session.activityId === 'daytime_hrv') return 'Daytime HRV';
+    return session.activityName || '';
+}
 // ── Toast ─────────────────────────────────────────────────────────────────────
 let toastTimer = null;
 function showToast(msg, type = '') {
@@ -657,10 +664,9 @@ function generateSessionPDF(session) {
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(90, 90, 90);
     const meta = [
         dateStr,
-        session.activityName ? `Activity: ${session.activityName}` : null,
+        resolveActivityName(session) ? `Activity: ${resolveActivityName(session)}` : null,
         session.sessionLengthSec ? `Duration: ${formatTime(session.sessionLengthSec)}` : null,
         session.avgHr ? `Avg HR: ${session.avgHr} bpm` : null,
-        (( session.activityId === 'hrv_reading' || session.activityId === 'daytime_hrv') && session.hvIndexFinal != null)
             ? `HRV: ${Math.round(session.hvIndexFinal)}` : null,
     ].filter(Boolean).join('   ·   ');
     doc.text(meta, PX, 18);
@@ -814,7 +820,7 @@ function generateSessionPDF(session) {
         // U+2265 (>=) and U+2605 (star) are outside Helvetica's Latin-1 range and corrupt.
         const rfbMetaLine1 = [
             dateStr,
-            session.activityName ? `Activity: ${session.activityName}` : null,
+            session.activityName ? `Activity: ${resolveActivityName(session)}` : null,
         ].filter(Boolean).join('   ·   ');
         const rfbMetaLine2 = [
             rfbAvgRI  != null ? `Avg RI: ${rfbAvgRI}`                            : null,
