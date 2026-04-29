@@ -168,7 +168,7 @@ const FIELDS = [
     { key: 'RFB_VIBRATION', label: 'Inhale vibration guide', type: 'toggle',
       desc: 'An initial pulse, followed by buzzing that accelerates through the inhale, then a closing pulse.' },
     { key: 'RFB_SHOW_DEBUG', label: 'Display details', type: 'toggle',
-      desc: 'Display wave coherence, amplitude, frequency stability, and phase lag' },
+      desc: 'Display wave coherence, amplitude, frequency lock, and phase lag' },
     { group: 'HRV Reading' },
     { key: 'HRV_DURATION', label: 'Session length', type: 'select',
       options: [

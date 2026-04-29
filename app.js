@@ -340,7 +340,7 @@ const RFB_AMP_GATE = 2.0;
 const RFB_ENGAGE_COHERENCE = 0.15; // half the HeartMath "very low" threshold
 const RFB_ENGAGE_STREAK    = 5;    // consecutive qualifying seconds required
 
-// Returns a 0–1 stability value (1 = stable, 0 = wandering).
+// Returns a 0–1 frequency lock value (1 = locked, 0 = drifting).
 // Thresholds are calibrated for the full PEAK_FREQ_MAX_HISTORY window:
 //   MIN_STD = 0.005 Hz ≈ very stable
 //   MAX_STD = 0.020 Hz ≈ clearly drifting (~±1.2 bpm)
@@ -349,7 +349,7 @@ const RFB_ENGAGE_STREAK    = 5;    // consecutive qualifying seconds required
 // √(N_max/N). Thresholds are widened by this factor so that a user breathing
 // perfectly steadily scores consistently from the first valid samples onward,
 // rather than showing an artificial low-to-high ramp during history warmup.
-function computeStability(history, guideFreq) {
+function computeFrequencyLock(history, guideFreq) {
     // RMSD of measured peak frequency from the guide frequency.
     // Uses a fixed reference (guideFreq) rather than the historical mean, so a
     // consistent offset from guide (user naturally breathes at 4.9 not 5.0 bpm)
@@ -1389,7 +1389,7 @@ function triggerNotification() {
 // ─── Resonance Index ─────────────────────────────────────────────────────────
 // Single combined metric for display and longitudinal tracking.
 // Coherence (validated HeartMath RSA measure) is the primary signal.
-// Phase and stability act as trust multipliers — they can only reduce the score,
+// Phase and freqLock act as trust multipliers — they can only reduce the score,
 // never inflate it above the raw coherence value.
 //
 //   phaseMult = 0.75 + 0.25 × cos(phaseDiff)  → [0.5, 1.0]
@@ -1397,12 +1397,15 @@ function triggerNotification() {
 //     Aligned   (0°)        → 1.00 × coherence  (no penalty)
 //     No data               → 0.85 × coherence  (uncertainty discount)
 //
-//   stabMult  = 0.70 + 0.30 × stability        → [0.7, 1.0]
-//     Max instability → 0.70 × coherence  (dysautonomia causes inherent variability)
-//     Perfect stability → 1.00 × coherence
+//   stabMult  = 0.85 + 0.15 × freqLock         → [0.85, 1.00]
+//     freqLock is a gentle precision reward rather than a heavy penalty:
+//     coherence already captures frequency accuracy via the guideFreq-anchored
+//     peak search, so a 0.15 weight avoids double-penalising sub-window drift.
+//     Floor of 0.85 reflects that genuine coherence should not be heavily
+//     discounted for imperfect pace control (relevant for dysautonomia).
 //
-// Worst case: coherence × 0.35.  Best case: coherence × 1.00.
-function computeResonanceIndex(coherence, stability, phaseDiffDeg) {
+// Worst case: coherence × 0.425.  Best case: coherence × 1.00.
+function computeResonanceIndex(coherence, freqLock, phaseDiffDeg) {
     // Add a small offset (PHASE_FLAT_K) to the cosine before scaling, then clamp
     // at 1.0. This flattens the top of the curve so that lags within the normal
     // healthy range (≈ ±1 s of the expected 2 s baroreflex delay, equivalent to
@@ -1414,7 +1417,7 @@ function computeResonanceIndex(coherence, stability, phaseDiffDeg) {
     const phaseMult = phaseDiffDeg != null
         ? Math.min(1, 0.75 + 0.25 * (Math.cos(phaseDiffDeg * Math.PI / 180) + PHASE_FLAT_K))
         : 1.0;
-    const stabMult  = 0.70 + 0.30 * stability;
+    const stabMult  = 0.85 + 0.15 * freqLock;
     return Math.min(1, coherence * phaseMult * stabMult);
 }
 
@@ -1578,13 +1581,13 @@ function computeResonance() {
         if (peakFreqHistory.length > PEAK_FREQ_MAX_HISTORY) peakFreqHistory.shift();
     }
 
-    const stability = computeStability(peakFreqHistory, guideFreq);
+    const freqLock = computeFrequencyLock(peakFreqHistory, guideFreq);
 
     // 15 post-lead-in samples (~15s) is sufficient for a reliable RMSD estimate
-    // now that history contains only settled FFT readings. stabilityForIndex uses
+    // now that history contains only settled FFT readings. freqLockForIndex uses
     // 1.0 (neutral) until then to avoid a misleading early penalty on the RI.
-    const stabilityReady = peakFreqHistory.length >= 15;
-    const stabilityForIndex = stabilityReady ? stability : 1.0;
+    const freqLockReady = peakFreqHistory.length >= 15;
+    const freqLockForIndex = freqLockReady ? freqLock : 1.0;
 
     // Phase alignment — time-domain peak offset method.
     // Averages the last N finalised cycle lags for stability, then normalises
@@ -1631,7 +1634,7 @@ function computeResonance() {
     }
     const amplitudeOk = amplitudeBpm >= RFB_AMP_GATE;
     const ri = amplitudeOk
-        ? computeResonanceIndex(result.coherence, stabilityForIndex, phaseDiffDeg)
+        ? computeResonanceIndex(result.coherence, freqLockForIndex, phaseDiffDeg)
         : 0;
 
     return {
@@ -1640,8 +1643,8 @@ function computeResonance() {
         peakFreq:     result.peakFreq,
         amplitudeBpm,
         amplitudeOk,
-        stability,
-        stabilityReady,
+        freqLock,
+        freqLockReady,
         phaseDiffDeg,
     };
 }
@@ -1713,8 +1716,8 @@ function updateCoherenceDisplay() {
                     const amp = r.amplitudeBpm;
                     const relLagSec = r.phaseDiffDeg != null ? (r.phaseDiffDeg / 360 * (rfbBreathPeriodMs() / 1000)) : null;
                     const lagStr   = relLagSec != null ? `${relLagSec >= 0 ? '+' : ''}${( Math.round(relLagSec * 2) / 2).toFixed(1)}s` : '--';
-                    const stabStr  = r.stabilityReady ? `${Math.round(r.stability * 100)}%` : '--';
-                    dbg.textContent = `coherence:${Math.round(r.coherence * 100)}% ampl:${amp.toFixed(1)} stability:${stabStr} lag:${lagStr}`;
+                    const lockStr  = r.freqLockReady ? `${Math.round(r.freqLock * 100)}%` : '--';
+                    dbg.textContent = `coherence:${Math.round(r.coherence * 100)}% ampl:${amp.toFixed(1)} freq lock:${lockStr} lag:${lagStr}`;
                 }
             }
 
@@ -1751,8 +1754,8 @@ function updateCoherenceDisplay() {
                         const amp = r.amplitudeBpm;
                         const relLagSec = r.phaseDiffDeg != null ? (r.phaseDiffDeg / 360 * (rfbBreathPeriodMs() / 1000)) : null;
                         const lagStr   = relLagSec != null ? `${relLagSec >= 0 ? '+' : ''}${( Math.round(relLagSec * 2) / 2).toFixed(1)}s` : '--';
-                        const stabStr  = r.stabilityReady ? `${Math.round(r.stability * 100)}%` : '--';
-                        dbg.textContent = `c:${r.coherence.toFixed(2)} f:${(r.peakFreq * 60).toFixed(1)}bpm ampl:${amp.toFixed(1)} stab:${stabStr} lag:${lagStr} streak:${rfbEngagementStreak}/${RFB_ENGAGE_STREAK}`;
+                        const lockStr  = r.freqLockReady ? `${Math.round(r.freqLock * 100)}%` : '--';
+                        dbg.textContent = `c:${Math.round(r.coherence * 100)} f:${(r.peakFreq * 60).toFixed(1)}bpm ampl:${amp.toFixed(1)} lock:${lockStr} lag:${lagStr} streak:${rfbEngagementStreak}/${RFB_ENGAGE_STREAK}`;
                     }
                 } else {
                     // Engaged (or Resonance Breathing): show RI and record.
@@ -1765,15 +1768,15 @@ function updateCoherenceDisplay() {
                     if (showDebug) {
                         const relLagSec = r.phaseDiffDeg != null ? (r.phaseDiffDeg / 360 * (rfbBreathPeriodMs() / 1000)) : null;
                         const lagStr   = relLagSec != null ? `${relLagSec >= 0 ? '+' : ''}${( Math.round(relLagSec * 2) / 2).toFixed(1)}s` : '--';
-                        const stabStr  = r.stabilityReady ? `${Math.round(r.stability * 100)}%` : '--';
-                        dbg.textContent = `c:${Math.round(r.coherence * 100)}% f:${(r.peakFreq * 60).toFixed(1)}bpm ampl:${amp.toFixed(1)} stab:${stabStr} lag:${lagStr}`;
+                        const lockStr  = r.freqLockReady ? `${Math.round(r.freqLock * 100)}%` : '--';
+                        dbg.textContent = `c:${Math.round(r.coherence * 100)} f:${(r.peakFreq * 60).toFixed(1)}bpm ampl:${amp.toFixed(1)} lock:${lockStr} lag:${lagStr}`;
                     }
                     // Recording starts only once engaged — keeps summary data honest.
                     if (isSessionRunning) rfbCoherenceRecording.push({
                         t:    sessionSeconds,
                         c:    Math.round(r.coherence * 100),
                         ri:   riPct,
-                        stab: Math.round(r.stability * 100),
+                        lock: Math.round(r.freqLock * 100),
                         ph:   r.phaseDiffDeg ?? null,
                         amp:  Math.round(r.amplitudeBpm * 10) / 10,
                     });

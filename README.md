@@ -216,7 +216,7 @@ When connected to a sensor that exposes raw beat-to-beat RR intervals, such as t
 
 ## Resonance Frequency Breathing (RFB)
 
-Resonance Frequency Breathing is a biofeedback technique. RFB has been studied extensively (notably by Lehrer and Gevirtz and colleagues) as a method for influencing autonomic balance, and is associated in the research literature with increases in vagal tone over time with regular practice.
+Resonance Frequency Breathing is a biofeedback technique. RFB has been studied extensively (notably by Lehrer and Gevirtz and colleagues) as a method for influencing autonomic balance. There is evidence for an increase in vagal tone from regular daily practice.
 
 At a particular breathing rate respiratory and cardiac rhythms enter resonance. This is typically around 5–6 breaths per minute, but varying between individuals in the range of 4.5–7 bpm. The heart rate rises during each inhale and falls during each exhale. When breathing rate matches the body's resonance frequency the amplitude of these oscillations is maximised.
 
@@ -239,7 +239,7 @@ You can choose "Resonance Breathing" from the activity drop-down menu, or for an
 
 ### Resonance score
 
-If you are using a **Polar H10** chest strap (or any sensor that exposes raw RR intervals via the Bluetooth Heart Rate Measurement characteristic), the app can calculate a **live resonance score**. This is a combination of wave coherence, frequency stability, and phase lag. It takes more than 60 seconds to gather enough data to calculate a score
+If you are using a **Polar H10** chest strap (or any sensor that exposes raw RR intervals via the Bluetooth Heart Rate Measurement characteristic), the app can calculate a **live resonance score**. This is a combination of wave coherence, frequency lock, and phase lag. It takes more than 60 seconds to gather enough data to calculate a score
 
 Once enough data has been gathered, the score appears as a number and a star rating beneath the state description. 
 
@@ -315,7 +315,7 @@ If your nervous system is currently deconditioned, it will fatigue quickly. Push
 
 **Physical red flags.** If mild air hunger turns into a racing heart, dizziness, or anxiety, stop RFB immediately and let your breathing return to its natural pattern.
 
-Two minutes of comfortable, high-quality breathing is vastly superior to ten minutes of struggling. Stop while you are ahead. The goal is not duration — it is quality, and a consistently gentle practice will build capacity far more reliably than straining for longer sessions.
+Two minutes of comfortable, high-quality breathing is vastly superior to ten minutes of struggling. Stop while you are ahead. The goal is not duration — it is quality, and a consistently gentle daily practice will build capacity far more reliably than straining for longer sessions.
 
 ---
 
@@ -323,7 +323,7 @@ Two minutes of comfortable, high-quality breathing is vastly superior to ten min
 
 An HRV Reading gives you a single number that summarises your heart rate variability. Two session types are available:
 
-- **Morning HRV** — taken first thing in the morning, before coffee, food, or significant activity. Consistency of conditions matters more than any single number. Changes in morning HRV from day to day are often used to assess nighttime recovery and readiness for activity; long term trends may be useful to assess gains in fitness or autonomic state. The **changes** and **trends** are important, not the absolute numbers. The HRV history graph in Session History shows Morning HRV sessions only.
+- **Morning HRV** — taken first thing in the morning, before coffee, food, or significant activity. Consistency of conditions is critical. Day to day comparison of morning HRV with the short term average are often used to assess nighttime recovery and readiness for activity; long term trends may be useful to assess changes in fitness or autonomic state. The **changes** and **trends** are important, not the absolute numbers. The HRV history graph in Session History shows Morning HRV sessions only.
 - **Daytime HRV** — taken at any other time of day. Useful for tracking reactivity — for example, a morning-to-afternoon delta, or how your HRV responds to a specific stressor or activity. Daytime readings are saved in your session history but are not included in the trend graph, keeping that graph a clean comparable baseline.
 
 It's tempting to substitute daytime readings for the morning baseline when HRV is typically higher later in the day, but those numbers are heavily shaped by short-term factors — meals, posture, caffeine, recent stress, hydration — and tell you little about recovery state. The two types are best treated as separate metrics.
