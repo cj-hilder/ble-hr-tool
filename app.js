@@ -347,17 +347,19 @@ const RFB_ENGAGE_STREAK    = 5;    // consecutive qualifying seconds required
 // √(N_max/N). Thresholds are widened by this factor so that a user breathing
 // perfectly steadily scores consistently from the first valid samples onward,
 // rather than showing an artificial low-to-high ramp during history warmup.
-function computeStability(history) {
+function computeStability(history, guideFreq) {
+    // RMSD of measured peak frequency from the guide frequency.
+    // Uses a fixed reference (guideFreq) rather than the historical mean, so a
+    // consistent offset from guide (user naturally breathes at 4.9 not 5.0 bpm)
+    // correctly reduces the stability score rather than appearing "stable".
     if (!history || history.length < 10) return 1; // insufficient data — assume stable
-    const N    = history.length;
-    const mean = history.reduce((a, b) => a + b, 0) / N;
-    const variance = history.reduce((s, f) => { const d = f - mean; return s + d * d; }, 0) / N;
-    const std  = Math.sqrt(variance);
-    const scale   = Math.sqrt(PEAK_FREQ_MAX_HISTORY / N); // → 1.0 at full history
-    const MIN_STD = 0.005 * scale;
-    const MAX_STD = 0.020 * scale;
-    const norm = Math.max(0, Math.min(1, (std - MIN_STD) / (MAX_STD - MIN_STD)));
-    return 1 - norm;
+    const N = history.length;
+    const sumSq = history.reduce((s, f) => { const d = f - guideFreq; return s + d * d; }, 0);
+    const rmsd  = Math.sqrt(sumSq / N);
+    // Scale: RMSD ≤ 0.003 Hz (≈ 0.2 bpm) → stability 1.0 (perfect)
+    //        RMSD ≥ 0.015 Hz (≈ 0.9 bpm) → stability 0.0 (unstable)
+    const MIN_RMSD = 0.003, MAX_RMSD = 0.015;
+    return 1 - Math.max(0, Math.min(1, (rmsd - MIN_RMSD) / (MAX_RMSD - MIN_RMSD)));
 }
 
 let lastRrTimestamp    = 0; // Continuous internal clock — prevents packet jitter gaps
@@ -1567,7 +1569,7 @@ function computeResonance() {
     peakFreqHistory.push(result.peakFreq);
     if (peakFreqHistory.length > PEAK_FREQ_MAX_HISTORY) peakFreqHistory.shift();
 
-    const stability = computeStability(peakFreqHistory);
+    const stability = computeStability(peakFreqHistory, guideFreq);
 
     // Stability is only meaningful once the processor buffer spans a full analysis
     // window. Before that the FFT peak bin jumps around due to short-window spectral
@@ -1708,7 +1710,7 @@ function updateCoherenceDisplay() {
                 } else {
                     const amp = r.amplitudeBpm;
                     const relLagSec = r.phaseDiffDeg != null ? (r.phaseDiffDeg / 360 * (rfbBreathPeriodMs() / 1000)) : null;
-                    const lagStr   = relLagSec != null ? `${relLagSec >= 0 ? '+' : ''}${relLagSec.toFixed(1)}s` : '--';
+                    const lagStr   = relLagSec != null ? `${relLagSec >= 0 ? '+' : ''}${( Math.round(relLagSec * 2) / 2).toFixed(1)}s` : '--';
                     const stabStr  = r.stabilityReady ? `${Math.round(r.stability * 100)}%` : '--';
                     dbg.textContent = `coherence:${Math.round(r.coherence * 100)}% ampl:${amp.toFixed(1)} stability:${stabStr} lag:${lagStr}`;
                 }
@@ -1746,7 +1748,7 @@ function updateCoherenceDisplay() {
                     if (showDebug) {
                         const amp = r.amplitudeBpm;
                         const relLagSec = r.phaseDiffDeg != null ? (r.phaseDiffDeg / 360 * (rfbBreathPeriodMs() / 1000)) : null;
-                        const lagStr   = relLagSec != null ? `${relLagSec >= 0 ? '+' : ''}${relLagSec.toFixed(1)}s` : '--';
+                        const lagStr   = relLagSec != null ? `${relLagSec >= 0 ? '+' : ''}${( Math.round(relLagSec * 2) / 2).toFixed(1)}s` : '--';
                         const stabStr  = r.stabilityReady ? `${Math.round(r.stability * 100)}%` : '--';
                         dbg.textContent = `c:${r.coherence.toFixed(2)} f:${(r.peakFreq * 60).toFixed(1)}bpm ampl:${amp.toFixed(1)} stab:${stabStr} lag:${lagStr} streak:${rfbEngagementStreak}/${RFB_ENGAGE_STREAK}`;
                     }
@@ -1760,7 +1762,7 @@ function updateCoherenceDisplay() {
                         : window.rfbRating(0, true);
                     if (showDebug) {
                         const relLagSec = r.phaseDiffDeg != null ? (r.phaseDiffDeg / 360 * (rfbBreathPeriodMs() / 1000)) : null;
-                        const lagStr   = relLagSec != null ? `${relLagSec >= 0 ? '+' : ''}${relLagSec.toFixed(1)}s` : '--';
+                        const lagStr   = relLagSec != null ? `${relLagSec >= 0 ? '+' : ''}${( Math.round(relLagSec * 2) / 2).toFixed(1)}s` : '--';
                         const stabStr  = r.stabilityReady ? `${Math.round(r.stability * 100)}%` : '--';
                         dbg.textContent = `c:${Math.round(r.coherence * 100)}% f:${(r.peakFreq * 60).toFixed(1)}bpm ampl:${amp.toFixed(1)} stab:${stabStr} lag:${lagStr}`;
                     }
@@ -2252,14 +2254,19 @@ if (currentState === 'reset' && rfbOnNow && rfbWallStartTime > 0) {
             if (hrvProcessor._lastInhaleEndTs > 0 &&
                 hrvProcessor._lastHrMaxTs > hrvProcessor._lastInhaleEndTs) {
                 const finalisedLag = (hrvProcessor._lastHrMaxTs - hrvProcessor._lastInhaleEndTs) / 1000;
-                // EMA update: on first cycle seed directly; thereafter blend with α.
-                // α=0.4 weights the most recent cycle at 40%, giving a time constant
-                // of ~2–3 cycles so genuine phase shifts appear within ~20–30s at 6 bpm.
-                if (hrvProcessor._lagEma === null) {
-                    hrvProcessor._lagEma = finalisedLag;
-                } else {
-                    hrvProcessor._lagEma = hrvProcessor._LAG_EMA_ALPHA * finalisedLag +
-                                           (1 - hrvProcessor._LAG_EMA_ALPHA) * hrvProcessor._lagEma;
+                // Outlier rejection: a lag more than half a breath period away from the
+                // running EMA is almost certainly a misdetected cycle (wrong crossing beat,
+                // or HR peak in the wrong phase). Discard rather than corrupt the EMA.
+                const breathPeriodSec = rfbBreathPeriodMs() / 1000;
+                const isOutlier = hrvProcessor._lagEma !== null &&
+                    Math.abs(finalisedLag - hrvProcessor._lagEma) > breathPeriodSec * 0.4;
+                if (!isOutlier) {
+                    if (hrvProcessor._lagEma === null) {
+                        hrvProcessor._lagEma = finalisedLag;
+                    } else {
+                        hrvProcessor._lagEma = hrvProcessor._LAG_EMA_ALPHA * finalisedLag +
+                                               (1 - hrvProcessor._LAG_EMA_ALPHA) * hrvProcessor._lagEma;
+                    }
                 }
             }
             hrvProcessor._lastInhaleEndTs   = Date.now();
