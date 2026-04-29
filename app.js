@@ -65,12 +65,13 @@ class HRVProcessor {
         const freqs     = this._frequencyAxis(fftResult.magnitude.length);
         const { peakFreq, peakBin, peakBandPower, totalPower } = this._computeBandMetrics(freqs, fftResult.magnitude);
         if (totalPower === 0) return null;
-        // HeartMath published Coherence Ratio: peak band power relative to all
-        // remaining spectral power. A narrow dominant peak at the breathing
-        // frequency drives the ratio high; background noise drives it toward zero.
-        //   CR = PeakBandPower / (totalPower − PeakBandPower)
+        // HeartMath Coherence Ratio, normalised form: PBP / totalPower.
+        // Algebraically equivalent to CR/(1+CR) where CR = PBP/(totalPower−PBP),
+        // but bounded to 0–1 without a separate normalisation step. A narrow
+        // dominant peak at the breathing frequency drives the value toward 1;
+        // background noise drives it toward 0.
         //   (McCraty et al. 2009; McCraty & Childre 2010)
-        const coherenceRaw = peakBandPower / Math.max(totalPower - peakBandPower, 1e-9);
+        const coherenceRaw = peakBandPower / totalPower;
         // Validate that the spectral peak lies within the physiological RFB range
         // (0.07–0.12 Hz = 4.2–7.2 bpm). A peak outside this range means the algorithm
         // has latched onto LF noise or slow HR drift, not a real breathing oscillation.
