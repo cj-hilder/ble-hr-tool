@@ -1717,7 +1717,7 @@ function updateCoherenceDisplay() {
                     const relLagSec = r.phaseDiffDeg != null ? (r.phaseDiffDeg / 360 * (rfbBreathPeriodMs() / 1000)) : null;
                     const lagStr   = relLagSec != null ? `${relLagSec >= 0 ? '+' : ''}${( Math.round(relLagSec * 2) / 2).toFixed(1)}s` : '--';
                     const lockStr  = r.freqLockReady ? `${Math.round(r.freqLock * 100)}%` : '--';
-                    dbg.textContent = `coherence:${Math.round(r.coherence * 100)}% ampl:${amp.toFixed(1)} freq lock:${lockStr} lag:${lagStr}`;
+                    dbg.textContent = `coherence:${Math.round(r.coherence * 100)} ampl:${amp.toFixed(1)} freq lock:${lockStr} lag:${lagStr}`;
                 }
             }
 
