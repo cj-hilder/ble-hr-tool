@@ -1694,7 +1694,7 @@ function updateCoherenceDisplay() {
                         const relLagSec = r.phaseDiffDeg != null ? (r.phaseDiffDeg / 360 * (rfbBreathPeriodMs() / 1000)) : null;
                         const lagStr   = relLagSec != null ? `${relLagSec >= 0 ? '+' : ''}${relLagSec.toFixed(1)}s` : '--';
                         const stabStr  = r.stabilityReady ? `${Math.round(r.stability * 100)}%` : '--';
-                        dbg.textContent = `c:${r.coherence.toFixed(2)} f:${r.peakFreq.toFixed(3)}Hz ampl:${amp.toFixed(1)} stab:${stabStr} lag:${lagStr} streak:${rfbEngagementStreak}/${RFB_ENGAGE_STREAK}`;
+                        dbg.textContent = `c:${r.coherence.toFixed(2)} f:${(r.peakFreq * 60).toFixed(1)}bpm ampl:${amp.toFixed(1)} stab:${stabStr} lag:${lagStr} streak:${rfbEngagementStreak}/${RFB_ENGAGE_STREAK}`;
                     }
                 } else {
                     // Engaged (or Resonance Breathing): show RI and record.
@@ -1708,7 +1708,7 @@ function updateCoherenceDisplay() {
                         const relLagSec = r.phaseDiffDeg != null ? (r.phaseDiffDeg / 360 * (rfbBreathPeriodMs() / 1000)) : null;
                         const lagStr   = relLagSec != null ? `${relLagSec >= 0 ? '+' : ''}${relLagSec.toFixed(1)}s` : '--';
                         const stabStr  = r.stabilityReady ? `${Math.round(r.stability * 100)}%` : '--';
-                        dbg.textContent = `c:${Math.round(r.coherence * 100)}% f:${r.peakFreq.toFixed(3)}Hz ampl:${amp.toFixed(1)} stab:${stabStr} lag:${lagStr}`;
+                        dbg.textContent = `c:${Math.round(r.coherence * 100)}% f:${(r.peakFreq * 60).toFixed(1)}bpm ampl:${amp.toFixed(1)} stab:${stabStr} lag:${lagStr}`;
                     }
                     // Recording starts only once engaged — keeps summary data honest.
                     if (isSessionRunning) rfbCoherenceRecording.push({
