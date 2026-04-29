@@ -319,15 +319,18 @@ Two minutes of comfortable, high-quality breathing is vastly superior to ten min
 
 ---
 
-## HRV Reading
+## HRV Readings
 
-An HRV Reading gives you a single number that summarises your heart rate variability. To get meaningful data, take readings first thing in the morning, before coffee, food, or significant activity. Consistency of conditions matters more than any single number — the goal is a comparable baseline, not a peak score. On a daily basis the HRV score compared to baseline is often used as a guide to nightly recovery and readiness for activity, while a rising trend can indicate improvement in fitness or autonomic regulation.
+An HRV Reading gives you a single number that summarises your heart rate variability. Two session types are available:
 
-It's tempting to take readings later in the day when HRV is typically higher, but those numbers are heavily shaped by short-term factors (meals, posture, caffeine, recent stress, hydration) and tell you little about recovery state. 
+- **Morning HRV** — taken first thing in the morning, before coffee, food, or significant activity. Consistency of conditions matters more than any single number. Changes in morning HRV from day to day are often used to assess nighttime recovery and readiness for activity; long term trends may be useful to assess gains in fitness or autonomic state. The **changes** and **trends** are important, not the absolute numbers. The HRV history graph in Session History shows Morning HRV sessions only.
+- **Daytime HRV** — taken at any other time of day. Useful for tracking reactivity — for example, a morning-to-afternoon delta, or how your HRV responds to a specific stressor or activity. Daytime readings are saved in your session history but are not included in the trend graph, keeping that graph a clean comparable baseline.
 
-This convention follows established research practice: standardised morning, supine measurement is the protocol used in autonomic research and athlete monitoring. Afternoon or evening readings can still be useful for tracking reactivity (e.g. morning-to-afternoon delta, or response to a specific stressor), but they are best treated as a separate metric rather than a substitute for the morning baseline.
+It's tempting to substitute daytime readings for the morning baseline when HRV is typically higher later in the day, but those numbers are heavily shaped by short-term factors — meals, posture, caffeine, recent stress, hydration — and tell you little about recovery state. The two types are best treated as separate metrics.
 
-Select **"HRV Reading"** from the activity drop-down menu to start a new reading.
+This convention follows established research practice: standardised morning, supine measurement is the protocol used in autonomic research and athlete monitoring.
+
+Select **"Morning HRV"** or **"Daytime HRV"** from the activity drop-down menu to start a reading.
 
 Wait until your heart rate has settled to your resting heart rate before starting. The displayed HRV number will change during the session, converging on the final value. If it jumps up and down by more than a few points you may have started the reading before your heart rate has settled.
 
@@ -391,7 +394,7 @@ The graph shows:
 - **Multiple activity profiles** — Different threshold sets for different activities (e.g. walking, cycling, housework), switchable at session start.
 - **Time limit** — Optional per-session cap on total time. When reached, the app transitions to the heart rate Reset state automatically.
 - **Resonance Frequency Breathing** — Integrated breath pacer, sound and vibration guides, resonance scoring, and extended RFB phase during the Reset state. See dedicated section above.
-- **HRV Reading** — A dedicated 3-5 minute resting measurement that produces a single HRV Index from RMSSD and SDNN. It is designed for consistent longitudinal tracking of ANS recovery. Requires a Polar H10 or equivalent RR-capable sensor.
+- **Morning HRV and Daytime HRV** — Two dedicated 3–5 minute resting measurements, both producing a single HRV Index from RMSSD and SDNN. Morning HRV is designed for consistent longitudinal tracking of ANS recovery and appears in the HRV trend graph. Daytime HRV captures reactivity readings without contaminating the baseline trend. Both require a Polar H10 or equivalent RR-capable sensor.
 - **Ectopic beat tracking** — Every session that uses an RR-capable sensor records the count and percentage of ectopic beats (PVCs, PACs). Reported in the session summary for all session types.
 - **Session HR recording and graph export** — Every session records 1Hz heart rate data alongside state transitions. Saved sessions can be exported as a landscape A4 PDF graph showing HR over time with colour-coded state background bands, axes, and a resting HR reference line.
 - **Session history and trend graphs** — Each session can be saved with notes. History graphs allow you to track recovery metrics over time.
@@ -418,7 +421,7 @@ Because this app uses the **Web Bluetooth API**, it requires a compatible browse
 
 ### Recommended Hardware
 
-Any BLE heart rate monitor that implements the standard Heart Rate Measurement characteristic will work for basic pacing. For the **RFB resonance score**, **HRV Reading**, and higher-resolution HR graphing, a device that exposes raw RR intervals is required. The **Polar H10** chest strap is strongly recommended — it is the most widely used research-grade consumer device for this purpose and reliably exposes RR data via the standard BLE characteristic without requiring a proprietary app or API.
+Any BLE heart rate monitor that implements the standard Heart Rate Measurement characteristic will work for basic pacing. For the **RFB resonance score**, **HRV readings**, and higher-resolution HR graphing, a device that exposes raw RR intervals is required. The **Polar H10** chest strap is strongly recommended — it is the most widely used research-grade consumer device for this purpose and reliably exposes RR data via the standard BLE characteristic without requiring a proprietary app or API.
 
 ### Common Bluetooth Troubleshooting
 
