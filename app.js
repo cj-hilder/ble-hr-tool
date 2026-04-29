@@ -314,8 +314,10 @@ const hrvProcessor = new HRVProcessor({ sampleRate: 4, windowSeconds: 64 });
 
 // Rolling history of valid in-band spectral peak frequencies, used for the
 // instability indicator only — not used to modify the coherence score.
+// 64 entries (~64s at 1 Hz update rate) matches the coherence window length,
+// keeping stability and coherence on the same temporal reference frame.
 const peakFreqHistory = [];
-const PEAK_FREQ_MAX_HISTORY = 120; // ~1 Hz update rate → ~2 min of history
+const PEAK_FREQ_MAX_HISTORY = 64;
 
 // ─── RFB display phase thresholds ─────────────────────────────────────────────
 // t < RFB_DISPLAY_SEC : progress animation shown; debug shows coherence from 30s
@@ -1564,24 +1566,24 @@ function computeResonance() {
     const result = hrvProcessor.computeCoherence(guideFreq);
     if (result === null) return null;
 
-    // All returned peaks are now in-band by construction (search is guideFreq ± 0.020 Hz),
-    // so every reading is valid for stability tracking.
-    peakFreqHistory.push(result.peakFreq);
-    if (peakFreqHistory.length > PEAK_FREQ_MAX_HISTORY) peakFreqHistory.shift();
+    // Only accumulate frequency history after the lead-in (rfbElapsedSec >= RFB_DISPLAY_SEC).
+    // During the lead-in the FFT buffer is shorter than 64s and the peak within the
+    // guideFreq ± 0.020 Hz search window can sit anywhere in that range, producing
+    // up to 0.020 Hz RMSD — well above MAX_RMSD — and pinning stability at 0%.
+    // Those readings then take PEAK_FREQ_MAX_HISTORY seconds to flush out.
+    // Restricting to post-lead-in data means stability reflects only reliable readings.
+    const rfbElapsedSec = rfbWallStartTime > 0 ? (Date.now() - rfbWallStartTime) / 1000 : 0;
+    if (rfbElapsedSec >= RFB_DISPLAY_SEC) {
+        peakFreqHistory.push(result.peakFreq);
+        if (peakFreqHistory.length > PEAK_FREQ_MAX_HISTORY) peakFreqHistory.shift();
+    }
 
     const stability = computeStability(peakFreqHistory, guideFreq);
 
-    // Stability is only meaningful once the processor buffer spans a full analysis
-    // window. Before that the FFT peak bin jumps around due to short-window spectral
-    // noise, not genuine breathing instability. Using 1.0 (neutral) during warmup
-    // prevents a misleading early penalty on the resonance index.
-    // Stability is meaningful once enough in-band peaks have accumulated for
-    // computeStability to produce a reliable estimate. The sqrt(N_max/N) scaling
-    // corrects for estimation noise at partial history, so 30 samples (~30s of
-    // valid in-band readings) is sufficient to display a trustworthy value.
-    // The buffer-span check was unreliable because _trimBuffer keeps the span
-    // just below windowSeconds * 1000, so the condition was never met.
-    const stabilityReady = peakFreqHistory.length >= 30;
+    // 15 post-lead-in samples (~15s) is sufficient for a reliable RMSD estimate
+    // now that history contains only settled FFT readings. stabilityForIndex uses
+    // 1.0 (neutral) until then to avoid a misleading early penalty on the RI.
+    const stabilityReady = peakFreqHistory.length >= 15;
     const stabilityForIndex = stabilityReady ? stability : 1.0;
 
     // Phase alignment — time-domain peak offset method.
