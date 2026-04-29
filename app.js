@@ -220,6 +220,22 @@ class HRVProcessor {
             }
             if (i <= N / 2) totalPower += p;
         }
+        // Parabolic interpolation: fit a parabola through the peak bin and its two
+        // neighbours to locate the true spectral peak between bins. Eliminates the
+        // toggling between adjacent bins (e.g. 4.9 ↔ 5.2 bpm) caused by noise
+        // shifting which bin is marginally tallest from one second to the next.
+        //   delta = 0.5 × (M[k+1] − M[k−1]) / (2×M[k] − M[k−1] − M[k+1])
+        //   trueFreq = (k + delta) × sampleRate / N
+        if (peakBin > 0 && peakBin < N - 1) {
+            const mL = magnitudes[peakBin - 1];
+            const mC = magnitudes[peakBin];
+            const mR = magnitudes[peakBin + 1];
+            const denom = 2 * mC - mL - mR;
+            if (denom > 0) {
+                const delta = 0.5 * (mR - mL) / denom;
+                peakFreq = (peakBin + delta) * this.sampleRate / N;
+            }
+        }
         // Peak band: ±0.010 Hz around the dominant peak, positive frequencies only.
         // At 64-s/4-Hz resolution (bin width 0.015625 Hz) this captures approximately
         // the peak bin alone, minimising spectral leakage contamination of peakBandPower.
