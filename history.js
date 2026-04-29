@@ -660,7 +660,7 @@ function generateSessionPDF(session) {
         session.activityName ? `Activity: ${session.activityName}` : null,
         session.sessionLengthSec ? `Duration: ${formatTime(session.sessionLengthSec)}` : null,
         session.avgHr ? `Avg HR: ${session.avgHr} bpm` : null,
-        (session.activityId === 'hrv_reading' && session.hvIndexFinal != null)
+        (( session.activityId === 'hrv_reading' || session.activityId === 'daytime_hrv') && session.hvIndexFinal != null)
             ? `HRV: ${Math.round(session.hvIndexFinal)}` : null,
     ].filter(Boolean).join('   ·   ');
     doc.text(meta, PX, 18);
@@ -709,7 +709,7 @@ function generateSessionPDF(session) {
 
     // ── Page 2: Resonance coherence graph (only if RFB data exists and not HRV Reading) ──
     const rfbRec = session.rfbCoherenceRecording;
-    if (rfbRec && rfbRec.length >= 2 && session.activityId !== 'hrv_reading') {
+    if (rfbRec && rfbRec.length >= 2 && session.activityId !== 'hrv_reading' && session.activityId !== 'daytime_hrv') {
         doc.addPage('a4', 'landscape');
         doc.setFillColor(255, 255, 255);
         doc.rect(0, 0, PW, PH, 'F');

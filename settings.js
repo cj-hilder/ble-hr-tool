@@ -31,7 +31,8 @@ const DEFAULTS = {
 };
 
 const RESONANCE_BREATHING_ID = 'resonance_breathing';
-const HRV_READING_ID_S = 'hrv_reading';
+const HRV_READING_ID_S  = 'hrv_reading';   // Morning HRV — included in trend graph
+const DAYTIME_HRV_ID    = 'daytime_hrv';   // Daytime HRV — excluded from trend graph
 
 // Defaults for the built-in HRV Reading activity.
 const HRV_DEFAULTS = {
@@ -44,6 +45,9 @@ const HRV_DEFAULTS = {
     HRV_DURATION:         3,   // session length in minutes: 3 or 5
     // All other settings inherit from DEFAULTS but are hidden in the panel
 };
+
+// Defaults for the built-in Daytime HRV activity (same settings as Morning HRV).
+const DAYTIME_HRV_DEFAULTS = { ...HRV_DEFAULTS };
 
 // Defaults for the built-in Resonance Breathing activity.
 // RFB_ENABLED is always 1 here and is not user-editable.
@@ -235,21 +239,43 @@ function loadActivities() {
         persistActivities();
     })();
 
-    // Ensure the built-in HRV Reading activity always exists at position 1 (after RB).
-    (function ensureHRVReading() {
+    // Ensure the built-in Morning HRV activity always exists at position 1 (after RB).
+    (function ensureMorningHRV() {
         const idx = activities.findIndex(a => a.id === HRV_READING_ID_S);
         const baseSettings = { ...DEFAULTS, ...HRV_DEFAULTS };
         if (idx >= 0) {
             const hrv = activities[idx];
             if (!hrv.settings) hrv.settings = {};
-            // Move to position 1 if not already there
+            hrv.name = 'Morning HRV'; // enforce display name (migrates legacy 'HRV Reading')
             if (idx !== 1) { activities.splice(idx, 1); activities.splice(1, 0, hrv); }
         } else {
             activities.splice(1, 0, {
-                id: HRV_READING_ID_S,
-                name: 'HRV Reading',
-                description: 'A resting HRV measurement. Sit or lie still and breathe normally.',
-                settings: baseSettings,
+                id:          HRV_READING_ID_S,
+                name:        'Morning HRV',
+                description: 'A resting HRV measurement taken first thing in the morning before coffee, food, or activity. Used for longitudinal trend tracking.',
+                settings:    baseSettings,
+            });
+        }
+        persistActivities();
+    })();
+
+    // Ensure the built-in Daytime HRV activity always exists at position 2.
+    // Identical settings to Morning HRV but excluded from the HRV trend graph,
+    // keeping the graph a clean morning-only baseline.
+    (function ensureDaytimeHRV() {
+        const idx = activities.findIndex(a => a.id === DAYTIME_HRV_ID);
+        const baseSettings = { ...DEFAULTS, ...DAYTIME_HRV_DEFAULTS };
+        if (idx >= 0) {
+            const hrv = activities[idx];
+            if (!hrv.settings) hrv.settings = {};
+            hrv.name = 'Daytime HRV'; // enforce display name
+            if (idx !== 2) { activities.splice(idx, 1); activities.splice(2, 0, hrv); }
+        } else {
+            activities.splice(2, 0, {
+                id:          DAYTIME_HRV_ID,
+                name:        'Daytime HRV',
+                description: 'A resting HRV measurement taken outside of morning. Useful for tracking reactivity or acute changes. Not included in the HRV trend graph.',
+                settings:    baseSettings,
             });
         }
         persistActivities();
@@ -544,7 +570,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function updatePanelForActivity(act) {
         const isRB  = act.id === RESONANCE_BREATHING_ID;
-        const isHRV = act.id === HRV_READING_ID_S;
+        const isHRV = act.id === HRV_READING_ID_S || act.id === DAYTIME_HRV_ID;
         // Lock/unlock the name field
         activityNameInp.disabled = isRB || isHRV;
         activityNameInp.style.opacity = (isRB || isHRV) ? '0.4' : '';
@@ -719,7 +745,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     activityNameInp.addEventListener('change', () => {
         const act = getSelectedActivity();
-        if (act.id === RESONANCE_BREATHING_ID || act.id === HRV_READING_ID_S) return; // name is locked
+        if (act.id === RESONANCE_BREATHING_ID || act.id === HRV_READING_ID_S || act.id === DAYTIME_HRV_ID) return; // name is locked
         const trimmed = activityNameInp.value.trim();
         if (trimmed) { act.name = trimmed; persistActivities(); rebuildActivityDropdown(); }
     });
@@ -746,7 +772,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (activities.length <= 1) { alert('You need at least one activity type.'); return; }
         const act = getSelectedActivity();
         if (act.id === RESONANCE_BREATHING_ID) { alert('Resonance Breathing cannot be deleted.'); return; }
-        if (act.id === HRV_READING_ID_S)       { alert('HRV Reading cannot be deleted.'); return; }
+        if (act.id === HRV_READING_ID_S)       { alert('Morning HRV cannot be deleted.'); return; }
+        if (act.id === DAYTIME_HRV_ID)         { alert('Daytime HRV cannot be deleted.'); return; }
         if (!confirm(`Delete activity "${act.name}"? This cannot be undone.`)) return;
         activities = activities.filter(a => a.id !== selectedActivityId);
         persistActivities();
@@ -811,7 +838,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (act.id === RESONANCE_BREATHING_ID && item.key === 'RFB_ENABLED') { v = 1; }
             act.settings[item.key] = v;
             if (item.key === 'RFB_ENABLED') {
-                updateRfbSubVisibility(act, act.id === RESONANCE_BREATHING_ID, act.id === HRV_READING_ID_S);
+                updateRfbSubVisibility(act, act.id === RESONANCE_BREATHING_ID, act.id === HRV_READING_ID_S || act.id === DAYTIME_HRV_ID);
             }
             persistActivities();
             const sessionRunning = (typeof isSessionRunning !== 'undefined') && isSessionRunning;
@@ -827,8 +854,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     resetBtn.addEventListener('click', () => {
         const act = getSelectedActivity();
-        act.settings = act.id === RESONANCE_BREATHING_ID ? { ...RB_DEFAULTS }
-                     : act.id === HRV_READING_ID_S       ? { ...DEFAULTS, ...HRV_DEFAULTS }
+        act.settings = act.id === RESONANCE_BREATHING_ID          ? { ...RB_DEFAULTS }
+                     : act.id === HRV_READING_ID_S                ? { ...DEFAULTS, ...HRV_DEFAULTS }
+                     : act.id === DAYTIME_HRV_ID                  ? { ...DEFAULTS, ...DAYTIME_HRV_DEFAULTS }
                      : { ...DEFAULTS };
         persistActivities();
         loadActivityIntoPanel(act);
