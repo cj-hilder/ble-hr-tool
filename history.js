@@ -428,7 +428,7 @@ function buildSessionCard(s, realIndex) {
 // ── Filter chips ──────────────────────────────────────────────────────────────
 function getActivityNames(history) {
     const names = new Set();
-    history.forEach(s => { if (s.activityName) names.add(s.activityName); });
+    history.forEach(s => { const n = resolveActivityName(s); if (n) names.add(n); });
     return [...names].sort();
 }
 
@@ -469,7 +469,7 @@ function applyFilter() {
     renderFilterChips(actNames);
 
     const filtered = activeFilters.size > 0
-        ? allHistory.map((s, i) => ({ s, i })).filter(({ s }) => activeFilters.has(s.activityName))
+        ? allHistory.map((s, i) => ({ s, i })).filter(({ s }) => activeFilters.has(resolveActivityName(s)))
         : allHistory.map((s, i) => ({ s, i }));
 
     document.getElementById('sessionCount').innerText =
