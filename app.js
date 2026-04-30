@@ -3053,7 +3053,7 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
         else document.getElementById('homeBtn').style.display = 'flex';
     } catch (error) {
         if (error.message && error.message.includes('User cancelled')) {
-           log('Ready to connect...', true);
+           log('Ready to connect...', false);
         } else {
            log('❌ Error: ' + error.message + '<br><br>💡 Tip: Please close any other app (like Polar Flow) that might be paired with the HR device, or unpair from device or phone settings.', true);
         }
