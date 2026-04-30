@@ -1717,7 +1717,22 @@ function updateCoherenceDisplay() {
                     const relLagSec = r.phaseDiffDeg != null ? (r.phaseDiffDeg / 360 * (rfbBreathPeriodMs() / 1000)) : null;
                     const lagStr   = relLagSec != null ? `${relLagSec >= 0 ? '+' : ''}${( Math.round(relLagSec * 2) / 2).toFixed(1)}s` : '--';
                     const lockStr  = r.freqLockReady ? `${Math.round(r.freqLock * 100)}%` : '--';
-                    dbg.textContent = `coherence:${Math.round(r.coherence * 100)} ampl:${amp.toFixed(1)} freq lock:${lockStr} lag:${lagStr}`;
+                    dbg.textContent = `coherence:${Math.round(r.coherence * 100)} ampl:${amp.toFixed(1)} freq lock:${lockStr} lag:${lagStr} streak:${rfbEngagementStreak}/${RFB_ENGAGE_STREAK}`;
+                }
+            }
+
+            // Pre-flight engagement: accumulate the streak silently during the 30–65 s
+            // lead-in so that a user who starts RFB from the very beginning of the reset
+            // state ("immediate engagement") is already engaged at exactly 65 s and never
+            // sees "Waiting…". The same criteria apply as the post-65 s check.
+            if (!isResonanceBreathing && !rfbEngaged && r !== null && rfbElapsedSec >= RFB_DEBUG_SEC) {
+                const freqMatch = Math.abs(r.peakFreq - guideFreq) <= 0.010;
+                const coherOk   = r.coherence >= RFB_ENGAGE_COHERENCE;
+                if (freqMatch && coherOk) {
+                    rfbEngagementStreak++;
+                    if (rfbEngagementStreak >= RFB_ENGAGE_STREAK) rfbEngaged = true;
+                } else {
+                    rfbEngagementStreak = 0;
                 }
             }
 
