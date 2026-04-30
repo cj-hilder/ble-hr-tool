@@ -1046,7 +1046,7 @@ let rfbCoherenceRecording = []; // ~1Hz coherence log during valid RFB: {t, c} �
 let rfbEngaged         = false; // latched true once engagement confirmed; reset each new RFB phase
 let rfbEngagementStreak = 0;    // consecutive qualifying seconds toward engagement threshold
 let rfbPreEngageBuffer  = [];   // coherence records accumulated during active streak, prepended on latch
-let rfbPracticeSec      = 0;    // total wall-clock RFB practice time including credited lead-in/wait
+let rfbPracticeSec      = 0;    // general activity only: credited practice seconds (post-engagement + lookback)
 
 // ─── Activity tracking ────────────────────────────────────────────────────────
 let currentActivityId   = null;
@@ -1571,24 +1571,26 @@ function computeResonance() {
     const result = hrvProcessor.computeCoherence(guideFreq);
     if (result === null) return null;
 
-    // Only accumulate frequency history after the lead-in (rfbElapsedSec >= RFB_DISPLAY_SEC).
-    // During the lead-in the FFT buffer is shorter than 64s and the peak within the
-    // guideFreq ± 0.020 Hz search window can sit anywhere in that range, producing
-    // up to 0.020 Hz RMSD — well above MAX_RMSD — and pinning stability at 0%.
-    // Those readings then take PEAK_FREQ_MAX_HISTORY seconds to flush out.
-    // Restricting to post-lead-in data means stability reflects only reliable readings.
+    // Accumulate frequency history from RFB_ENGAGE_STREAK seconds before the lead-in
+    // ends (60s rather than 65s). This gives the immediate engagement check at 65s
+    // exactly RFB_ENGAGE_STREAK pre-lead-in entries to verify the user was already
+    // locked before the FFT window was declared full.
+    // Pre-lead-in entries are used for engagement detection only — not for freqLock
+    // scoring (which still requires a full post-lead-in window of settled data) and
+    // not credited with coherence data (FFT buffer not fully settled before 65s).
     const rfbElapsedSec = rfbWallStartTime > 0 ? (Date.now() - rfbWallStartTime) / 1000 : 0;
-    if (rfbElapsedSec >= RFB_DISPLAY_SEC) {
+    const FREQ_HISTORY_START = RFB_DISPLAY_SEC - RFB_ENGAGE_STREAK; // 60s
+    if (rfbElapsedSec >= FREQ_HISTORY_START) {
         peakFreqHistory.push(result.peakFreq);
-        if (peakFreqHistory.length > PEAK_FREQ_MAX_HISTORY) peakFreqHistory.shift();
+        if (peakFreqHistory.length > PEAK_FREQ_MAX_HISTORY + RFB_ENGAGE_STREAK) peakFreqHistory.shift();
     }
 
     const freqLock = computeFrequencyLock(peakFreqHistory, guideFreq);
 
-    // 15 post-lead-in samples (~15s) is sufficient for a reliable RMSD estimate
-    // now that history contains only settled FFT readings. freqLockForIndex uses
-    // 1.0 (neutral) until then to avoid a misleading early penalty on the RI.
-    const freqLockReady = peakFreqHistory.length >= 15;
+    // freqLock is only meaningful once we have settled post-lead-in FFT data.
+    // The pre-lead-in entries (up to RFB_ENGAGE_STREAK) are for engagement detection only.
+    const postLeadInCount = Math.max(0, peakFreqHistory.length - RFB_ENGAGE_STREAK);
+    const freqLockReady   = postLeadInCount >= 15;
     const freqLockForIndex = freqLockReady ? freqLock : 1.0;
 
     // Phase alignment — time-domain peak offset method.
@@ -1797,30 +1799,22 @@ function updateCoherenceDisplay() {
                         rfbPreEngageBuffer  = [];
                     }
 
-                    // Immediate engagement check at exactly 65s (first tick after lead-in).
-                    // If the FFT window has just filled and the user is already qualifying,
-                    // latch immediately without requiring a streak — the full 64s of warm-up
-                    // data is stronger evidence than 5 post-lead-in seconds. Credit the
-                    // entire lead-in as practice time.
-                    if (!rfbEngaged && rfbElapsedSec < RFB_DISPLAY_SEC + 2 && freqMatch && coherOk
-                            && rfbEngagementStreak === 0) {
-                        // We just reset the streak above (not qualifying), so this branch
-                        // fires only on the very first tick: elapsed just crossed 65s,
-                        // and we were qualifying before the streak check ran.
-                        // Re-evaluate: if we were qualifying this tick, streak is 1 now —
-                        // use the buffer path instead. This guard is for the case where
-                        // the very first post-lead-in reading qualifies.
-                        // Actually handled above — first qualifying second pushes buffer
-                        // and increments streak to 1. The immediate latch needs its own
-                        // window: fire if streak reaches threshold within first 2 seconds.
+                    // Immediate engagement check: at exactly 65s the peakFreqHistory
+                    // already has RFB_ENGAGE_STREAK pre-lead-in entries. If all of them
+                    // qualify, the user was locked before the FFT window was full —
+                    // latch immediately with no "Waiting" shown. No coherence credit
+                    // for the pre-lead-in seconds (FFT not settled), but no delay either.
+                    if (!rfbEngaged && rfbElapsedSec < RFB_DISPLAY_SEC + 1.5) {
+                        const preEntries = peakFreqHistory.slice(0, RFB_ENGAGE_STREAK);
+                        const allQualify = preEntries.length === RFB_ENGAGE_STREAK &&
+                            preEntries.every(f => Math.abs(f - guideFreq) <= 0.010);
+                        if (allQualify && coherOk) {
+                            rfbPreEngageBuffer = [];
+                            rfbEngagementStreak = 0;
+                            rfbEngaged = true;
+                        }
                     }
                 }
-
-                // Immediate latch: if this is the first ~2 seconds after lead-in and
-                // the user has been continuously qualifying since before 65s, the streak
-                // will hit RFB_ENGAGE_STREAK unusually fast (peakFreqHistory already
-                // has many qualifying entries). The lookback will credit back to 65s
-                // automatically. No separate code path needed — handled by Option D above.
 
                 if (!isResonanceBreathing && !rfbEngaged) {
                     // Waiting for engagement confirmation.
@@ -1847,8 +1841,8 @@ function updateCoherenceDisplay() {
                         const lockStr  = r.freqLockReady ? `${Math.round(r.freqLock * 100)}%` : '--';
                         dbg.textContent = `c:${Math.round(r.coherence * 100)} f:${(r.peakFreq * 60).toFixed(1)}bpm ampl:${amp.toFixed(1)} lock:${lockStr} lag:${lagStr}`;
                     }
-                    // Recording: push each engaged second. Buffer prepend on latch
-                    // handled above; this covers all seconds after latch.
+                    // Recording: push each engaged second.
+                    // Buffer prepend on latch handled in the engagement gate above.
                     if (isSessionRunning) {
                         rfbCoherenceRecording.push({
                             t:    sessionSeconds,
@@ -2419,7 +2413,7 @@ if (currentState === 'reset' && rfbOnNow && rfbWallStartTime > 0) {
                         rfbPhase = true;
                         rfbSecondsRemaining = rfbDurMin * 60;
                         // Fresh RFB phase — engagement must be re-demonstrated.
-                        rfbEngaged = false; rfbEngagementStreak = 0; rfbPreEngageBuffer = [];
+                        rfbEngaged = false; rfbEngagementStreak = 0; rfbPreEngageBuffer = []; rfbPracticeSec = 0;
                     } else if (!rfbOn) {
                         switchState('active', false);
                     }
@@ -2539,7 +2533,11 @@ function computeSessionSummary() {
     const aStats = periodStats(activePeriods);
     const rStats = recoveryStats(recoveryPeriods);
 
-    const rfbStats = computeRfbSummary(rfbCoherenceRecording, rfbPracticeSec);
+    // For Resonance Breathing, all reset-state time is practice by definition.
+    // For general activity, only confirmed engaged time counts (rfbPracticeSec),
+    // since the user may not have been following the guide for the full reset.
+    const rfbPracticeSecFinal = isResonanceBreathing ? rfbActiveSeconds : rfbPracticeSec;
+    const rfbStats = computeRfbSummary(rfbCoherenceRecording, rfbPracticeSecFinal);
     return {
         date: new Date().toISOString(),
         activityName: currentActivityName || '',
@@ -2584,9 +2582,8 @@ function computeSessionSummary() {
         rfbAvgRI:           rfbStats ? rfbStats.avg              : null,
         rfbPeakRI:          rfbStats ? rfbStats.peak             : null,
         rfbPctAboveStar1:   rfbStats ? rfbStats.pctAboveStar1    : null,
-        rfbPracticeSec:     rfbStats ? rfbStats.practiceSec      : null,
         rfbScoredSec:       rfbStats ? rfbStats.scoredSec        : null,
-        rfbTotalSec:        rfbStats ? rfbStats.practiceSec      : null, // legacy field — same as rfbPracticeSec
+        rfbTotalSec:        rfbStats ? rfbStats.practiceSec      : null, // full wall-clock practice time
         // Amplitude stats stored for future recalculation of historical RI scores
         // if the amplitude gate formula changes. peakRiAmplitude is the RSA
         // amplitude at the moment of peak RI, giving context for that best score.
@@ -2795,7 +2792,6 @@ function startSession() {
     rfbSessionClockStart = 0; activityLimitTriggered = false; sessionHrRecording = []; rfbCoherenceRecording = [];
     rfbActiveSeconds = 0; rbSessionEndSeconds = 0;
     rfbEngaged = false; rfbEngagementStreak = 0; rfbPreEngageBuffer = []; rfbPracticeSec = 0;
-    // Preserve hrHistory and rrHistory across session start — pre-session beats
     // are tagged 'idle' and displayed in grey, giving up to 90s of context before
     // the session begins. The RR pipeline (lastRrTimestamp, processor, etc.) is
     // still reset so metrics start fresh and the first post-start packet re-anchors.
