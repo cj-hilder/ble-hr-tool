@@ -2374,14 +2374,14 @@ function computeRfbSummary(recording, activeSec) {
     const riVals  = recording.map(s => s.ri  ?? s.c);  // fall back to raw coherence for old format
     const avg     = Math.round(riVals.reduce((a, b) => a + b, 0) / riVals.length);
     const peak    = Math.max(...riVals);
-    // Denominator excludes the warmup period (first 75s) during which no recordings
-    // are collected. Fall back to recording length for old sessions that pre-date
-    // the warmup gate (they have no warmup to subtract).
-    const RFB_WARMUP_SEC = RFB_DISPLAY_SEC; // recording starts when headline activates
-    const measuredSec = (activeSec && activeSec > RFB_WARMUP_SEC)
-        ? activeSec - RFB_WARMUP_SEC
-        : recording.length;
-    const totalSec = measuredSec;
+    // recording.length is the exact number of seconds that were scored — the only
+    // correct denominator for pctAboveStar1.  The previous approach subtracted
+    // RFB_DISPLAY_SEC (65s) from rfbActiveSeconds, but rfbActiveSeconds starts
+    // counting from when rfbPhase becomes true (~15s after reset entry in a general
+    // session), whereas recording starts from rfbElapsedSec = 65s (measured from
+    // rfbWallStartTime = reset entry).  That 15-second offset made the denominator
+    // ~15s too small, allowing pctAboveStar1 to exceed 100% for high-quality sessions.
+    const totalSec = recording.length;
     const pctAboveStar1 = Math.round(riVals.filter(v => v >= window.RFB_STAR_LEVELS.STAR1).length / totalSec * 100);
     // Amplitude stats — stored to allow future recalculation of RI if the
     // amplitude gate formula changes. amp is 0 for old sessions without the field.
