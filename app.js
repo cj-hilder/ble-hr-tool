@@ -1696,27 +1696,29 @@ function updateCoherenceDisplay() {
         }
         dbg.style.display = showDebug ? '' : 'none';
 
-        // Arc uses the session-persistent rfbWallStartTime — continuous from first RFB
-        // period, same as before. Correct for the first reset; subsequent resets skip
-        // the arc (already > 65s elapsed) which is acceptable since the FFT is warm.
-        // Engagement timing uses rfbPhaseWallStartTime (per-phase) separately below.
-        const rfbElapsedSec = rfbWallStartTime > 0 ? (Date.now() - rfbWallStartTime) / 1000 : 0;
+        // Phase elapsed — measured from rfbPhaseWallStartTime (set when rfbPhase = true),
+        // not rfbWallStartTime (set when reset state starts, session-persistent).
+        // For RB these are equal; for general activity rfbWallStartTime is 15+ seconds
+        // earlier (the HR-settling period), which would cause the post-65s block to
+        // activate before the FFT phase window is full and break both the arc and the
+        // immediate engagement latch.
+        const phaseElapsedSec = rfbPhaseWallStartTime > 0 ? (Date.now() - rfbPhaseWallStartTime) / 1000 : 0;
         const progressEl    = document.getElementById('rfbProgress');
         const arc           = document.getElementById('rfbProgressArc');
 
-        if (rfbElapsedSec < RFB_DISPLAY_SEC) {
+        if (phaseElapsedSec < RFB_DISPLAY_SEC) {
             // Progress arc phase — headline suppressed until FFT window is full at 65s.
             if (coherEl) coherEl.style.display = 'none';
             if (progressEl) progressEl.style.display = 'flex';
             if (arc) {
                 const CIRCUMFERENCE = 125.66; // 2π × r=20
-                const pct = Math.min(1, rfbElapsedSec / RFB_DISPLAY_SEC);
+                const pct = Math.min(1, phaseElapsedSec / RFB_DISPLAY_SEC);
                 arc.setAttribute('stroke', '#1a7fff'); // reset to blue (may have been purple from HRV)
                 arc.setAttribute('stroke-dashoffset', (CIRCUMFERENCE * (1 - pct)).toFixed(2));
             }
             // Debug: "collecting data…" for first 30s, then live coherence (even if jumpy).
             if (showDebug) {
-                if (rfbElapsedSec < RFB_DEBUG_SEC || r === null) {
+                if (phaseElapsedSec < RFB_DEBUG_SEC || r === null) {
                     dbg.textContent = 'collecting data…';
                 } else {
                     const amp = r.amplitudeBpm;
@@ -1728,7 +1730,7 @@ function updateCoherenceDisplay() {
             }
 
         } else {
-            // 65s+: FFT window is full.
+            // 65s into phase: FFT window is full.
             if (progressEl) progressEl.style.display = 'none';
 
             if (r === null) {
@@ -1801,17 +1803,12 @@ function updateCoherenceDisplay() {
                         rfbPreEngageBuffer  = [];
                     }
 
-                    // Immediate engagement check: at exactly 65s the peakFreqHistory
-                    // already has RFB_ENGAGE_STREAK pre-lead-in entries. If all qualify,
-                    // the user was locked before the FFT window was full — latch with no
-                    // "Waiting" shown. Credit the full reset state time for this phase
-                    // (rfbActiveSeconds - rfbPhaseStartActiveSec) so the session summary
-                    // reflects actual practice time. Post-latch rfbPracticeSec++ covers
-                    // the remaining seconds. Works correctly for second and later resets
-                    // because rfbPhaseWallStartTime and rfbPhaseStartActiveSec are both
-                    // per-phase and rfbPracticeSec accumulates across all resets.
-                    const phaseElapsedSec = rfbPhaseWallStartTime > 0
-                        ? (Date.now() - rfbPhaseWallStartTime) / 1000 : 0;
+                    // Immediate engagement check: fires on the first tick at phaseElapsedSec ≥ 65s.
+                    // peakFreqHistory has RFB_ENGAGE_STREAK pre-lead-in entries (from 60s).
+                    // If all qualify the user was locked before the window was full — latch
+                    // with no "Waiting". Credit full phase time; post-latch rfbPracticeSec++
+                    // covers remaining seconds. phaseElapsedSec from outer scope is used so
+                    // this fires at the right moment regardless of rfbWallStartTime offset.
                     if (!rfbEngaged && phaseElapsedSec < RFB_DISPLAY_SEC + 1.5) {
                         const preEntries = peakFreqHistory.slice(0, RFB_ENGAGE_STREAK);
                         const allQualify = preEntries.length === RFB_ENGAGE_STREAK &&
