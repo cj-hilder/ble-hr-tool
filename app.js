@@ -1696,9 +1696,11 @@ function updateCoherenceDisplay() {
         }
         dbg.style.display = showDebug ? '' : 'none';
 
-        // Per-phase elapsed — rfbWallStartTime is session-persistent (breath animation
-        // anchor) and must not be used here. rfbPhaseWallStartTime resets each phase.
-        const rfbElapsedSec = rfbPhaseWallStartTime > 0 ? (Date.now() - rfbPhaseWallStartTime) / 1000 : 0;
+        // Arc uses the session-persistent rfbWallStartTime — continuous from first RFB
+        // period, same as before. Correct for the first reset; subsequent resets skip
+        // the arc (already > 65s elapsed) which is acceptable since the FFT is warm.
+        // Engagement timing uses rfbPhaseWallStartTime (per-phase) separately below.
+        const rfbElapsedSec = rfbWallStartTime > 0 ? (Date.now() - rfbWallStartTime) / 1000 : 0;
         const progressEl    = document.getElementById('rfbProgress');
         const arc           = document.getElementById('rfbProgressArc');
 
@@ -2837,8 +2839,10 @@ function startSession() {
         switchState('reset', true);
         rfbPhase = true;
         rfbSecondsRemaining = (typeof RFB_DURATION !== 'undefined' ? RFB_DURATION : 10) * 60;
-        rfbWallStartTime = Date.now();
-        rfbSessionClockStart = Date.now();
+        rfbWallStartTime       = Date.now();
+        rfbSessionClockStart   = Date.now();
+        rfbPhaseWallStartTime  = Date.now(); // per-phase clock — must match rfbWallStartTime for RB
+        rfbPhaseStartActiveSec = 0;          // rfbActiveSeconds is 0 at session start
         startRfbAnimation();
     } else if (isHRVReading) {
         // HRV Reading: stay in reset state for the full 3-minute measurement window.
