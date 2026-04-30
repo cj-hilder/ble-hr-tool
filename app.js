@@ -3003,7 +3003,7 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
                         characteristic.removeEventListener('characteristicvaluechanged', handleHeartRate);
                         characteristic.addEventListener('characteristicvaluechanged', handleHeartRate);
                         bluetoothDevice = device;
-                        log('✅ Reconnected. Waiting for first heartbeat...');
+                        log('Reconnected. Waiting for first heartbeat...');
                         document.body.classList.add('connected');
                         requestWakeLock();
                         const restored = restoreSession();
@@ -3032,27 +3032,31 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
         if (bluetoothDevice && !bluetoothDevice.gatt.connected) {
             bluetoothDevice = null;
         }
-        log('1. Waiting for you to select a device...');
+        log('Waiting for you to select a device...');
         bluetoothDevice = await navigator.bluetooth.requestDevice({ filters: [{ services: ['heart_rate'] }] });
         bluetoothDevice.addEventListener('gattserverdisconnected', handleDisconnect);
-        log('2. Connecting to Bluetooth server...');
+        log('Connecting to Bluetooth device...');
         const server = await bluetoothDevice.gatt.connect();
-        log('3. Requesting Heart Rate data...');
+        log('Requesting Heart Rate data...');
         const service = await server.getPrimaryService('heart_rate');
         const characteristic = await service.getCharacteristic('heart_rate_measurement');
-        log('4. Starting live notifications...<br><br>⚠️ TIP: If the app freezes here, the connection is stuck. Try:<br>1. Closing the HR monitor or watch app on your phone (e.g. Polar Flow).<br>2. Unpairing the phone from inside the HR monitor or watch settings menu.<br>3. Unpairing the HR monitor or watch from the phone\'s Bluetooth settings.');
+        log('Requesting Heart Rate data...<br><br>⚠️ TIP: If the app freezes here, the connection is stuck. Try:<br>1. Closing the HR monitor or watch app on your phone (e.g. Polar Flow).<br>2. Unpairing the phone from inside the HR monitor or watch settings menu.<br>3. Unpairing the HR monitor or watch from the phone\'s Bluetooth settings.');
         await characteristic.startNotifications();
         // Remove any old ghost listeners before adding the new one
         characteristic.removeEventListener('characteristicvaluechanged', handleHeartRate);
         characteristic.addEventListener('characteristicvaluechanged', handleHeartRate);
-        log('✅ Success! Waiting for first heartbeat...');
+        log('Success! Waiting for first heartbeat...');
         document.body.classList.add('connected');
         requestWakeLock();
         const restored = restoreSession();
         if (restored) { restoreSessionUI(); sessionInterval = setInterval(handleTick, 1000); }
         else document.getElementById('homeBtn').style.display = 'flex';
     } catch (error) {
-        log('❌ Error: ' + error.message + '<br><br>💡 Tip: Please close any other app (like Polar Flow) that might be paired with the HR device, or unpair from device or phone settings.', true);
+        if (error.message && error.message.includes('User cancelled')) {
+           log('Ready to connect...', true);
+        } else {
+           log('❌ Error: ' + error.message + '<br><br>💡 Tip: Please close any other app (like Polar Flow) that might be paired with the HR device, or unpair from device or phone settings.', true);
+        }
     }
 });
 
