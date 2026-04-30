@@ -211,10 +211,6 @@ window.RFB_STAR_LEVELS = {
                     ${statItem(rfbPeak, 'Peak RI')}
                     ${statItem(rfbPct,  'Time ≥★')}
                 </div>
-                <div class="stat-row">
-                    ${statItem(fmtT(s.rfbTotalSec), 'Duration')}
-                    <div></div><div></div>
-                </div>
             </div>`;
         }
 
