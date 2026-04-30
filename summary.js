@@ -278,7 +278,7 @@ window.RFB_STAR_LEVELS = {
                     ${statItem(rfbPct,  'Time \u2265\u2605')}
                 </div>
                 <div class="stat-row">
-                    ${statItem(fmtT(s.rfbTotalSec), 'Duration')}
+                    ${statItem(fmtT(s.rfbPracticeTimeSec), 'Duration')}
                     <div></div><div></div>
                 </div>
             </div>`;
