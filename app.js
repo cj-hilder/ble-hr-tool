@@ -2397,8 +2397,19 @@ if (currentState === 'reset' && rfbOnNow && rfbWallStartTime > 0) {
                         // Enter RFB hold period — don't switch to active yet
                         rfbPhase = true;
                         rfbSecondsRemaining = rfbDurMin * 60;
-                        // Fresh RFB phase — engagement must be re-demonstrated.
-                        rfbEngaged = false; rfbEngagementStreak = 0; rfbEngagementTime = 0;
+                        // Reset engagement only when there is no pre-flight engagement from
+                        // this reset period. rfbEngagementTime is cleared to 0 on every reset
+                        // entry (switchState → 'reset'), so rfbEngagementTime > 0 reliably
+                        // means the user already engaged during this period's lead-in and that
+                        // state must be carried forward. Clearing it here caused a spurious
+                        // "Waiting…" display after the user had already demonstrated engagement.
+                        // When engagement is from a previous reset period, rfbEngagementTime
+                        // will be 0 (cleared on the most recent reset entry) so the guard
+                        // correctly falls through and resets for a genuinely fresh phase.
+                        const preflightEngaged = rfbEngaged && rfbEngagementTime > 0;
+                        if (!preflightEngaged) {
+                            rfbEngaged = false; rfbEngagementStreak = 0; rfbEngagementTime = 0;
+                        }
                     } else if (!rfbOn) {
                         switchState('active', false);
                     }
