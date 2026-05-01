@@ -2566,7 +2566,7 @@ function computeSessionSummary() {
         // affects recalculation of derived metrics (e.g. RI amplitude gate).
         // Absent on pre-versioning sessions (treat as version 0 / legacy).
         schemaVersion: 1,
-        sessionLengthSec: (isResonanceBreathing && rbSessionEndSeconds > 0) ? rbSessionEndSeconds : sessionSeconds,
+        sessionLengthSec: (isResonanceBreathing && rbSessionEndSeconds > 0 && !rfbExtended) ? rbSessionEndSeconds : sessionSeconds,
         highestHr: sessionHrSamples.length ? Math.max(...sessionHrSamples) : 0,
         avgHr:     sessionHrSamples.length ? arrAvg(sessionHrSamples)      : 0,
         lowestHr:  sessionHrSamples.length ? Math.min(...sessionHrSamples) : 0,
