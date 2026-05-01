@@ -2661,6 +2661,27 @@ function finishSession() {
     if (dbg2) dbg2.textContent = '';
     if (currentPeriodType === 'active') closeActivePeriod(true);
     else if (currentPeriodType === 'recovery') closeRecoveryPeriod(true);
+    // finishSession() is called directly (no switchState) when the session ends while
+    // still in reset state — e.g. dedicated RFB timer expiry or tapping End.
+    // The switchState accumulation path is never reached in these cases, so we flush
+    // the current reset period's practice time here before computing the summary.
+    if (currentState === 'reset' && rfbPhase && rfbResetEntryTime > 0) {
+        const practiceEndTime = Date.now();
+        let practiceStartTime = null;
+        if (isResonanceBreathing) {
+            practiceStartTime = rfbResetEntryTime;
+        } else if (rfbEngagementTime > 0) {
+            const msElapsedAtEngagement = rfbEngagementTime - rfbResetEntryTime;
+            if (msElapsedAtEngagement < RFB_DISPLAY_SEC * 1000) {
+                practiceStartTime = rfbResetEntryTime;
+            } else {
+                practiceStartTime = rfbEngagementTime - 50 * 1000;
+            }
+        }
+        if (practiceStartTime !== null) {
+            rfbPracticeTimeSec += Math.max(0, (practiceEndTime - practiceStartTime) / 1000);
+        }
+    }
     clearInterval(sessionInterval);
     isSessionRunning = false;
     pendingSummary = computeSessionSummary();
