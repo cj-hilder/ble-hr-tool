@@ -324,11 +324,13 @@ Two minutes of comfortable, high-quality breathing is vastly superior to ten min
 An HRV Reading gives you a single number that summarises your heart rate variability. Two session types are available:
 
 - **Morning HRV** — taken first thing in the morning, before coffee, food, or significant activity. Consistency of conditions is critical. Day to day comparison of morning HRV with the short term average are often used to assess nighttime recovery and readiness for activity; long term trends may be useful to assess changes in fitness or autonomic state. The **changes** and **trends** are important, not the absolute numbers. The HRV history graph in Session History shows Morning HRV sessions only.
-- **Daytime HRV** — taken at any other time of day. Useful for tracking reactivity — for example, a morning-to-afternoon delta, or how your HRV responds to a specific stressor or activity. Daytime readings are saved in your session history but are not included in the trend graph, keeping that graph a clean comparable baseline.
+- **Daytime HRV** — taken at any other time of day. Useful for tracking reactivity — for example, a morning-to-afternoon delta, or how your HRV responds to a specific stressor or activity. 
 
-It's tempting to substitute daytime readings for the morning baseline when HRV is typically higher later in the day, but those numbers are heavily shaped by short-term factors — meals, posture, caffeine, recent stress, hydration — and tell you little about recovery state. The two types are best treated as separate metrics.
+It's tempting to look at higher daytime readings instead of the lower morning readings, but it is the morning readings that are the most useful. HRV is typically higher later in the day. Daytime numbers are heavily influenced by short-term factors — meals, posture, caffeine, recent stress, hydration — and tell you little about recovery state.
 
-This convention follows established research practice: standardised morning, supine measurement is the protocol used in autonomic research and athlete monitoring.
+Taking morning readings follows established research practice: standardised morning, supine measurement is the protocol used in autonomic research and athlete monitoring.
+
+This is why daytime readings are saved in your session history, but are not included in the trend graph.
 
 Select **"Morning HRV"** or **"Daytime HRV"** from the activity drop-down menu to start a reading.
 
