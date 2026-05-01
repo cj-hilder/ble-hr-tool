@@ -1043,12 +1043,11 @@ let maxHrInRest = 0, timeOfMaxHrInRest = 0, isRecoveryState = false;
 let activityLimitTriggered = false;
 let sessionHrRecording = [];   // 1Hz HR log: {t, hr, state} — attached to summary on save
 let rfbCoherenceRecording = []; // ~1Hz coherence log during valid RFB: {t, c} — c is 0-100 integer
-let rfbEngaged              = false; // latched true once engagement confirmed; reset each new RFB phase
-let rfbEngagementStreak     = 0;    // consecutive qualifying seconds toward engagement threshold
-let rfbImmediateEngagement  = false; // true when engagement was confirmed during the pre-flight lead-in (< 65 s)
-let rfbPhaseRecordingStartIdx = 0;   // rfbCoherenceRecording.length at the start of the current rfbPhase
-let rfbCurrentResetEntrySec = 0;    // sessionSeconds when the current reset state was entered
-let rfbPracticeTimeSec      = 0;    // accumulated user practice time across all RFB phases
+let rfbEngaged         = false; // latched true once engagement confirmed; reset each new RFB phase
+let rfbEngagementStreak = 0;    // consecutive qualifying seconds toward engagement threshold
+let rfbResetEntryTime  = 0;     // wall clock ms when the current reset state was entered
+let rfbEngagementTime  = 0;     // wall clock ms when rfbEngaged first latched in the current reset period
+let rfbPracticeTimeSec = 0;     // cumulative user RFB practice time in seconds across all reset periods
 
 // ─── Activity tracking ────────────────────────────────────────────────────────
 let currentActivityId   = null;
@@ -1143,8 +1142,7 @@ function saveSession() {
             rfbPhase, rfbSecondsRemaining, rfbSessionClockStart,
             isResonanceBreathing, rfbExtended,
             rfbActiveSeconds, rbSessionEndSeconds,
-            rfbPracticeTimeSec, rfbImmediateEngagement,
-            rfbPhaseRecordingStartIdx, rfbCurrentResetEntrySec,
+            rfbResetEntryTime, rfbEngagementTime, rfbPracticeTimeSec,
             isHRVReading, hrvSecondsRemaining,
             sessionTotalBeats, sessionSensorArtifacts, sessionPhysioArtifacts,
             currentHRVIndex,
@@ -1182,10 +1180,9 @@ function restoreSession() {
         rfbExtended           = s.rfbExtended           || false;
         rfbActiveSeconds      = s.rfbActiveSeconds      || 0;
         rbSessionEndSeconds   = s.rbSessionEndSeconds   || 0;
-        rfbPracticeTimeSec       = s.rfbPracticeTimeSec       || 0;
-        rfbImmediateEngagement   = s.rfbImmediateEngagement   || false;
-        rfbPhaseRecordingStartIdx = s.rfbPhaseRecordingStartIdx || 0;
-        rfbCurrentResetEntrySec  = s.rfbCurrentResetEntrySec  || 0;
+        rfbResetEntryTime     = s.rfbResetEntryTime     || 0;
+        rfbEngagementTime     = s.rfbEngagementTime     || 0;
+        rfbPracticeTimeSec    = s.rfbPracticeTimeSec    || 0;
         isHRVReading          = s.isHRVReading          || false;
         hrvSecondsRemaining   = s.hrvSecondsRemaining   || 0;
         sessionTotalBeats     = s.sessionTotalBeats     || 0;
@@ -1740,10 +1737,8 @@ function updateCoherenceDisplay() {
                 const coherOk   = r.coherence >= RFB_ENGAGE_COHERENCE;
                 if (freqMatch && coherOk) {
                     rfbEngagementStreak++;
-                    if (rfbEngagementStreak >= RFB_ENGAGE_STREAK) {
-                        rfbEngaged = true;
-                        rfbImmediateEngagement = true; // engaged before 65 s — whole reset counts as practice
-                    }
+                    if (rfbEngagementStreak >= RFB_ENGAGE_STREAK) rfbEngaged = true;
+                    if (rfbEngaged && rfbEngagementTime === 0) rfbEngagementTime = Date.now();
                 } else {
                     rfbEngagementStreak = 0;
                 }
@@ -1769,6 +1764,7 @@ function updateCoherenceDisplay() {
                     if (freqMatch && coherOk) {
                         rfbEngagementStreak++;
                         if (rfbEngagementStreak >= RFB_ENGAGE_STREAK) rfbEngaged = true;
+                        if (rfbEngaged && rfbEngagementTime === 0) rfbEngagementTime = Date.now();
                     } else {
                         rfbEngagementStreak = 0;
                     }
@@ -2047,8 +2043,9 @@ function switchState(newState, isManual) {
                 : Infinity;
             if (latestHR > restingHi) isRecoveryState = true;
         }
-        // Capture the session clock at reset entry for user practice time calculation.
-        rfbCurrentResetEntrySec = sessionSeconds;
+        // Anchor the start of this reset period for practice-time calculation.
+        rfbResetEntryTime = Date.now();
+        rfbEngagementTime = 0;
     }
 
     currentState = newState;
@@ -2075,7 +2072,35 @@ function switchState(newState, isManual) {
     // Stop RFB animation and clear RFB phase whenever leaving reset.
     // Hide the coherence row and clear debug display when not in RFB/HRV state.
     if (newState !== 'reset') {
-        finaliseRfbPracticeTime(); // credit practice time before clearing rfbPhase
+        // Accumulate user practice time for the reset period that is ending.
+        // Only counts when rfbPhase was active (RFB was actually running).
+        if (prevState === 'reset' && rfbPhase && rfbResetEntryTime > 0) {
+            const practiceEndTime = Date.now();
+            let practiceStartTime = null;
+            if (isResonanceBreathing) {
+                // Rule 1: dedicated RFB session — the entire reset period is practice.
+                practiceStartTime = rfbResetEntryTime;
+            } else if (rfbEngagementTime > 0) {
+                // Measure elapsed time from *this* reset's entry, not rfbWallStartTime.
+                // rfbWallStartTime is anchored to the first reset of the session and is
+                // never moved, so using it would always exceed 65 s on second+ resets,
+                // incorrectly skipping rule 2a for every reset after the first.
+                const msElapsedAtEngagement = rfbEngagementTime - rfbResetEntryTime;
+                if (msElapsedAtEngagement < RFB_DISPLAY_SEC * 1000) {
+                    // Rule 2a: engagement confirmed before the 65 s warm-up ended —
+                    // credit the full reset period as practice.
+                    practiceStartTime = rfbResetEntryTime;
+                } else {
+                    // Rule 2b: engagement confirmed after the 65 s warm-up —
+                    // credit 50 s before the engagement timestamp.
+                    practiceStartTime = rfbEngagementTime - 50 * 1000;
+                }
+            }
+            // No engagement → no practice time credited for this reset period.
+            if (practiceStartTime !== null) {
+                rfbPracticeTimeSec += Math.max(0, (practiceEndTime - practiceStartTime) / 1000);
+            }
+        }
         stopRfbAnimation();
         rfbPhase = false; rfbSecondsRemaining = 0;
         const coherEl = document.getElementById('coherenceRow');
@@ -2180,7 +2205,6 @@ function updateTimers(increment) {
                     modal.classList.add('visible');
                 }
             } else {
-                finaliseRfbPracticeTime(); // rfbPhase set true → false here; switchState won't see it
                 rfbPhase = false;
                 switchState('active', false);
             }
@@ -2370,10 +2394,8 @@ if (currentState === 'reset' && rfbOnNow && rfbWallStartTime > 0) {
                         // Enter RFB hold period — don't switch to active yet
                         rfbPhase = true;
                         rfbSecondsRemaining = rfbDurMin * 60;
-                        // Fresh RFB phase — engagement and practice-time tracking reset.
-                        rfbEngaged = false; rfbEngagementStreak = 0;
-                        rfbImmediateEngagement    = false;
-                        rfbPhaseRecordingStartIdx = rfbCoherenceRecording.length;
+                        // Fresh RFB phase — engagement must be re-demonstrated.
+                        rfbEngaged = false; rfbEngagementStreak = 0; rfbEngagementTime = 0;
                     } else if (!rfbOn) {
                         switchState('active', false);
                     }
@@ -2384,37 +2406,11 @@ if (currentState === 'reset' && rfbOnNow && rfbWallStartTime > 0) {
     }
 }
 
-// ─── RFB user practice time ───────────────────────────────────────────────────
-// Called whenever an RFB phase ends (rfbPhase transitions from true to false).
-// No-op if rfbPhase is already false or the user never engaged — guards against
-// double-calls that can arise from the different rfbPhase=false code paths.
-//
-// Two cases:
-//   Immediate engagement (rfbImmediateEngagement = true):
-//     The user was already in sync at 65 s — credit the entire reset state
-//     duration (sessionSeconds − rfbCurrentResetEntrySec) because the whole
-//     reset was devoted to practising the technique.
-//   Delayed engagement:
-//     Credit the scored recording length for this phase plus 50 s.
-//     The 50 s = RFB_DISPLAY_SEC (65) minus the ~15 s resting-HR gate — it
-//     represents the portion of the lead-in during which rfbPhase was already
-//     active and the user was practising but no scoring had begun yet.
-const RFB_WARMUP_PRACTICE_SEC = 50;
-function finaliseRfbPracticeTime() {
-    if (!rfbPhase || !rfbEngaged) return;
-    const phaseRecordedSec = rfbCoherenceRecording.length - rfbPhaseRecordingStartIdx;
-    if (rfbImmediateEngagement) {
-        rfbPracticeTimeSec += sessionSeconds - rfbCurrentResetEntrySec;
-    } else {
-        rfbPracticeTimeSec += phaseRecordedSec + RFB_WARMUP_PRACTICE_SEC;
-    }
-}
-
 // ─── RFB coherence summary ────────────────────────────────────────────────────
 // Computes session-level RFB stats from the coherence recording.
 // All RFB periods in a session are amalgamated — the recording is a flat
 // time-series regardless of how many reset/RFB cycles occurred.
-function computeRfbSummary(recording, practiceSec) {
+function computeRfbSummary(recording, activeSec) {
     if (!recording || recording.length === 0) return null;
     const riVals  = recording.map(s => s.ri  ?? s.c);  // fall back to raw coherence for old format
     const avg     = Math.round(riVals.reduce((a, b) => a + b, 0) / riVals.length);
@@ -2434,7 +2430,7 @@ function computeRfbSummary(recording, practiceSec) {
     const avgAmplitude = Math.round(ampVals.reduce((a, b) => a + b, 0) / ampVals.length * 10) / 10;
     const peakRiIdx    = riVals.indexOf(peak);
     const peakRiAmplitude = ampVals[peakRiIdx] ?? null;
-    return { avg, peak, pctAboveStar1, totalSec, practiceSec, avgAmplitude, peakRiAmplitude };
+    return { avg, peak, pctAboveStar1, totalSec, avgAmplitude, peakRiAmplitude };
 }
 
 // ─── Session summary ──────────────────────────────────────────────────────────
@@ -2520,7 +2516,7 @@ function computeSessionSummary() {
     const aStats = periodStats(activePeriods);
     const rStats = recoveryStats(recoveryPeriods);
 
-    const rfbStats = computeRfbSummary(rfbCoherenceRecording, rfbPracticeTimeSec);
+    const rfbStats = computeRfbSummary(rfbCoherenceRecording, rfbActiveSeconds);
     return {
         date: new Date().toISOString(),
         activityName: currentActivityName || '',
@@ -2566,13 +2562,13 @@ function computeSessionSummary() {
         rfbPeakRI:          rfbStats ? rfbStats.peak             : null,
         rfbPctAboveStar1:   rfbStats ? rfbStats.pctAboveStar1    : null,
         rfbTotalSec:        rfbStats ? rfbStats.totalSec         : null,
-        rfbPracticeTimeSec: rfbStats ? rfbStats.practiceSec      : null,
         // Amplitude stats stored for future recalculation of historical RI scores
         // if the amplitude gate formula changes. peakRiAmplitude is the RSA
         // amplitude at the moment of peak RI, giving context for that best score.
         rfbAvgAmplitude:    rfbStats ? rfbStats.avgAmplitude     : null,
         rfbPeakRiAmplitude: rfbStats ? rfbStats.peakRiAmplitude  : null,
         rfbCoherenceRecording: rfbStats ? rfbCoherenceRecording.slice() : null,
+        rfbPracticeTimeSec: Math.round(rfbPracticeTimeSec),
         // HRV Reading fields
         hvIndexFinal:      isHRVReading ? currentHRVIndex : null,
         // Short-session warning fires below 180s — at 179s the rolling window
@@ -2663,8 +2659,6 @@ function finishSession() {
     if (dbg) dbg.textContent = '';
     const dbg2 = document.getElementById('hrvDebug');
     if (dbg2) dbg2.textContent = '';
-    // Credit any RFB phase that was still active when the session ended.
-    if (rfbPhase) finaliseRfbPracticeTime();
     if (currentPeriodType === 'active') closeActivePeriod(true);
     else if (currentPeriodType === 'recovery') closeRecoveryPeriod(true);
     clearInterval(sessionInterval);
@@ -2777,8 +2771,7 @@ function startSession() {
     rfbSessionClockStart = 0; activityLimitTriggered = false; sessionHrRecording = []; rfbCoherenceRecording = [];
     rfbActiveSeconds = 0; rbSessionEndSeconds = 0;
     rfbEngaged = false; rfbEngagementStreak = 0;
-    rfbImmediateEngagement = false; rfbPhaseRecordingStartIdx = 0;
-    rfbCurrentResetEntrySec = 0; rfbPracticeTimeSec = 0;
+    rfbResetEntryTime = 0; rfbEngagementTime = 0; rfbPracticeTimeSec = 0;
     // Preserve hrHistory and rrHistory across session start — pre-session beats
     // are tagged 'idle' and displayed in grey, giving up to 90s of context before
     // the session begins. The RR pipeline (lastRrTimestamp, processor, etc.) is
@@ -2920,7 +2913,6 @@ function onReconnectSuccess() {
 document.getElementById('manualResetBtn').addEventListener('click', () => {
     if (!isSessionRunning || isResonanceBreathing || isHRVReading) return;
     if (currentState === 'reset') {
-        finaliseRfbPracticeTime(); // no-op if rfbPhase false or not engaged
         rfbPhase = false; rfbSecondsRemaining = 0;
         switchState('active', true);
     } else if (currentState === 'active' || currentState === 'rest') switchState('reset', true);
