@@ -2120,7 +2120,7 @@ function switchState(newState, isManual) {
                          : newState;
     document.getElementById('stateIndicator').className = `state-dot ${indicatorClass}`;
     updateSpeedometer(latestHR);
-    if (newState !== 'pause') triggerNotification();
+    if (newState !== 'pause' && newState !== 'stopped') triggerNotification();
 
     const descEl = document.getElementById('stateDescription');
     const manualResetBtn = document.getElementById('manualResetBtn');
@@ -2658,6 +2658,7 @@ function saveSessionToHistory(summary, notes) {
 }
 
 function finishSession() {
+    if (!isSessionRunning) return;      // idempotency guard: stale duplicate interval or re-entry is a no-op
     const dbg = document.getElementById('rfbDebug');
     if (dbg) dbg.textContent = '';
     const dbg2 = document.getElementById('hrvDebug');
@@ -2696,6 +2697,7 @@ function finishSession() {
 function teardownSession() {
     isResonanceBreathing = false; rfbExtended = false;
     isHRVReading = false; currentHRVIndex = null;
+    document.getElementById('rbTimeUpModal').classList.remove('visible');  // dismiss if still open — stale End button would otherwise re-enter finishSession
     const progressEl = document.getElementById('rfbProgress');
     if (progressEl) progressEl.style.display = 'none';
     setRbDisplayMode(false);
