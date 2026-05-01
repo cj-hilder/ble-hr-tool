@@ -2073,8 +2073,11 @@ function switchState(newState, isManual) {
     // Hide the coherence row and clear debug display when not in RFB/HRV state.
     if (newState !== 'reset') {
         // Accumulate user practice time for the reset period that is ending.
-        // Only counts when rfbPhase was active (RFB was actually running).
-        if (prevState === 'reset' && rfbPhase && rfbResetEntryTime > 0) {
+        // Guard on engagement rather than rfbPhase: engagement detection runs
+        // independently of rfbPhase (which requires 15 consecutive resting-zone
+        // seconds) so rfbPhase can be false even when the user was fully engaged.
+        if (prevState === 'reset' && rfbResetEntryTime > 0 &&
+                (isResonanceBreathing || rfbEngagementTime > 0)) {
             const practiceEndTime = Date.now();
             let practiceStartTime = null;
             if (isResonanceBreathing) {
@@ -2665,7 +2668,9 @@ function finishSession() {
     // still in reset state — e.g. dedicated RFB timer expiry or tapping End.
     // The switchState accumulation path is never reached in these cases, so we flush
     // the current reset period's practice time here before computing the summary.
-    if (currentState === 'reset' && rfbPhase && rfbResetEntryTime > 0) {
+    // Guard on engagement rather than rfbPhase for the same reason as switchState.
+    if (currentState === 'reset' && rfbResetEntryTime > 0 &&
+            (isResonanceBreathing || rfbEngagementTime > 0)) {
         const practiceEndTime = Date.now();
         let practiceStartTime = null;
         if (isResonanceBreathing) {
