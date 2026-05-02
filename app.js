@@ -2283,7 +2283,6 @@ function handleHeartRate(event) {
     if (currentHeartRate === 0) return;
     updateSpeedometer(currentHeartRate);
 
-    // ── Parse RR intervals ──
     const rrPresent      = (flags >> 4) & 0x01;
     const energyPresent  = (flags >> 3) & 0x01;
     let rrValuesMs = [];
@@ -2302,62 +2301,10 @@ function handleHeartRate(event) {
     if (document.visibilityState === 'hidden') {
         burstBuffer.push({ hr: currentHeartRate, rr: rrValuesMs });
     } else {
-        // If we just became visible, process the burst first
         if (burstBuffer.length > 0) processBurst();
-        
         if (rrValuesMs.length > 0) recordRrHistory(rrValuesMs, Date.now());
-        recordHrHistory(currentHeartRate, Date.now());
+        recordHrHistory(currentHeartRate);
     }
-    lastHrWallClock = Date.now();
-
-    // ── RFB phase tracking: detect inhale→exhale turn and lock HR peak ──────────
-const rfbOnNow = (typeof RFB_ENABLED !== 'undefined') && RFB_ENABLED;
-if (currentState === 'reset' && rfbOnNow && rfbWallStartTime > 0) {
-        const breathPeriodMs = rfbBreathPeriodMs();
-        const elapsed        = Date.now() - rfbWallStartTime;
-        const cyclePos       = elapsed % breathPeriodMs;
-        const inhaleMs       = rfbGetInhaleSec() * 1000;
-
-        // Detect the moment cyclePos crosses the inhale→exhale threshold.
-        // A 1-second tolerance window catches the crossing on whichever heartbeat
-        // arrives first after the boundary.
-        if (cyclePos >= inhaleMs && (cyclePos - 1000) < inhaleMs) {
-            // Finalise the PREVIOUS cycle's lag before resetting the peak tracker.
-            // _lastHrMaxTs must be after _lastInhaleEndTs to be a valid exhale peak.
-            if (hrvProcessor._lastInhaleEndTs > 0 &&
-                hrvProcessor._lastHrMaxTs > hrvProcessor._lastInhaleEndTs) {
-                const finalisedLag = (hrvProcessor._lastHrMaxTs - hrvProcessor._lastInhaleEndTs) / 1000;
-                // Outlier rejection: a lag more than half a breath period away from the
-                // running EMA is almost certainly a misdetected cycle (wrong crossing beat,
-                // or HR peak in the wrong phase). Discard rather than corrupt the EMA.
-                const breathPeriodSec = rfbBreathPeriodMs() / 1000;
-                const isOutlier = hrvProcessor._lagEma !== null &&
-                    Math.abs(finalisedLag - hrvProcessor._lagEma) > breathPeriodSec * 0.4;
-                if (!isOutlier) {
-                    if (hrvProcessor._lagEma === null) {
-                        hrvProcessor._lagEma = finalisedLag;
-                    } else {
-                        hrvProcessor._lagEma = hrvProcessor._LAG_EMA_ALPHA * finalisedLag +
-                                               (1 - hrvProcessor._LAG_EMA_ALPHA) * hrvProcessor._lagEma;
-                    }
-                }
-            }
-            hrvProcessor._lastInhaleEndTs   = Date.now();
-            hrvProcessor._currentCycleMaxHr = 0;
-            // Do NOT update _lastHrMaxTs on the crossing beat — it shares the same
-            // millisecond as _lastInhaleEndTs, making > comparison fail and blocking
-            // finalisation next cycle. Only non-crossing beats update _lastHrMaxTs.
-        } else if (currentHeartRate > hrvProcessor._currentCycleMaxHr) {
-            // Non-crossing beat: track highest HR — timestamp is guaranteed to be
-            // after _lastInhaleEndTs, so finalisation will succeed next crossing.
-            hrvProcessor._currentCycleMaxHr = currentHeartRate;
-            hrvProcessor._lastHrMaxTs       = Date.now();
-        } else {
-            // HR is below current cycle max — no action needed for lag tracking.
-        }
-    }
-
-    recordHrHistory(currentHeartRate);
     updateCoherenceDisplay(); // coherence row self-hides outside RFB
     if (isHRVReading) updateHRVDisplay();
 
