@@ -847,10 +847,9 @@ function getActiveHrHistory() {
     return hrHistory;
 }
 
-function recordHrHistory(hr) {
-    const now = Date.now();
-    hrHistory.push({ hr, state: isSessionRunning ? currentState : 'idle', ts: now });
-    const cutoff = now - HR_HISTORY_MS;
+function recordHrHistory(hr, ts = Date.now()) {
+    hrHistory.push({ hr, state: isSessionRunning ? currentState : 'idle', ts });
+    const cutoff = ts - HR_HISTORY_MS;
     while (hrHistory.length > 0 && hrHistory[0].ts < cutoff) hrHistory.shift();
     if (!_suppressGraphDraw) drawHrGraph();   // suppressed during burst; flush draws once
 }
@@ -2305,11 +2304,18 @@ function _flushBleQueue() {
 
     const isBurst = _bleQueue.length > 1;
     const flushTs = Date.now();
+    // Capture before the processing loop — _processHeartRatePacket overwrites
+    // lastHrWallClock for each packet, so this must be read now.
+    const freezeStartTs = lastHrWallClock;
 
     // ── Timestamp reconstruction ──────────────────────────────────────────────
-    // Each packet's RR intervals represent real elapsed cardiac time.  Spread
-    // the burst backwards from flushTs so beats are placed plausibly across
-    // the background period rather than all collapsed to the same instant.
+    // Forward-clock from freezeStartTs using each packet's own RR content.
+    // This is the only honest reconstruction: the RR intervals are ground truth
+    // for when beats occurred.  If the BLE buffer filled during a long background
+    // period, the RR content covers only the buffered portion — the remaining
+    // interval up to flushTs contains no data and will appear as a natural gap
+    // on the graph.  Spreading across the full gap would fabricate timestamps
+    // for beats that were never recorded.
     if (isBurst) {
         for (const pkt of _bleQueue) {
             const dv = new DataView(pkt.bytes.buffer);
@@ -2326,15 +2332,17 @@ function _flushBleQueue() {
                     off += 2;
                 }
             }
-            pkt.totalRrMs = Math.max(totalRrMs, 500); // at least one beat's worth
+            pkt.totalRrMs = rrPresent && totalRrMs > 0 ? totalRrMs : 1000;
         }
-        // Work backwards: last packet ends at flushTs, each prior packet ends
-        // where the next one began.
-        let ts = flushTs;
-        for (let i = _bleQueue.length - 1; i >= 0; i--) {
-            _bleQueue[i].effectiveTs = ts;
-            ts -= _bleQueue[i].totalRrMs;
+        // Walk forward from the last pre-freeze timestamp.
+        // effectiveTs for each packet = when its last RR beat occurred.
+        let ts = freezeStartTs;
+        for (const pkt of _bleQueue) {
+            ts += pkt.totalRrMs;
+            pkt.effectiveTs = ts;
         }
+        // Note: if ts < flushTs the difference is the buffer-overflow gap —
+        // correctly left empty rather than stretched to fill flushTs.
     } else {
         _bleQueue[0].effectiveTs = _bleQueue[0].notifTs;
     }
@@ -2447,9 +2455,11 @@ function _processHeartRatePacket(bytes, notifTs, skipStateTransitions) {
         }
     }
 
-    // Always record to hrHistory (for graph data); drawHrGraph is gated by
-    // _suppressGraphDraw during bursts and called once by the flush.
-    recordHrHistory(currentHeartRate);
+    // Always record to hrHistory with the packet's reconstructed timestamp so
+    // burst beats appear at their correct position on the graph rather than all
+    // collapsing to Date.now(). drawHrGraph is gated by _suppressGraphDraw during
+    // the flush and called once at the end.
+    recordHrHistory(currentHeartRate, notifTs);
 
     // ── Session state machine ─────────────────────────────────────────────────
     // Skipped for intermediate burst packets — their HR values are from the
