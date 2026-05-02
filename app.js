@@ -401,14 +401,17 @@ function recordRrHistory(rrValuesMs, notifTs) {
     const isSensorRrGap   = wallGap > BACKGROUND_GAP_MS && hrGap <= BACKGROUND_GAP_MS;
 
     if (isBackgroundGap) {
+        // Reset HRV metrics and artifact-classifier state — pre-freeze values are
+        // stale and must not bleed into post-gap data.  Visual histories (rrHistory)
+        // and the forward-clock anchor (lastRrTimestamp) are intentionally preserved:
+        // timestamp reconstruction places burst beats correctly after the pre-freeze
+        // data, so clearing them would discard valid graph data for no benefit.
         hrvProcessor.reset();
         peakFreqHistory.length = 0;
-        lastRrTimestamp = 0;
         recordRrHistory._lastCleanRr = 0;
         recordRrHistory._pendingBeat = null;
         recordRrHistory._warmupRrs = [];
         recordRrHistory._streak = null;
-        rrHistory.length = 0;
     } else if (isSensorRrGap) {
         lastRrTimestamp = 0;
         recordRrHistory._pendingBeat = null;
@@ -1328,15 +1331,18 @@ document.addEventListener('visibilitychange', async () => {
     // the isBackgroundGap branch (idempotent) and seed cleanly from notifTs.
     const hrGap = lastHrWallClock > 0 ? Date.now() - lastHrWallClock : 0;
     if (hrGap > BACKGROUND_GAP_MS) {
+        // Reset HRV metrics and artifact-classifier state — they are stale after a
+        // background gap and will be re-seeded when burst packets arrive.
+        // rrHistory, hrHistory, and lastRrTimestamp are intentionally NOT cleared:
+        // timestamp reconstruction places burst beats correctly after pre-freeze data,
+        // so the graph shows a natural gap followed by the buffered period rather than
+        // wiping history on every resume.
         hrvProcessor.reset();
         peakFreqHistory.length = 0;
-        lastRrTimestamp = 0;
         recordRrHistory._lastCleanRr = 0;
         recordRrHistory._pendingBeat = null;
         recordRrHistory._warmupRrs = [];
         recordRrHistory._streak = null;
-        rrHistory.length = 0;
-        hrHistory.length = 0;
     }
 
     // Force an immediate redraw of the HR graph. While hidden, requestAnimationFrame
@@ -2455,11 +2461,16 @@ function _processHeartRatePacket(bytes, notifTs, skipStateTransitions) {
         }
     }
 
-    // Always record to hrHistory with the packet's reconstructed timestamp so
-    // burst beats appear at their correct position on the graph rather than all
-    // collapsing to Date.now(). drawHrGraph is gated by _suppressGraphDraw during
-    // the flush and called once at the end.
-    recordHrHistory(currentHeartRate, notifTs);
+    // Always record to hrHistory using the RR forward-clock timestamp rather than
+    // notifTs.  After recordRrHistory returns, lastRrTimestamp holds the correctly
+    // forward-clocked position of the last beat in this packet — the same value
+    // that rrHistory entries were placed at.  Using it here keeps both histories
+    // in sync and ensures that single packets arriving after a gap (where isBurst
+    // is false but lastRrTimestamp was seeded from a reconstructed effectiveTs)
+    // also land at the correct historical position rather than collapsing to
+    // Date.now().  Fall back to notifTs when the sensor sends no RR data.
+    const hrTs = (deviceSupportsRR && lastRrTimestamp > 0) ? lastRrTimestamp : notifTs;
+    recordHrHistory(currentHeartRate, hrTs);
 
     // ── Session state machine ─────────────────────────────────────────────────
     // Skipped for intermediate burst packets — their HR values are from the
