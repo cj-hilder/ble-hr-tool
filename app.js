@@ -13,6 +13,11 @@ const SPEEDO_ARC_R = 69, SPEEDO_START_DEG = 112.5, SPEEDO_SWEEP_DEG = 315;
 let latestHR = 0;
 let lastBlePacket = { time: 0, hex: '' };
 
+// ─── BLE burst-handling state ─────────────────────────────────────────────────
+const _bleQueue          = [];      // raw packets waiting to be flushed
+let   _bleFlushScheduled = false;   // true while a setTimeout(0) flush is pending
+let   _suppressGraphDraw = false;   // true during burst processing; defers canvas redraws
+
 // --- HR History Graph ---
 const hrHistory = [];
 const HR_HISTORY_MS = 90000;
@@ -847,7 +852,7 @@ function recordHrHistory(hr) {
     hrHistory.push({ hr, state: isSessionRunning ? currentState : 'idle', ts: now });
     const cutoff = now - HR_HISTORY_MS;
     while (hrHistory.length > 0 && hrHistory[0].ts < cutoff) hrHistory.shift();
-    drawHrGraph();
+    if (!_suppressGraphDraw) drawHrGraph();   // suppressed during burst; flush draws once
 }
 
 function drawHrGraph() {
@@ -2251,36 +2256,127 @@ function handleTick() {
     saveSession();
 }
 
+// ─── BLE packet entry point ───────────────────────────────────────────────────
+// Queues the raw packet and schedules a zero-timeout flush.  All burst packets
+// from a background resume arrive within the same JS task, so they all land in
+// _bleQueue before _flushBleQueue ever executes.
 function handleHeartRate(event) {
     if (isReconnecting) return;
 
+    const notifTs = Date.now();
     const dv = event.target.value;
-    
+
     // --- DUPLICATE PACKET FILTER ---
-    // Convert the raw DataView bytes into a quick hex string for comparison
+    // Convert the raw DataView bytes into a quick hex string for comparison.
     let hex = '';
     for (let i = 0; i < dv.byteLength; i++) hex += dv.getUint8(i).toString(16);
-    
-    const now = Date.now();
-    // If we receive the exact same byte payload in less than 100ms, it's a duplicate listener phantom
-    if (now - lastBlePacket.time < 100 && lastBlePacket.hex === hex) {
-        return; // Silently drop the duplicate
-    }
-    lastBlePacket = { time: now, hex: hex };
+    // If we receive the exact same byte payload in less than 100ms, it's a duplicate listener phantom.
+    if (notifTs - lastBlePacket.time < 100 && lastBlePacket.hex === hex) return;
+    lastBlePacket = { time: notifTs, hex };
     // -------------------------------
-    const flags   = dv.getUint8(0);
+
+    // Keep the disconnect watchdog alive immediately — don't defer to the flush.
+    resetTimeout();
+
+    // Copy bytes before the DataView is potentially reused by the BLE stack.
+    const bytes = new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength).slice();
+    _bleQueue.push({ bytes, notifTs });
+
+    if (!_bleFlushScheduled) {
+        _bleFlushScheduled = true;
+        setTimeout(_flushBleQueue, 0);
+    }
+}
+
+// ─── Burst-aware flush ────────────────────────────────────────────────────────
+// Runs after all synchronously-queued BLE packets have been collected.
+// For a single real-time packet this is a transparent pass-through.
+// For a burst (background resume):
+//   1. Reconstructs plausible notifTs for each packet by spreading them
+//      backwards from Date.now() across their accumulated RR content, so
+//      recordRrHistory's forward clock sees realistic inter-packet gaps
+//      rather than near-zero deltas.
+//   2. Suppresses per-packet canvas redraws; draws once at the end.
+//   3. Runs the state machine only on the final packet's HR value, so
+//      stale burst beats cannot drive spurious state transitions.
+function _flushBleQueue() {
+    _bleFlushScheduled = false;
+    if (_bleQueue.length === 0) return;
+
+    const isBurst = _bleQueue.length > 1;
+    const flushTs = Date.now();
+
+    // ── Timestamp reconstruction ──────────────────────────────────────────────
+    // Each packet's RR intervals represent real elapsed cardiac time.  Spread
+    // the burst backwards from flushTs so beats are placed plausibly across
+    // the background period rather than all collapsed to the same instant.
+    if (isBurst) {
+        for (const pkt of _bleQueue) {
+            const dv = new DataView(pkt.bytes.buffer);
+            const flags = dv.getUint8(0);
+            const is16bit = flags & 0x01;
+            const rrPresent = (flags >> 4) & 0x01;
+            const energyPresent = (flags >> 3) & 0x01;
+            let totalRrMs = 0;
+            if (rrPresent) {
+                let off = is16bit ? 3 : 2;
+                if (energyPresent) off += 2;
+                while (off + 1 < pkt.bytes.byteLength) {
+                    totalRrMs += (dv.getUint16(off, true) / 1024) * 1000;
+                    off += 2;
+                }
+            }
+            pkt.totalRrMs = Math.max(totalRrMs, 500); // at least one beat's worth
+        }
+        // Work backwards: last packet ends at flushTs, each prior packet ends
+        // where the next one began.
+        let ts = flushTs;
+        for (let i = _bleQueue.length - 1; i >= 0; i--) {
+            _bleQueue[i].effectiveTs = ts;
+            ts -= _bleQueue[i].totalRrMs;
+        }
+    } else {
+        _bleQueue[0].effectiveTs = _bleQueue[0].notifTs;
+    }
+
+    // ── Data pipeline — UI suppressed ─────────────────────────────────────────
+    _suppressGraphDraw = true;
+    let finalHR = 0;
+    for (let i = 0; i < _bleQueue.length; i++) {
+        const pkt    = _bleQueue[i];
+        const isLast = i === _bleQueue.length - 1;
+        const hr = _processHeartRatePacket(pkt.bytes, pkt.effectiveTs, !isLast);
+        if (hr > 0) finalHR = hr;
+    }
+    _suppressGraphDraw = false;
+    _bleQueue.length = 0;
+
+    // ── Single UI update pass ─────────────────────────────────────────────────
+    if (finalHR > 0) {
+        document.getElementById('heartRateDisplay').innerText = finalHR;
+        updateSpeedometer(finalHR);
+    }
+    drawHrGraph();
+    updateCoherenceDisplay();
+    if (isHRVReading) updateHRVDisplay();
+}
+
+// ─── Core packet processor — data pipeline only, no UI side-effects ───────────
+// skipStateTransitions: true for all burst packets except the last.
+//   Prevents stale background HR values from accumulating transition counters
+//   or triggering switchState() calls.
+function _processHeartRatePacket(bytes, notifTs, skipStateTransitions) {
+    const dv = new DataView(bytes.buffer);
+    const flags = dv.getUint8(0);
     const is16bit = flags & 0x01;
     const currentHeartRate = is16bit ? dv.getUint16(1, true) : dv.getUint8(1);
-    document.getElementById('heartRateDisplay').innerText = currentHeartRate;
-    resetTimeout();
-    if (currentHeartRate === 0) return;
-    updateSpeedometer(currentHeartRate);
+    if (currentHeartRate === 0) return 0;
 
     // ── Parse RR intervals (bit 4 of flags; H10 and compatible sensors) ───────
     // Per BT Heart Rate spec: flags bit3 = Energy Expended present (skip 2 bytes),
     // flags bit4 = RR intervals present. Each RR is uint16 LE in units of 1/1024 s.
-    const rrPresent      = (flags >> 4) & 0x01;
-    const energyPresent  = (flags >> 3) & 0x01;
+    const rrPresent     = (flags >> 4) & 0x01;
+    const energyPresent = (flags >> 3) & 0x01;
     if (rrPresent) {
         // Mark device as RR-capable on first RR-containing packet.
         // This persists until disconnect so session start checks are reliable.
@@ -2288,71 +2384,77 @@ function handleHeartRate(event) {
         let rrOffset = is16bit ? 3 : 2;          // skip flags + HR bytes
         if (energyPresent) rrOffset += 2;        // skip Energy Expended uint16
         const rrValuesMs = [];
-        while (rrOffset + 1 < dv.byteLength) {
-            const raw  = dv.getUint16(rrOffset, true);  // 1/1024 s units
-            const ms   = (raw / 1024) * 1000;
+        while (rrOffset + 1 < bytes.byteLength) {
+            const raw = dv.getUint16(rrOffset, true);  // 1/1024 s units
+            const ms  = (raw / 1024) * 1000;
             if (ms > 250 && ms < 2500) rrValuesMs.push(ms); // 24–240 bpm sanity gate
             rrOffset += 2;
         }
-        if (rrValuesMs.length > 0) recordRrHistory(rrValuesMs, Date.now());
+        if (rrValuesMs.length > 0) recordRrHistory(rrValuesMs, notifTs);
     }
     // Updated AFTER the RR block so that inside recordRrHistory, lastHrWallClock
     // still holds the previous packet's timestamp. If updated before, hrGap would
     // always be ~0 and the sensor-RR-gap detection would never fire.
-    lastHrWallClock = Date.now();
+    lastHrWallClock = notifTs;
 
     // ── RFB phase tracking: detect inhale→exhale turn and lock HR peak ──────────
-const rfbOnNow = (typeof RFB_ENABLED !== 'undefined') && RFB_ENABLED;
-if (currentState === 'reset' && rfbOnNow && rfbWallStartTime > 0) {
-        const breathPeriodMs = rfbBreathPeriodMs();
-        const elapsed        = Date.now() - rfbWallStartTime;
-        const cyclePos       = elapsed % breathPeriodMs;
-        const inhaleMs       = rfbGetInhaleSec() * 1000;
+    // Skipped for intermediate burst packets: stale beats from the background
+    // period must not corrupt the inhale→exhale peak tracker or the lag EMA.
+    if (!skipStateTransitions) {
+        const rfbOnNow = (typeof RFB_ENABLED !== 'undefined') && RFB_ENABLED;
+        if (currentState === 'reset' && rfbOnNow && rfbWallStartTime > 0) {
+            const breathPeriodMs = rfbBreathPeriodMs();
+            const elapsed        = Date.now() - rfbWallStartTime;
+            const cyclePos       = elapsed % breathPeriodMs;
+            const inhaleMs       = rfbGetInhaleSec() * 1000;
 
-        // Detect the moment cyclePos crosses the inhale→exhale threshold.
-        // A 1-second tolerance window catches the crossing on whichever heartbeat
-        // arrives first after the boundary.
-        if (cyclePos >= inhaleMs && (cyclePos - 1000) < inhaleMs) {
-            // Finalise the PREVIOUS cycle's lag before resetting the peak tracker.
-            // _lastHrMaxTs must be after _lastInhaleEndTs to be a valid exhale peak.
-            if (hrvProcessor._lastInhaleEndTs > 0 &&
-                hrvProcessor._lastHrMaxTs > hrvProcessor._lastInhaleEndTs) {
-                const finalisedLag = (hrvProcessor._lastHrMaxTs - hrvProcessor._lastInhaleEndTs) / 1000;
-                // Outlier rejection: a lag more than half a breath period away from the
-                // running EMA is almost certainly a misdetected cycle (wrong crossing beat,
-                // or HR peak in the wrong phase). Discard rather than corrupt the EMA.
-                const breathPeriodSec = rfbBreathPeriodMs() / 1000;
-                const isOutlier = hrvProcessor._lagEma !== null &&
-                    Math.abs(finalisedLag - hrvProcessor._lagEma) > breathPeriodSec * 0.4;
-                if (!isOutlier) {
-                    if (hrvProcessor._lagEma === null) {
-                        hrvProcessor._lagEma = finalisedLag;
-                    } else {
-                        hrvProcessor._lagEma = hrvProcessor._LAG_EMA_ALPHA * finalisedLag +
-                                               (1 - hrvProcessor._LAG_EMA_ALPHA) * hrvProcessor._lagEma;
+            // Detect the moment cyclePos crosses the inhale→exhale threshold.
+            // A 1-second tolerance window catches the crossing on whichever heartbeat
+            // arrives first after the boundary.
+            if (cyclePos >= inhaleMs && (cyclePos - 1000) < inhaleMs) {
+                // Finalise the PREVIOUS cycle's lag before resetting the peak tracker.
+                // _lastHrMaxTs must be after _lastInhaleEndTs to be a valid exhale peak.
+                if (hrvProcessor._lastInhaleEndTs > 0 &&
+                    hrvProcessor._lastHrMaxTs > hrvProcessor._lastInhaleEndTs) {
+                    const finalisedLag = (hrvProcessor._lastHrMaxTs - hrvProcessor._lastInhaleEndTs) / 1000;
+                    // Outlier rejection: a lag more than half a breath period away from the
+                    // running EMA is almost certainly a misdetected cycle (wrong crossing beat,
+                    // or HR peak in the wrong phase). Discard rather than corrupt the EMA.
+                    const breathPeriodSec = rfbBreathPeriodMs() / 1000;
+                    const isOutlier = hrvProcessor._lagEma !== null &&
+                        Math.abs(finalisedLag - hrvProcessor._lagEma) > breathPeriodSec * 0.4;
+                    if (!isOutlier) {
+                        if (hrvProcessor._lagEma === null) {
+                            hrvProcessor._lagEma = finalisedLag;
+                        } else {
+                            hrvProcessor._lagEma = hrvProcessor._LAG_EMA_ALPHA * finalisedLag +
+                                                   (1 - hrvProcessor._LAG_EMA_ALPHA) * hrvProcessor._lagEma;
+                        }
                     }
                 }
+                hrvProcessor._lastInhaleEndTs   = Date.now();
+                hrvProcessor._currentCycleMaxHr = 0;
+                // Do NOT update _lastHrMaxTs on the crossing beat — it shares the same
+                // millisecond as _lastInhaleEndTs, making > comparison fail and blocking
+                // finalisation next cycle. Only non-crossing beats update _lastHrMaxTs.
+            } else if (currentHeartRate > hrvProcessor._currentCycleMaxHr) {
+                // Non-crossing beat: track highest HR — timestamp is guaranteed to be
+                // after _lastInhaleEndTs, so finalisation will succeed next crossing.
+                hrvProcessor._currentCycleMaxHr = currentHeartRate;
+                hrvProcessor._lastHrMaxTs       = Date.now();
             }
-            hrvProcessor._lastInhaleEndTs   = Date.now();
-            hrvProcessor._currentCycleMaxHr = 0;
-            // Do NOT update _lastHrMaxTs on the crossing beat — it shares the same
-            // millisecond as _lastInhaleEndTs, making > comparison fail and blocking
-            // finalisation next cycle. Only non-crossing beats update _lastHrMaxTs.
-        } else if (currentHeartRate > hrvProcessor._currentCycleMaxHr) {
-            // Non-crossing beat: track highest HR — timestamp is guaranteed to be
-            // after _lastInhaleEndTs, so finalisation will succeed next crossing.
-            hrvProcessor._currentCycleMaxHr = currentHeartRate;
-            hrvProcessor._lastHrMaxTs       = Date.now();
-        } else {
             // HR is below current cycle max — no action needed for lag tracking.
         }
     }
 
+    // Always record to hrHistory (for graph data); drawHrGraph is gated by
+    // _suppressGraphDraw during bursts and called once by the flush.
     recordHrHistory(currentHeartRate);
-    updateCoherenceDisplay(); // coherence row self-hides outside RFB
-    if (isHRVReading) updateHRVDisplay();
 
-    if (isSessionRunning) {
+    // ── Session state machine ─────────────────────────────────────────────────
+    // Skipped for intermediate burst packets — their HR values are from the
+    // background period and must not drive transitions or distort session stats.
+    if (!skipStateTransitions && isSessionRunning) {
         if (currentPeriodType !== null) currentPeriodHrSamples.push(currentHeartRate);
         sessionHrSamples.push(currentHeartRate);
 
@@ -2418,6 +2520,8 @@ if (currentState === 'reset' && rfbOnNow && rfbWallStartTime > 0) {
             }
         }
     }
+
+    return currentHeartRate;
 }
 
 // ─── RFB coherence summary ────────────────────────────────────────────────────
