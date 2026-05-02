@@ -11,39 +11,11 @@ const SPEEDO_NEEDLE_INNER_R = 61, SPEEDO_NEEDLE_OUTER_R = 68;
 const SPEEDO_ARC_R = 69, SPEEDO_START_DEG = 112.5, SPEEDO_SWEEP_DEG = 315;
 
 let latestHR = 0;
-let burstBuffer = [];
-let isProcessingBurst = false;
 let lastBlePacket = { time: 0, hex: '' };
 
 // --- HR History Graph ---
 const hrHistory = [];
 const HR_HISTORY_MS = 90000;
-
-
-function processBurst() {
-    if (isProcessingBurst || burstBuffer.length === 0) return;
-    isProcessingBurst = true;
-    
-    // Process HR burst assuming 1Hz intervals starting from lastHrWallClock
-    let hrTs = lastHrWallClock > 0 ? lastHrWallClock : (Date.now() - (burstBuffer.length * 1000));
-    
-    for (const packet of burstBuffer) {
-        hrTs += 1000;
-        // Ensure we don't timestamp into the future
-        const finalTs = Math.min(hrTs, Date.now());
-        
-        if (packet.rr.length > 0) {
-            // recordRrHistory has internal forward-clocking logic that 
-            // uses lastRrTimestamp to chain beats correctly.
-            recordRrHistory(packet.rr, finalTs);
-        }
-        recordHrHistory(packet.hr, finalTs);
-    }
-    
-    burstBuffer = [];
-    isProcessingBurst = false;
-    drawHrGraph();
-}
 
 // --- Beat-to-beat RR history (from H10 or compatible sensor) ---
 const rrHistory = [];   // { hr: instantaneous bpm, state, ts } — used for graph display
@@ -423,7 +395,16 @@ function recordRrHistory(rrValuesMs, notifTs) {
     const isBackgroundGap = wallGap > BACKGROUND_GAP_MS && hrGap > BACKGROUND_GAP_MS;
     const isSensorRrGap   = wallGap > BACKGROUND_GAP_MS && hrGap <= BACKGROUND_GAP_MS;
 
-    // Background gap flush removed to support burst sync else if (isSensorRrGap) {
+    if (isBackgroundGap) {
+        hrvProcessor.reset();
+        peakFreqHistory.length = 0;
+        lastRrTimestamp = 0;
+        recordRrHistory._lastCleanRr = 0;
+        recordRrHistory._pendingBeat = null;
+        recordRrHistory._warmupRrs = [];
+        recordRrHistory._streak = null;
+        rrHistory.length = 0;
+    } else if (isSensorRrGap) {
         lastRrTimestamp = 0;
         recordRrHistory._pendingBeat = null;
 
@@ -464,23 +445,29 @@ function recordRrHistory(rrValuesMs, notifTs) {
     // Build a continuous forward-running clock so beats across packet boundaries
     // have genuinely sequential timestamps. The old backward reconstruction from
     // notifTs caused cross-packet gaps that halved pair counts.
-    // Burst Sync Logic: Chain forward from lastRrTimestamp if we have a recent baseline,
-    // even if the wall-clock gap is large (background period).
-    const MAX_BURST_GAP_MS = 600000; // 10 minutes max buffer
-    if (lastRrTimestamp > 0 && (notifTs - lastRrTimestamp) < (totalRrMs + MAX_BURST_GAP_MS)) {
+    if (lastRrTimestamp > 0 && (notifTs - lastRrTimestamp) < totalRrMs + 3000) {
         let ts = lastRrTimestamp;
         for (let i = 0; i < rrValuesMs.length; i++) {
             ts += rrValuesMs[i];
             pairs.push({ rr: rrValuesMs[i], ts });
         }
-        // Clamp to current time to prevent future-drift, but allow chaining up to 'now'
-        if (ts > Date.now()) {
-            const shift = ts - Date.now();
+        // Flood guard: beats can't happen in the future. When queued packets
+        // flush after a background period, they arrive ms apart but each
+        // carries seconds of RR content, so the forward clock races ahead of
+        // wall-clock. Without this clamp, lastRrTimestamp drifts permanently
+        // into the future — the re-anchor condition above stays satisfied
+        // trivially (LHS negative, RHS positive), so every subsequent real-time
+        // beat continues to forward-clock until disconnect. Shifting the packet
+        // back so its last beat lands at notifTs keeps timestamps plausible
+        // and collapses flood beats into the tail of the 90s window.
+        if (ts > notifTs) {
+            const shift = ts - notifTs;
             for (const p of pairs) p.ts -= shift;
-            ts = Date.now();
+            ts = notifTs;
         }
         lastRrTimestamp = ts;
     } else {
+        // First packet or gap too large — seed from notifTs backwards as before.
         let ts = notifTs;
         for (let i = rrValuesMs.length - 1; i >= 0; i--) {
             pairs.push({ rr: rrValuesMs[i], ts });
@@ -855,8 +842,8 @@ function getActiveHrHistory() {
     return hrHistory;
 }
 
-function recordHrHistory(hr, ts = Date.now()) {
-    const now = ts;
+function recordHrHistory(hr) {
+    const now = Date.now();
     hrHistory.push({ hr, state: isSessionRunning ? currentState : 'idle', ts: now });
     const cutoff = now - HR_HISTORY_MS;
     while (hrHistory.length > 0 && hrHistory[0].ts < cutoff) hrHistory.shift();
@@ -930,15 +917,8 @@ function drawHrGraph() {
             } else if (!pathStarted) {
                 ctx.moveTo(x, y); pathStarted = true;
             } else {
-                const gapMs = ts - activeHistory[i-1].ts;
-                const isDataGap = gapMs > 2500; // Visual gap if > 2.5s missing
                 const nextBreaks = i < activeHistory.length - 1 && activeHistory[i + 1].state !== state;
-                
-                if (isDataGap) {
-                    ctx.moveTo(x, y);
-                } else {
-                    ctx.lineTo(nextBreaks ? x - GAP_HALF : x, y);
-                }
+                ctx.lineTo(nextBreaks ? x - GAP_HALF : x, y);
             }
             prevState = state;
         }
@@ -1336,10 +1316,23 @@ document.addEventListener('visibilitychange', async () => {
         await requestWakeLock();
     }
 
-    // Trigger burst processing when returning from background
-    if (burstBuffer.length > 0) {
-        // Wait a small moment for all buffered events to finish firing
-        setTimeout(processBurst, 500);
+    // Eager flush if we were backgrounded long enough for the BLE queue to hold
+    // stale data. The lazy flush inside recordRrHistory only fires when the
+    // first queued packet arrives — that can leave pre-background data visible
+    // for tens/hundreds of ms. Doing it here makes the resume instantaneous-
+    // blank rather than briefly-stale. The first flood packet will still hit
+    // the isBackgroundGap branch (idempotent) and seed cleanly from notifTs.
+    const hrGap = lastHrWallClock > 0 ? Date.now() - lastHrWallClock : 0;
+    if (hrGap > BACKGROUND_GAP_MS) {
+        hrvProcessor.reset();
+        peakFreqHistory.length = 0;
+        lastRrTimestamp = 0;
+        recordRrHistory._lastCleanRr = 0;
+        recordRrHistory._pendingBeat = null;
+        recordRrHistory._warmupRrs = [];
+        recordRrHistory._streak = null;
+        rrHistory.length = 0;
+        hrHistory.length = 0;
     }
 
     // Force an immediate redraw of the HR graph. While hidden, requestAnimationFrame
@@ -2283,28 +2276,79 @@ function handleHeartRate(event) {
     if (currentHeartRate === 0) return;
     updateSpeedometer(currentHeartRate);
 
+    // ── Parse RR intervals (bit 4 of flags; H10 and compatible sensors) ───────
+    // Per BT Heart Rate spec: flags bit3 = Energy Expended present (skip 2 bytes),
+    // flags bit4 = RR intervals present. Each RR is uint16 LE in units of 1/1024 s.
     const rrPresent      = (flags >> 4) & 0x01;
     const energyPresent  = (flags >> 3) & 0x01;
-    let rrValuesMs = [];
     if (rrPresent) {
+        // Mark device as RR-capable on first RR-containing packet.
+        // This persists until disconnect so session start checks are reliable.
         deviceSupportsRR = true;
-        let rrOffset = is16bit ? 3 : 2;
-        if (energyPresent) rrOffset += 2;
+        let rrOffset = is16bit ? 3 : 2;          // skip flags + HR bytes
+        if (energyPresent) rrOffset += 2;        // skip Energy Expended uint16
+        const rrValuesMs = [];
         while (rrOffset + 1 < dv.byteLength) {
-            const raw  = dv.getUint16(rrOffset, true);
+            const raw  = dv.getUint16(rrOffset, true);  // 1/1024 s units
             const ms   = (raw / 1024) * 1000;
-            if (ms > 250 && ms < 2500) rrValuesMs.push(ms);
+            if (ms > 250 && ms < 2500) rrValuesMs.push(ms); // 24–240 bpm sanity gate
             rrOffset += 2;
+        }
+        if (rrValuesMs.length > 0) recordRrHistory(rrValuesMs, Date.now());
+    }
+    // Updated AFTER the RR block so that inside recordRrHistory, lastHrWallClock
+    // still holds the previous packet's timestamp. If updated before, hrGap would
+    // always be ~0 and the sensor-RR-gap detection would never fire.
+    lastHrWallClock = Date.now();
+
+    // ── RFB phase tracking: detect inhale→exhale turn and lock HR peak ──────────
+const rfbOnNow = (typeof RFB_ENABLED !== 'undefined') && RFB_ENABLED;
+if (currentState === 'reset' && rfbOnNow && rfbWallStartTime > 0) {
+        const breathPeriodMs = rfbBreathPeriodMs();
+        const elapsed        = Date.now() - rfbWallStartTime;
+        const cyclePos       = elapsed % breathPeriodMs;
+        const inhaleMs       = rfbGetInhaleSec() * 1000;
+
+        // Detect the moment cyclePos crosses the inhale→exhale threshold.
+        // A 1-second tolerance window catches the crossing on whichever heartbeat
+        // arrives first after the boundary.
+        if (cyclePos >= inhaleMs && (cyclePos - 1000) < inhaleMs) {
+            // Finalise the PREVIOUS cycle's lag before resetting the peak tracker.
+            // _lastHrMaxTs must be after _lastInhaleEndTs to be a valid exhale peak.
+            if (hrvProcessor._lastInhaleEndTs > 0 &&
+                hrvProcessor._lastHrMaxTs > hrvProcessor._lastInhaleEndTs) {
+                const finalisedLag = (hrvProcessor._lastHrMaxTs - hrvProcessor._lastInhaleEndTs) / 1000;
+                // Outlier rejection: a lag more than half a breath period away from the
+                // running EMA is almost certainly a misdetected cycle (wrong crossing beat,
+                // or HR peak in the wrong phase). Discard rather than corrupt the EMA.
+                const breathPeriodSec = rfbBreathPeriodMs() / 1000;
+                const isOutlier = hrvProcessor._lagEma !== null &&
+                    Math.abs(finalisedLag - hrvProcessor._lagEma) > breathPeriodSec * 0.4;
+                if (!isOutlier) {
+                    if (hrvProcessor._lagEma === null) {
+                        hrvProcessor._lagEma = finalisedLag;
+                    } else {
+                        hrvProcessor._lagEma = hrvProcessor._LAG_EMA_ALPHA * finalisedLag +
+                                               (1 - hrvProcessor._LAG_EMA_ALPHA) * hrvProcessor._lagEma;
+                    }
+                }
+            }
+            hrvProcessor._lastInhaleEndTs   = Date.now();
+            hrvProcessor._currentCycleMaxHr = 0;
+            // Do NOT update _lastHrMaxTs on the crossing beat — it shares the same
+            // millisecond as _lastInhaleEndTs, making > comparison fail and blocking
+            // finalisation next cycle. Only non-crossing beats update _lastHrMaxTs.
+        } else if (currentHeartRate > hrvProcessor._currentCycleMaxHr) {
+            // Non-crossing beat: track highest HR — timestamp is guaranteed to be
+            // after _lastInhaleEndTs, so finalisation will succeed next crossing.
+            hrvProcessor._currentCycleMaxHr = currentHeartRate;
+            hrvProcessor._lastHrMaxTs       = Date.now();
+        } else {
+            // HR is below current cycle max — no action needed for lag tracking.
         }
     }
 
-    if (document.visibilityState === 'hidden') {
-        burstBuffer.push({ hr: currentHeartRate, rr: rrValuesMs });
-    } else {
-        if (burstBuffer.length > 0) processBurst();
-        if (rrValuesMs.length > 0) recordRrHistory(rrValuesMs, Date.now());
-        recordHrHistory(currentHeartRate);
-    }
+    recordHrHistory(currentHeartRate);
     updateCoherenceDisplay(); // coherence row self-hides outside RFB
     if (isHRVReading) updateHRVDisplay();
 
