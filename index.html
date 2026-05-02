@@ -1,5 +1,4 @@
 <!DOCTYPE html>
-<html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -17,7 +16,9 @@
     <meta property="og:description" content="Free open-source heart rate pacing and breathing tool, built around the unstable HR patterns of autonomic dysregulation. Relevant to people managing POTS, Long COVID, ME/CFS, Post-Concussion Syndrome, and similar conditions. Connect a Bluetooth chest strap. Measure. Pace. Improve.">
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://manawapace.app/">
-    <meta property="og:image" content="https://manawapace.app/icon.png">
+    <meta property="og:image" content="https://manawapace.app/og_image.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
 
     <!-- JSON-LD structured data -->
     <script type="application/ld+json">
@@ -25,7 +26,7 @@
       "@context": "https://schema.org",
       "@type": "WebApplication",
       "name": "Manawa Pace",
-      "description": "Free open-source heart rate pacing and breathing tool. Visualises HR patterns and supports user-configured exercise pacing. May be useful to people managing autonomic dysregulation, including POTS, Long COVID, ME/CFS, and Post-Concussion Syndrome. Not a medical device; does not diagnose, treat, or prevent any condition.",
+      "description": "Free open-source heart rate pacing and breathing tool. Visualises HR patterns and supports user-configured exercise pacing. Relevant to people managing autonomic dysregulation, including POTS, Long COVID, ME/CFS, and Post-Concussion Syndrome. Not a medical device; does not diagnose, treat, or prevent any condition.",
       "applicationCategory": "HealthApplication",
       "operatingSystem": ["Android", "Windows", "macOS", "Linux"],
       "url": "https://manawapace.app/",
@@ -46,7 +47,7 @@
 
     <div id="setupUI">
         <img src="icon.png" alt="Manawa Pace logo" />
-        <h2>Manawa Pace</h2>
+        <h1>Manawa Pace</h1>
         <p class="app-tagline">Measure. Pace. Improve.</p>
         <button id="connectBtn">Connect to HR monitor</button>
         <p id="log">Ready to connect...</p>
@@ -58,7 +59,7 @@
     </div>
     
     <div id="trainingUI">
-        <h1 id="heartRateDisplay">--</h1>
+        <h2 id="heartRateDisplay">--</h2>
         
         <div id="stateIndicatorContainer">
             <div id="stateIndicator" class="state-dot stopped"></div>
