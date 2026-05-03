@@ -184,7 +184,7 @@ Adjust these based on how long it typically takes your heart to respond when you
 - *Resets before warning* — How many heart rate Resets trigger the end-session advisory.
 
 **Alerts**
-- *Vibration / Sound* — Intensity of the state-transition alerts (Off / Subtle / Intense).
+- *Vibration / Sound* — Intensity of the state-transition alerts (Off / Subtle / Intense). Note that vibration will not occur if the app is not visible — for example, if you switch to another app or turn the screen off.
 
 **Resonance Frequency Breathing**
 - See the dedicated RFB section below.
@@ -234,7 +234,7 @@ You can choose "Resonance Breathing" from the activity drop-down menu, or for an
 - **The status dot turns blue** and **pulses in and out** as a breath pacer — expanding during inhale, contracting during exhale, with a subtle flash at each transition.
 - **A sine wave overlay** appears on the HR graph, showing the HR pattern your heart *could* produce if breathing is well coupled to the breath pacer. This gives you a visual target for coherence. The overlay is only shown when connected to an RR-capable sensor such as the Polar H10 — a rolling-averaged HR signal from a watch cannot meaningfully track these oscillations.
 - **Sound guidance** — a rising filtered noise during each inhale, brightening in frequency as the inhale progresses, then falling silent during the exhale. Allows you to follow the breath without watching the screen.
-- **Vibration guidance** — an opening pulse at the start of each inhale, followed by a buzzing that accelerates in frequency through the inhale, and a closing pulse at the end. Provides a tactile breath guide.
+- **Vibration guidance** — an opening pulse at the start of each inhale, followed by a buzzing that accelerates in frequency through the inhale, and a closing pulse at the end. Provides a tactile breath guide. Note that vibration will not occur if the app is not visible — for example, if you switch to another app or turn the screen off.
 - **During heart rate Reset, once your HR has returned to your resting HR**, the app enters an extended RFB phase — shown as a countdown timer — before returning you to Continue activity. The default is 2 minutes. This promotes staying in the resonance breathing state after the HR has settled, extending the breathing practice before returning to exertion.
 
 ### Resonance score
@@ -287,7 +287,7 @@ Your resonance frequency is generally fairly stable, but can shift gradually ove
 - **Inhale / exhale** — Display only. Shows the seconds per half-breath calculated from the bpm and inhale percentage.
 - **RFB duration** — How long to remain in the RFB phase after resting HR is achieved. Default is 2 minutes.
 - **Inhale sound guide** — Toggle the rising noise guide.
-- **Inhale vibration guide** — Toggle the tactile buzz guide.
+- **Inhale vibration guide** — Toggle the tactile buzz guide. Note that vibration will not occur if the app is not visible — for example, if you switch to another app or turn the screen off.
 
 ---
 
@@ -391,7 +391,7 @@ The graph shows:
 
 - **Direct Bluetooth Low Energy (BLE) connection** — Connects directly to standard BLE heart rate monitors (like Polar straps or watches) via the browser. Compatible with any device that implements the standard Heart Rate Measurement characteristic.
 - **Raw RR interval support** — For devices that expose beat-to-beat RR data (such as the Polar H10), the app uses instantaneous heart rate on the HR graph rather than the sensor's rolling average. This higher-resolution signal is required for the RFB coherence score and HRV readings.
-- **Sound and vibration alerts** — Configurable intensity on both, designed to be usable while active without watching the screen.
+- **Sound and vibration alerts** — Configurable intensity on both, designed to be usable while active without watching the screen. Note that vibration will not occur if the app is not visible — for example, if you switch to another app or turn the screen off.
 - **Progressive Web App (PWA)** — Installable directly to an Android home screen for fullscreen, app-like behaviour.
 - **Multiple activity profiles** — Different threshold sets for different activities (e.g. walking, cycling, housework), switchable at session start.
 - **Time limit** — Optional per-session cap on total time. When reached, the app transitions to the heart rate Reset state automatically.
