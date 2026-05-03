@@ -1363,6 +1363,96 @@ function resetTimeout() {
 }
 
 let audioCtx;
+
+// ─── Background keep-alive ────────────────────────────────────────────────────
+// Android Chrome throttles JS timers and BLE event dispatch when a tab is not
+// visible. Two complementary techniques keep the renderer process active:
+//
+//   1. Silent oscillator via Web Audio API — a GainNode at gain=0.001 (inaudible
+//      but non-zero) keeps the AudioContext in "running" state. Chrome gives elevated
+//      scheduling priority to tabs with active audio output, preventing timer
+//      throttling.  A true gain=0 risks being optimised away; 0.001 is ~94 dB below
+//      a reference level and completely inaudible.
+//
+//   2. MediaSession API — registers the tab as a media player with Android's media
+//      framework. This shows a persistent notification (which itself discourages the
+//      OS from killing the process) and grants the tab media-app scheduling priority.
+//
+// Both are started when BLE connects and stopped on disconnect.
+// The existing audioCtx (used for alert sounds) is reused — no second context needed.
+
+let _keepAliveOsc  = null;   // OscillatorNode — null when keep-alive is inactive
+let _keepAliveGain = null;   // GainNode
+
+function startBackgroundKeepAlive() {
+    // AudioContext must be created/resumed inside a user-gesture context.
+    // Session start is always user-gesture-driven, so this is safe.
+    if (!audioCtx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AC();
+    }
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+
+    // Idempotent — don't stack oscillators on repeated calls.
+    if (_keepAliveOsc) return;
+
+    _keepAliveGain = audioCtx.createGain();
+    _keepAliveGain.gain.setValueAtTime(0.001, audioCtx.currentTime); // inaudible but non-zero
+    _keepAliveGain.connect(audioCtx.destination);
+
+    _keepAliveOsc = audioCtx.createOscillator();
+    _keepAliveOsc.type = 'sine';
+    _keepAliveOsc.frequency.setValueAtTime(1, audioCtx.currentTime); // 1 Hz — below hearing
+    _keepAliveOsc.connect(_keepAliveGain);
+    _keepAliveOsc.start();
+
+    if ('mediaSession' in navigator) {
+        navigator.mediaSession.metadata = new MediaMetadata({
+            title: 'Manawa Pace session',
+        });
+        // Play: resume from pause state.  Guard against calling switchState
+        // when no session is running or when already playing.
+        navigator.mediaSession.setActionHandler('play', () => {
+            if (isSessionRunning && currentState === 'pause') {
+                switchState('active', true);
+            }
+        });
+        // Pause: enter pause state.  Not available during RFB or HRV Reading.
+        navigator.mediaSession.setActionHandler('pause', () => {
+            if (isSessionRunning && currentState !== 'pause' &&
+                    !isResonanceBreathing && !isHRVReading) {
+                switchState('pause', true);
+            }
+        });
+        navigator.mediaSession.playbackState = 'playing';
+    }
+}
+
+function stopBackgroundKeepAlive() {
+    if (_keepAliveOsc) {
+        try { _keepAliveOsc.stop(); } catch (_) {}
+        _keepAliveOsc.disconnect();
+        _keepAliveOsc = null;
+    }
+    if (_keepAliveGain) {
+        _keepAliveGain.disconnect();
+        _keepAliveGain = null;
+    }
+    if ('mediaSession' in navigator) {
+        navigator.mediaSession.playbackState = 'none';
+        navigator.mediaSession.setActionHandler('play',  null);
+        navigator.mediaSession.setActionHandler('pause', null);
+        navigator.mediaSession.metadata = null;
+    }
+}
+
+// Called by switchState whenever the session enters or leaves the pause state
+// so the notification shade reflects the current playback status.
+function updateMediaSessionPlaybackState() {
+    if (!('mediaSession' in navigator)) return;
+    navigator.mediaSession.playbackState =
+        (isSessionRunning && currentState === 'pause') ? 'paused' : 'playing';
+}
 function triggerNotification() {
     const vibLevel  = (typeof ALERT_VIBRATION !== 'undefined') ? ALERT_VIBRATION : 1;
     const soundLevel = (typeof ALERT_SOUND    !== 'undefined') ? ALERT_SOUND     : 1;
@@ -2131,6 +2221,7 @@ function switchState(newState, isManual) {
     document.getElementById('stateIndicator').className = `state-dot ${indicatorClass}`;
     updateSpeedometer(latestHR);
     if (newState !== 'pause' && newState !== 'stopped') triggerNotification();
+    updateMediaSessionPlaybackState();
 
     const descEl = document.getElementById('stateDescription');
     const manualResetBtn = document.getElementById('manualResetBtn');
@@ -2845,6 +2936,7 @@ function teardownSession() {
     currentActivityId = null; currentActivityName = null;
     updateActivityDisplay();
     switchState('stopped', true);
+    stopBackgroundKeepAlive();
     wakeLockDesired = false; if (wakeLock !== null) wakeLock.release().then(() => { wakeLock = null; });
 }
 
@@ -2982,6 +3074,11 @@ function startSession() {
         switchState('active', true);
     }
     sessionInterval = setInterval(handleTick, 1000);
+    startBackgroundKeepAlive();
+    // RFB and HRV Reading sessions are not pauseable — hide the notification pause button.
+    if ((isResonanceBreathing || isHRVReading) && 'mediaSession' in navigator) {
+        navigator.mediaSession.setActionHandler('pause', null);
+    }
 }
 
 // ─── Disconnect / Reconnect ───────────────────────────────────────────────────
@@ -3304,6 +3401,10 @@ async function tryAutoReconnect() {
     document.body.classList.add('connected');
     restoreSessionUI();
     sessionInterval = setInterval(handleTick, 1000);
+    startBackgroundKeepAlive();
+    if ((isResonanceBreathing || isHRVReading) && 'mediaSession' in navigator) {
+        navigator.mediaSession.setActionHandler('pause', null);
+    }
     requestWakeLock();
     function fallbackToHome() { clearInterval(sessionInterval); document.body.classList.remove('connected'); }
     if (!navigator.bluetooth || !navigator.bluetooth.getDevices) { fallbackToHome(); return; }
