@@ -197,7 +197,7 @@ Your heart rate is graphed continuously on screen. The display shows the last 90
 
 When connected to a sensor that exposes raw beat-to-beat RR intervals, such as the Polar H10, this graph shows **unsmoothed, instantaneous heart rate**. This is not the smoothed heart rate graph that most fitness apps show. It shows every little variation and will be quite jagged, especially when you are at rest or low levels of exertion. You will see involuntary sighs as smooth little dips and ectopic beats as vertical spikes. The graph is intended to display your cardiac data rather than hide it; minor variations and occasional ectopic spikes are commonly observed in healthy hearts, but anything that worries you is worth raising with a clinician.
 
->**Spontaneous sighs:** During light aerobic activity you may notice involuntary sighs — deeper breaths that appear as smooth little dips on the HR graph — occurring roughly every 2–5 minutes. This is a normal physiological reflex. These normally disappear around your anaerobic threshold. Observing the presence or absence of involuntary sighs can sometimes be a useful indicator that helps with establishing your anaerobic threshold. 
+>**Spontaneous sighs:** During light aerobic activity you may notice involuntary sighs — deeper breaths that appear as smooth little dips on the HR graph — occurring roughly every 3–5 minutes. This is a normal physiological reflex. These normally disappear around your anaerobic threshold. Observing the presence or absence of involuntary sighs can sometimes be a useful indicator that helps with establishing your anaerobic threshold. 
 
 >**Ectopic heart beats:**  If any are detected they will be included in the session summary. Ectopics are beats that fire outside the normal cardiac rhythm. There are two common types:
 >
@@ -358,13 +358,13 @@ The index is computed as:
 > **HRV Index = ln(RMSSD) × 15.3 × balanceFactor**
 
 - **ln(RMSSD) × 15.3** is the core vagal tone signal, scaled to produce values in a practical range.
-- **balanceFactor** (0–1) adjusts for sympathetic dominance. It is derived from the RMSSD/SDNN ratio: a healthy ANS produces relatively high RMSSD for its total variability. Sympathetic dominance — a pattern often described in the dysautonomia literature — produces elevated SDNN with low RMSSD, which reduces the index.
+- **balanceFactor** (0–1) adjusts for sympathetic dominance. It is derived from the RMSSD/SDNN ratio: a healthy ANS produces relatively high RMSSD for its total variability. In presentations where sympathetic fluctuations inflate total variability while vagal tone remains low — a pattern seen in some forms of dysautonomia — SDNN is elevated relative to RMSSD, which reduces the index.
 
 ### What to expect
 
 For broad orientation: HRV index scores broadly comparable to those produced by other consumer HRV platforms tend to fall in the 40–70 range for healthy adults at rest. With active dysautonomia, scores in the 10–25 range are commonly reported and are not necessarily concerning on their own — they reflect a current state rather than a permanent ceiling. Lower scores tend to be associated with sympathetic dominance or fatigue states. These ranges are general orientations rather than clinical thresholds; what matters longitudinally is your own trend over time, which is more informative than any single reading.
 
-Manawa Pace HRV scores use the same underlying ln(RMSSD) scaling as EliteHRV and Visible HRV, so scores are on a broadly comparable scale. Exact correspondence between platforms will vary because of differences in windowing, artifact handling, and scaling choices.
+Scores are on a broadly comparable scale to other consumer HRV platforms such as EliteHRV and Visible, though exact correspondence will vary because of differences in windowing, artifact handling, and scaling choices.
 
 ### Hardware requirement
 
