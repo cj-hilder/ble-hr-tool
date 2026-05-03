@@ -1093,7 +1093,7 @@ function updateBudgetTimerDisplay() {
     if (iconEl) iconEl.style.display = byTarget ? '' : 'none';
 }
 function arrAvg(arr) {
-    return arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : 0;
+    return arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
 }
 
 // ─── Period helpers ───────────────────────────────────────────────────────────
@@ -2760,7 +2760,7 @@ function computeSessionSummary() {
         longestActiveSec:  aStats.longest,
         avgActiveSec:      aStats.avg,
         shortestActiveSec: aStats.shortest,
-        avgHrActive: aStats.avgHr.length ? arrAvg(aStats.avgHr) : 0,
+        avgHrActive: aStats.avgHr.length ? Math.round(arrAvg(aStats.avgHr)) : 0,
         totalRecoverySec:   rStats.total,
         pctRecovery: sessionSeconds > 0 ? Math.round(rStats.total / sessionSeconds * 100) : 0,
         numRecoveryPeriods:  rStats.count,
@@ -2768,12 +2768,12 @@ function computeSessionSummary() {
         longestRecoverySec:  rStats.longest,
         avgRecoverySec:      rStats.avg,
         shortestRecoverySec: rStats.shortest,
-        avgHrRecovery: rStats.avgHr.length ? arrAvg(rStats.avgHr) : 0,
+        avgHrRecovery: rStats.avgHr.length ? Math.round(arrAvg(rStats.avgHr)) : 0,
         longestLagSec:  rStats.lags.length  ? Math.max(...rStats.lags)  : 0,
         avgLagSec:      rStats.lags.length  ? Math.round(arrAvg(rStats.lags)) : 0,
         shortestLagSec: rStats.lags.length  ? Math.min(...rStats.lags)  : 0,
         highestPeakHr:  rStats.peaks.length ? Math.max(...rStats.peaks) : 0,
-        avgPeakHr:      rStats.peaks.length ? arrAvg(rStats.peaks)      : 0,
+        avgPeakHr:      rStats.peaks.length ? Math.round(arrAvg(rStats.peaks)) : 0,
         lowestPeakHr:   rStats.peaks.length ? Math.min(...rStats.peaks) : 0,
         pctTarget:    sessionSeconds > 0 && totalTargetSeconds > 0
                         ? Math.round(totalTargetSeconds / sessionSeconds * 100) : 0,
@@ -2784,7 +2784,7 @@ function computeSessionSummary() {
         schemaVersion: 1,
         sessionLengthSec: (isResonanceBreathing && rbSessionEndSeconds > 0 && !rfbExtended) ? rbSessionEndSeconds : sessionSeconds,
         highestHr: sessionHrSamples.length ? Math.max(...sessionHrSamples) : 0,
-        avgHr:     sessionHrSamples.length ? arrAvg(sessionHrSamples)      : 0,
+        avgHr:     sessionHrSamples.length ? Math.round(arrAvg(sessionHrSamples)) : 0,
         lowestHr:  sessionHrSamples.length ? Math.min(...sessionHrSamples) : 0,
         hrRecording: sessionHrRecording.slice(),
         // RFB coherence — null if RFB was not used or no valid readings were collected
