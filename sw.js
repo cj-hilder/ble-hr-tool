@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hr-pacer-v1.2.215';
+const CACHE_NAME = 'hr-pacer-v1.2.216';
 const ASSETS = [
     '/',
     '/index.html',

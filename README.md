@@ -250,7 +250,7 @@ Once enough data has been gathered, the score appears as a number and a star rat
 | ★★☆ | ≥ 45 | Moderate |
 | ★★★ | ≥ 65 | Strong |
 
-**A note on the score:** The score is a feedback signal, not a target to chase. Stress about the number tends to lower it. With practice, healthy nervous systems are commonly capable of scores above 65 (three stars). With dysautonomia, scores in the 20–30 range early on are common and a reasonable starting point. What is informative longitudinally is stability and trend over weeks rather than any individual session score. A low score, or a flat HR line, is commonly observed when the ANS is fatigued or depleted. Scores often rise over time as the practice develops.
+**A note on the score:** The score is a feedback signal, not a target to chase. Stress about the number tends to lower it. With practice, healthy nervous systems are commonly capable of scores above 65 (three stars), though healthy older adults may find lower scores typical — HRV naturally declines with age, which directly affects the achievable ceiling. With dysautonomia, scores in the 20–30 range early on are common and a reasonable starting point. What is informative longitudinally is stability and trend over weeks rather than any individual session score. A low score, or a flat HR line, is commonly observed when the ANS is fatigued or depleted. Scores often rise over time as the practice develops.
 
 Changes in the score during a session or during the day may be a useful cue to stop for the day, particularly if you have achieved a stable score that then declines during the session or over the day.
 
