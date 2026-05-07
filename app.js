@@ -1687,7 +1687,14 @@ function updateHRVDisplay() {
         sdnn  = wE * _hrv60Stats.sdnn  + wW * winMetrics.sdnn;
     }
 
-    const pSensor = sessionTotalBeats > 0 ? sessionSensorArtifacts / sessionTotalBeats : 0;
+    // Rolling 60s sensor artifact rate — consistent with the broken heart warning
+    // and with the session-extension logic. Using rolling rather than lifetime
+    // means the gate lifts as soon as the sensor has been clean for 60 seconds,
+    // which is appropriate given the session is extended to compensate for lost time.
+    const cutoff60    = now - 60000;
+    const recentArts  = sensorArtifactLog.filter(ts => ts >= cutoff60).length;
+    const recentBeats = beatLog.filter(ts => ts >= cutoff60).length;
+    const pSensor     = recentBeats > 0 ? recentArts / recentBeats : 0;
 
     if (pSensor > 0.02) {
         if (pSensor > sessionPeakPSensor) sessionPeakPSensor = pSensor;
