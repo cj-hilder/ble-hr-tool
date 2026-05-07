@@ -555,7 +555,7 @@ function recordRrHistory(rrValuesMs, notifTs) {
             pairs.unshift({ ...pendingBeat, alreadyCounted: true });
         } else {
             // Gap too large — deferred beat is not adjacent to the new ones.
-            sessionSensorArtifacts++;
+            sessionSensorArtifacts++; sensorArtifactLog.push(pendingBeat.ts);
             lastSensorArtifactTs = pendingBeat.ts;
             recordRrHistory._streak = null;
             if (recordRrHistory._lastCleanRr > 0) {
@@ -615,7 +615,7 @@ function recordRrHistory(rrValuesMs, notifTs) {
     let i = 0;
     while (i < pairs.length) {
         const { rr, ts: t, alreadyCounted } = pairs[i];
-        if (!alreadyCounted) sessionTotalBeats++;
+        if (!alreadyCounted) { sessionTotalBeats++; beatLog.push(t); }
 
         // ── Warmup: seed lastCleanRr from median of first 3 in-range beats ────
         // Only active when no baseline exists yet (session start with no inherited
@@ -637,7 +637,7 @@ function recordRrHistory(rrValuesMs, notifTs) {
                     recordRrHistory._warmupRrs = [];
                 }
             } else {
-                sessionSensorArtifacts++;
+                sessionSensorArtifacts++; sensorArtifactLog.push(t);
                 lastSensorArtifactTs = t;
                 // No synthetic fill — no baseline established yet to fill from.
             }
@@ -652,7 +652,7 @@ function recordRrHistory(rrValuesMs, notifTs) {
             (lastCleanRr > 0 && Math.abs(rr - lastCleanRr) / lastCleanRr >= 0.5 && absDiff > 250);
 
         if (isSensorArtifact) {
-            sessionSensorArtifacts++;
+            sessionSensorArtifacts++; sensorArtifactLog.push(t);
             lastSensorArtifactTs = t;
             resetStreak();
             if (lastCleanRr > 0) {
@@ -688,7 +688,7 @@ function recordRrHistory(rrValuesMs, notifTs) {
                     hrvProcessor.addRR(rr, t);
                     i++; continue;
                 }
-                sessionSensorArtifacts++;
+                sessionSensorArtifacts++; sensorArtifactLog.push(t);
                 lastSensorArtifactTs = t;
                 if (lastCleanRr > 0) {
                     const syntheticHr = Math.round(60000 / lastCleanRr);
@@ -742,7 +742,7 @@ function recordRrHistory(rrValuesMs, notifTs) {
                         hrvProcessor.addRR(rr, t);
                         i++; continue;
                     }
-                    sessionSensorArtifacts++;
+                    sessionSensorArtifacts++; sensorArtifactLog.push(t);
                     lastSensorArtifactTs = t;
                     const syntheticHr = Math.round(60000 / lastCleanRr);
                     if (syntheticHr >= 24 && syntheticHr <= 240)
@@ -752,7 +752,7 @@ function recordRrHistory(rrValuesMs, notifTs) {
             }
 
             if (isPvc) {
-                if (!next.alreadyCounted) sessionTotalBeats++;
+                if (!next.alreadyCounted) { sessionTotalBeats++; beatLog.push(next.ts); }
                 sessionPhysioArtifacts++;
                 resetStreak();
                 const hrPremature = Math.round(60000 / rr);
@@ -786,7 +786,7 @@ function recordRrHistory(rrValuesMs, notifTs) {
                 hrvProcessor.addRR(rr, t);
                 i++; continue;
             }
-            sessionSensorArtifacts++;
+            sessionSensorArtifacts++; sensorArtifactLog.push(t);
             lastSensorArtifactTs = t;
             if (lastCleanRr > 0) {
                 const syntheticHr = Math.round(60000 / lastCleanRr);
@@ -816,7 +816,7 @@ function recordRrHistory(rrValuesMs, notifTs) {
                 hrvProcessor.addRR(rr, t);
                 i++; continue;
             }
-            sessionSensorArtifacts++;
+            sessionSensorArtifacts++; sensorArtifactLog.push(t);
             lastSensorArtifactTs = t;
             const syntheticHr = Math.round(60000 / lastCleanRr);
             if (syntheticHr >= 24 && syntheticHr <= 240)
@@ -997,9 +997,20 @@ const HRV_READING_ID  = 'hrv_reading';  // Morning HRV
 const DAYTIME_HRV_ID  = 'daytime_hrv'; // Daytime HRV
 
 // Per-session artifact counters (reset in startSession, incremented in recordRrHistory)
-let sessionTotalBeats     = 0;
-let sessionSensorArtifacts  = 0;
-let sessionPhysioArtifacts  = 0;
+let sessionTotalBeats      = 0;
+let sessionSensorArtifacts = 0;
+let sessionPhysioArtifacts = 0;
+
+// Timestamped ring buffers for rolling 60s sensor-reliability window.
+// sensorArtifactLog: one entry per sensor artifact (beat timestamp).
+// beatLog:           one entry per counted beat (beat timestamp).
+// Both are filtered to Date.now()-60000 on each display tick; no explicit pruning needed.
+let sensorArtifactLog = [];
+let beatLog           = [];
+
+// High-water mark of lifetime pSensor during the current HRV Reading session.
+// Used to annotate the session summary even if the sensor recovers before end.
+let sessionPeakPSensor = 0;
 
 // Breath timing helpers — read live globals so changes take effect immediately.
 function rfbBreathPeriodMs() {
@@ -1672,12 +1683,14 @@ function updateHRVDisplay() {
     const pSensor = sessionTotalBeats > 0 ? sessionSensorArtifacts / sessionTotalBeats : 0;
 
     if (pSensor > 0.02) {
+        if (pSensor > sessionPeakPSensor) sessionPeakPSensor = pSensor;
         coherVal.textContent = '--';
         coherVal.style.color = '#7c3aed';
-        if (showDebug) dbg.textContent = 'sensor unreliable';
+        if (showDebug) dbg.textContent = `sensor unreliable  pSensor:${(pSensor * 100).toFixed(1)}%`;
         currentHRVIndex = null;
         return;
     }
+    if (pSensor > sessionPeakPSensor) sessionPeakPSensor = pSensor;
 
     const result = calculateHRVIndex({ rmssd, sdnn, pSensor });
     if (!result) {
@@ -1786,6 +1799,33 @@ function computeResonance() {
     };
 }
 
+// ─── Sensor warning (universal) ───────────────────────────────────────────────
+// Shows "💔 Sensor unreliable" below stateDescription whenever the rolling 60s
+// sensor artifact rate exceeds the activity-specific threshold. Independent of
+// session type and state — runs whenever a BLE packet arrives.
+// Thresholds: HRV Reading 2% (matches score gate); all other contexts 5%
+// (RFB FFT and amplitude gate already self-protect; warning is transparency only).
+function updateSensorWarning() {
+    const cutoff          = Date.now() - 60000;
+    const recentArtifacts = sensorArtifactLog.filter(ts => ts >= cutoff).length;
+    const recentBeats     = beatLog.filter(ts => ts >= cutoff).length;
+    const rollingPSensor  = recentBeats > 0 ? recentArtifacts / recentBeats : 0;
+
+    const threshold = isHRVReading ? 0.02 : 0.05;
+    const show      = hasRrData && isSessionRunning && rollingPSensor > threshold;
+
+    let el = document.getElementById('rfbSensorWarning');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'rfbSensorWarning';
+        el.style.cssText = 'font-size:13px;text-align:center;width:100%;margin-top:2px;color:#fd7e14;';
+        const descEl = document.getElementById('stateDescription');
+        if (descEl) descEl.insertAdjacentElement('afterend', el);
+    }
+    el.style.display  = show ? '' : 'none';
+    el.textContent    = '💔 Sensor unreliable';
+}
+
 let _lastCoherenceUpdateTs = 0;
 // Returns the consistent RFB debug line string.
 // All fields show '--' when data is unavailable; ✓ appended only when engaged.
@@ -1826,6 +1866,10 @@ function updateCoherenceDisplay() {
                      : currentState === 'reset'  ? (rfbOn ? '#1a7fff' : '#dc3545')
                      : currentState === 'pause'  ? '#888888'
                      : '#aaaaaa';
+
+    // Lifetime sensor artifact rate — used only to stamp ps on each recording entry.
+    // Warning display is handled by updateSensorWarning() which uses a rolling 60s window.
+    const pSensor = sessionTotalBeats > 0 ? sessionSensorArtifacts / sessionTotalBeats : 0;
 
     // Resonance row — only during reset + RFB
     if (coherEl) coherEl.style.display = inRfb ? 'flex' : 'none';
@@ -1927,6 +1971,7 @@ function updateCoherenceDisplay() {
                         lock: Math.round(r.freqLock * 100),
                         ph:   r.phaseDiffDeg ?? null,
                         amp:  Math.round(r.amplitudeBpm * 10) / 10,
+                        ps:   Math.round(pSensor * 1000) / 10,
                     });
                 }
             }
@@ -2276,6 +2321,8 @@ function switchState(newState, isManual) {
         if (dbg) dbg.textContent = '';
         const dbg2 = document.getElementById('hrvDebug');
         if (dbg2) dbg2.textContent = '';
+        const sw = document.getElementById('rfbSensorWarning');
+        if (sw) sw.style.display = 'none';
     }
 
     const rfbOn = (typeof RFB_ENABLED !== 'undefined') && RFB_ENABLED;
@@ -2532,6 +2579,7 @@ function _flushBleQueue() {
     }
     drawHrGraph();
     updateCoherenceDisplay();
+    updateSensorWarning();
     if (isHRVReading) updateHRVDisplay();
 }
 
@@ -2729,7 +2777,10 @@ function computeRfbSummary(recording, activeSec) {
     const avgAmplitude = Math.round(ampVals.reduce((a, b) => a + b, 0) / ampVals.length * 10) / 10;
     const peakRiIdx    = riVals.indexOf(peak);
     const peakRiAmplitude = ampVals[peakRiIdx] ?? null;
-    return { avg, peak, pctAboveStar1, totalSec, avgAmplitude, peakRiAmplitude };
+    // Peak sensor artifact rate during scored recording — ps field absent on legacy sessions.
+    const psVals = recording.map(s => s.ps ?? 0);
+    const peakSensorPct = psVals.length ? Math.max(...psVals) : 0;
+    return { avg, peak, pctAboveStar1, totalSec, avgAmplitude, peakRiAmplitude, peakSensorPct };
 }
 
 // ─── Session summary ──────────────────────────────────────────────────────────
@@ -2868,13 +2919,20 @@ function computeSessionSummary() {
         rfbPeakRiAmplitude: rfbStats ? rfbStats.peakRiAmplitude  : null,
         rfbCoherenceRecording: rfbStats ? rfbCoherenceRecording.slice() : null,
         rfbPracticeTimeSec: Math.round(rfbPracticeTimeSec),
+        // Peak sensor artifact rate during scored RFB recording (0 on legacy sessions).
+        rfbPeakSensorPct:   rfbStats ? rfbStats.peakSensorPct    : null,
         // HRV Reading fields
         hvIndexFinal:      isHRVReading ? currentHRVIndex : null,
         // Short-session warning fires below 180s — at 179s the rolling window
         // uses only floor(179/60)×60 = 120s (2 min), so 180s is the minimum
         // for a valid 3-min measurement regardless of session length setting.
-        hrvSessionTooShort: isHRVReading && sessionSeconds < 180,
-        activityIsHRV:     isHRVReading,
+        hrvSessionTooShort:   isHRVReading && sessionSeconds < 180,
+        activityIsHRV:        isHRVReading,
+        // Sensor reliability annotation — records peak lifetime artifact rate so
+        // a null hvIndexFinal can be distinguished from other null causes in the
+        // summary card, and for longitudinal signal-quality tracking.
+        hvSensorUnreliable:   isHRVReading && sessionPeakPSensor > 0.02,
+        hvSensorArtifactPct:  isHRVReading ? Math.round(sessionPeakPSensor * 1000) / 10 : null,
         // Ectopic beat tracking — all session types.
         // Reported as count + rate for longitudinal monitoring across full sessions.
         // Omitted from summary display when count is zero.
@@ -2996,6 +3054,8 @@ function teardownSession() {
     document.getElementById('rbTimeUpModal').classList.remove('visible');  // dismiss if still open — stale End button would otherwise re-enter finishSession
     const progressEl = document.getElementById('rfbProgress');
     if (progressEl) progressEl.style.display = 'none';
+    const sensorWarnEl = document.getElementById('rfbSensorWarning');
+    if (sensorWarnEl) sensorWarnEl.style.display = 'none';
     setRbDisplayMode(false);
     const toggleBtn = document.getElementById('toggleSessionBtn');
     toggleBtn.innerText = 'Start Session'; toggleBtn.classList.remove('running', 'paused');
@@ -3119,6 +3179,7 @@ function startSession() {
     rfbExtended = false;
     // Reset artifact counters and HRV index for fresh session
     sessionTotalBeats = 0; sessionSensorArtifacts = 0; sessionPhysioArtifacts = 0;
+    sensorArtifactLog = []; beatLog = []; sessionPeakPSensor = 0;
     currentHRVIndex = null; _lastHRVDisplayTs = 0; _hrv60Stats = null;
     setRbDisplayMode(isResonanceBreathing || isHRVReading);
     if (isResonanceBreathing) {

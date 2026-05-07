@@ -162,6 +162,11 @@ window.RFB_STAR_LEVELS = {
             const shortNote = s.hrvSessionTooShort
                 ? `<div class="hrv-card-short-note">⚠️ Short snapshot — less than 3 minutes. Result may be unreliable.</div>`
                 : '';
+            const sensorNote = s.hvSensorUnreliable
+                ? s.hvIndexFinal != null
+                    ? `<div class="hrv-card-short-note">⚠️ Sensor noise detected (peak ${s.hvSensorArtifactPct}% artifact rate). Score recorded after recovery.</div>`
+                    : `<div class="hrv-card-short-note">💔 Score unavailable — signal too noisy (peak ${s.hvSensorArtifactPct}% artifact rate). Reposition the sensor and try again.</div>`
+                : '';
             html += `
             <div class="stat-group">
                 <div class="stat-group-label hrv-label">💜 HRV Index</div>
@@ -171,6 +176,7 @@ window.RFB_STAR_LEVELS = {
                     ${statItem(fmtN(Math.round(s.avgHr)),   'Avg HR')}
                 </div>
                 ${shortNote}
+                ${sensorNote}
             </div>`;
         }
 
@@ -203,6 +209,9 @@ window.RFB_STAR_LEVELS = {
             const rfbAvg  = rfbAvgRaw  != null ? `${rfbAvgRaw} ${rfbRating(rfbAvgRaw)}`  : '--';
             const rfbPeak = rfbPeakRaw != null ? `${rfbPeakRaw} ${rfbRating(rfbPeakRaw)}` : '--';
             const rfbPct  = s.rfbPctAboveStar1 != null ? s.rfbPctAboveStar1 + '%' : '--';
+            const rfbSensorNote = (s.rfbPeakSensorPct || 0) > 5
+                ? `<div class="ectopic-note">⚠️ Peak sensor artifact rate during session: ${s.rfbPeakSensorPct}%. Scores during noisy periods are protected by artifact filtering.</div>`
+                : '';
             html += `
             <div class="stat-group">
                 <div class="stat-group-label rfb-label">💙 Resonance Index</div>
@@ -211,6 +220,7 @@ window.RFB_STAR_LEVELS = {
                     ${statItem(rfbPeak, 'Peak RI')}
                     ${statItem(rfbPct,  'Time ≥★')}
                 </div>
+                ${rfbSensorNote}
             </div>`;
         }
 
@@ -269,6 +279,9 @@ window.RFB_STAR_LEVELS = {
             const rfbAvg  = rfbAvgRaw  != null ? `${rfbAvgRaw} ${rfbRating(rfbAvgRaw)}`  : '--';
             const rfbPeak = rfbPeakRaw != null ? `${rfbPeakRaw} ${rfbRating(rfbPeakRaw)}` : '--';
             const rfbPct  = s.rfbPctAboveStar1 != null ? s.rfbPctAboveStar1 + '%' : '--';
+            const rfbSensorNote = (s.rfbPeakSensorPct || 0) > 5
+                ? `<div class="ectopic-note">⚠️ Peak sensor artifact rate during session: ${s.rfbPeakSensorPct}%. Scores during noisy periods are protected by artifact filtering.</div>`
+                : '';
             html += `
             <div class="stat-group">
                 <div class="stat-group-label rfb-label">💙 Resonance Breathing</div>
@@ -281,6 +294,7 @@ window.RFB_STAR_LEVELS = {
                     ${statItem(fmtT(s.rfbPracticeTimeSec), 'Duration')}
                     <div></div><div></div>
                 </div>
+                ${rfbSensorNote}
             </div>`;
         }
 
