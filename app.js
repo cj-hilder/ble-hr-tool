@@ -1787,6 +1787,21 @@ function computeResonance() {
 }
 
 let _lastCoherenceUpdateTs = 0;
+// Returns the consistent RFB debug line string.
+// All fields show '--' when data is unavailable; ✓ appended only when engaged.
+function rfbDebugText(r) {
+    const co      = r ? Math.round(r.coherence * 100) : '--';
+    const freq    = r ? (r.peakFreq * 60).toFixed(1) : '--';
+    const lockStr = r && r.freqLockReady ? `${Math.round(r.freqLock * 100)}%` : '--';
+    const relLagSec = r && r.phaseDiffDeg != null
+        ? (r.phaseDiffDeg / 360 * (rfbBreathPeriodMs() / 1000)) : null;
+    const lagStr  = relLagSec != null
+        ? `${relLagSec >= 0 ? '+' : ''}${(Math.round(relLagSec * 2) / 2).toFixed(1)}` : '--';
+    const amp     = r ? r.amplitudeBpm.toFixed(1) : '--';
+    const tick    = (rfbEngaged || isResonanceBreathing) ? ' ✓' : '';
+    return `co: ${co} freq: ${freq} bpm lock: ${lockStr} lag: ${lagStr} sec ampl: ${amp} bpm${tick}`;
+}
+
 function updateCoherenceDisplay() {
     // During HRV Reading, the coherence display area is managed by updateHRVDisplay instead.
     if (isHRVReading) return;
@@ -1845,18 +1860,8 @@ function updateCoherenceDisplay() {
                 arc.setAttribute('stroke', '#1a7fff'); // reset to blue (may have been purple from HRV)
                 arc.setAttribute('stroke-dashoffset', (CIRCUMFERENCE * (1 - pct)).toFixed(2));
             }
-            // Debug: "collecting data…" for first 30s, then live coherence (even if jumpy).
-            if (showDebug) {
-                if (rfbElapsedSec < RFB_DEBUG_SEC || r === null) {
-                    dbg.textContent = 'collecting data…';
-                } else {
-                    const amp = r.amplitudeBpm;
-                    const relLagSec = r.phaseDiffDeg != null ? (r.phaseDiffDeg / 360 * (rfbBreathPeriodMs() / 1000)) : null;
-                    const lagStr   = relLagSec != null ? `${relLagSec >= 0 ? '+' : ''}${( Math.round(relLagSec * 2) / 2).toFixed(1)}s` : '--';
-                    const lockStr  = r.freqLockReady ? `${Math.round(r.freqLock * 100)}%` : '--';
-                    dbg.textContent = `coherence:${Math.round(r.coherence * 100)} ampl:${amp.toFixed(1)} freq lock:${lockStr} lag:${lagStr} streak:${rfbEngagementStreak}/${RFB_ENGAGE_STREAK}`;
-                }
-            }
+            // Debug: consistent format throughout; -- where data is not yet available.
+            if (showDebug) dbg.textContent = rfbDebugText(r);
 
             // Pre-flight engagement: accumulate the streak silently during the 30–65 s
             // lead-in so that a user who starts RFB from the very beginning of the reset
@@ -1880,7 +1885,7 @@ function updateCoherenceDisplay() {
 
             if (r === null) {
                 if (coherEl) coherEl.style.display = 'none';
-                if (showDebug) dbg.textContent = 'collecting data…';
+                if (showDebug) dbg.textContent = rfbDebugText(null);
             } else {
                 // Engagement gate — general activity only. isResonanceBreathing users
                 // opted in explicitly so record unconditionally after the lead-in.
@@ -1904,13 +1909,7 @@ function updateCoherenceDisplay() {
                     // Waiting for engagement confirmation.
                     if (coherEl) coherEl.style.display = 'flex';
                     coherVal.textContent = 'Waiting…';
-                    if (showDebug) {
-                        const amp = r.amplitudeBpm;
-                        const relLagSec = r.phaseDiffDeg != null ? (r.phaseDiffDeg / 360 * (rfbBreathPeriodMs() / 1000)) : null;
-                        const lagStr   = relLagSec != null ? `${relLagSec >= 0 ? '+' : ''}${( Math.round(relLagSec * 2) / 2).toFixed(1)}s` : '--';
-                        const lockStr  = r.freqLockReady ? `${Math.round(r.freqLock * 100)}%` : '--';
-                        dbg.textContent = `c:${Math.round(r.coherence * 100)} f:${(r.peakFreq * 60).toFixed(1)}bpm ampl:${amp.toFixed(1)} lock:${lockStr} lag:${lagStr} streak:${rfbEngagementStreak}/${RFB_ENGAGE_STREAK}`;
-                    }
+                    if (showDebug) dbg.textContent = rfbDebugText(r);
                 } else {
                     // Engaged (or Resonance Breathing): show RI and record.
                     if (coherEl) coherEl.style.display = 'flex';
@@ -1919,12 +1918,7 @@ function updateCoherenceDisplay() {
                     coherVal.textContent = riPct > 0
                         ? `${riPct} ${window.rfbRating(riPct, true)}`
                         : window.rfbRating(0, true);
-                    if (showDebug) {
-                        const relLagSec = r.phaseDiffDeg != null ? (r.phaseDiffDeg / 360 * (rfbBreathPeriodMs() / 1000)) : null;
-                        const lagStr   = relLagSec != null ? `${relLagSec >= 0 ? '+' : ''}${( Math.round(relLagSec * 2) / 2).toFixed(1)}s` : '--';
-                        const lockStr  = r.freqLockReady ? `${Math.round(r.freqLock * 100)}%` : '--';
-                        dbg.textContent = `c:${Math.round(r.coherence * 100)} f:${(r.peakFreq * 60).toFixed(1)}bpm ampl:${amp.toFixed(1)} lock:${lockStr} lag:${lagStr}`;
-                    }
+                    if (showDebug) dbg.textContent = rfbDebugText(r);
                     // Recording starts only once engaged — keeps summary data honest.
                     if (isSessionRunning) rfbCoherenceRecording.push({
                         t:    sessionSeconds,
