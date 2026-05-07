@@ -1012,6 +1012,13 @@ let beatLog           = [];
 // Used to annotate the session summary even if the sensor recovers before end.
 let sessionPeakPSensor = 0;
 
+// HRV session extension: tracks seconds lost to sensor unreliability so the
+// countdown can be extended on recovery. Reset at session start.
+// _sensorUnreliableAccSec: seconds accumulated while warning is active this burst.
+// _sensorWasUnreliable:    state flag to detect the reliable → unreliable transition.
+let _sensorUnreliableAccSec = 0;
+let _sensorWasUnreliable    = false;
+
 // Breath timing helpers — read live globals so changes take effect immediately.
 function rfbBreathPeriodMs() {
     const i = (typeof RFB_INHALE_SEC !== 'undefined' && RFB_INHALE_SEC > 0) ? RFB_INHALE_SEC : 5;
@@ -1805,14 +1812,31 @@ function computeResonance() {
 // session type and state — runs whenever a BLE packet arrives.
 // Thresholds: HRV Reading 2% (matches score gate); all other contexts 5%
 // (RFB FFT and amplitude gate already self-protect; warning is transparency only).
+// For HRV sessions, seconds spent unreliable are accumulated and added back to
+// hrvSecondsRemaining on recovery, so the measurement window stays complete.
 function updateSensorWarning() {
     const cutoff          = Date.now() - 60000;
     const recentArtifacts = sensorArtifactLog.filter(ts => ts >= cutoff).length;
     const recentBeats     = beatLog.filter(ts => ts >= cutoff).length;
     const rollingPSensor  = recentBeats > 0 ? recentArtifacts / recentBeats : 0;
 
-    const threshold = isHRVReading ? 0.02 : 0.05;
-    const show      = hasRrData && isSessionRunning && rollingPSensor > threshold;
+    const threshold  = isHRVReading ? 0.02 : 0.05;
+    const unreliable = hasRrData && isSessionRunning && rollingPSensor > threshold;
+    const show       = unreliable;
+
+    // HRV session extension: accumulate lost seconds during unreliable bursts;
+    // restore them to the countdown on recovery so the measurement stays complete.
+    if (isHRVReading && isSessionRunning) {
+        if (unreliable) {
+            _sensorUnreliableAccSec++;
+            _sensorWasUnreliable = true;
+        } else if (_sensorWasUnreliable) {
+            // Just recovered — extend the remaining countdown by the lost seconds.
+            hrvSecondsRemaining  += _sensorUnreliableAccSec;
+            _sensorUnreliableAccSec = 0;
+            _sensorWasUnreliable    = false;
+        }
+    }
 
     let el = document.getElementById('rfbSensorWarning');
     if (!el) {
@@ -1822,8 +1846,8 @@ function updateSensorWarning() {
         const descEl = document.getElementById('stateDescription');
         if (descEl) descEl.insertAdjacentElement('afterend', el);
     }
-    el.style.display  = show ? '' : 'none';
-    el.textContent    = '💔 Sensor unreliable';
+    el.style.display = show ? '' : 'none';
+    el.textContent   = '💔 Sensor unreliable';
 }
 
 let _lastCoherenceUpdateTs = 0;
@@ -3180,6 +3204,7 @@ function startSession() {
     // Reset artifact counters and HRV index for fresh session
     sessionTotalBeats = 0; sessionSensorArtifacts = 0; sessionPhysioArtifacts = 0;
     sensorArtifactLog = []; beatLog = []; sessionPeakPSensor = 0;
+    _sensorUnreliableAccSec = 0; _sensorWasUnreliable = false;
     currentHRVIndex = null; _lastHRVDisplayTs = 0; _hrv60Stats = null;
     setRbDisplayMode(isResonanceBreathing || isHRVReading);
     if (isResonanceBreathing) {

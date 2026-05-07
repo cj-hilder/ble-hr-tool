@@ -164,7 +164,7 @@ window.RFB_STAR_LEVELS = {
                 : '';
             const sensorNote = s.hvSensorUnreliable
                 ? s.hvIndexFinal != null
-                    ? `<div class="hrv-card-short-note">⚠️ Sensor noise detected (peak ${s.hvSensorArtifactPct}% artifact rate). Score recorded after recovery.</div>`
+                    ? `<div class="hrv-card-short-note">⚠️ Sensor noise detected (peak ${s.hvSensorArtifactPct}% artifact rate). Session was lengthened to compensate.</div>`
                     : `<div class="hrv-card-short-note">💔 Score unavailable — signal too noisy (peak ${s.hvSensorArtifactPct}% artifact rate). Reposition the sensor and try again.</div>`
                 : '';
             html += `
