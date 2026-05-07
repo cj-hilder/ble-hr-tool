@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hr-pacer-v1.2.218';
+const CACHE_NAME = 'hr-pacer-v1.2.219';
 const ASSETS = [
     '/',
     '/index.html',
@@ -117,22 +117,35 @@ self.addEventListener('message', event => {
         const { duration } = event.data;
         const token = ++_notifToken;
         const deadline = Date.now() + duration;
+        let slot = 0; // alternates 0 → 1 → 0 → 1 …
 
         event.waitUntil(new Promise(resolve => {
             function buzz() {
                 if (_notifToken !== token || Date.now() >= deadline) {
-                    // Superseded or time elapsed — close and finish.
-                    self.registration.getNotifications({ tag: 'hr-alert' })
-                        .then(ns => { ns.forEach(n => n.close()); resolve(); });
+                    // Close both slots and finish.
+                    ['hr-inhale-0', 'hr-inhale-1'].forEach(tag =>
+                        self.registration.getNotifications({ tag })
+                            .then(ns => ns.forEach(n => n.close()))
+                    );
+                    resolve();
                     return;
                 }
-                // Re-showing on the same tag replaces visually (no new shade entry)
-                // but triggers the system default vibration each time.
+
+                const showTag = `hr-inhale-${slot % 2}`;
+                const hideTag = `hr-inhale-${(slot + 1) % 2}`;
+                slot++;
+
+                // Show on new slot first (triggers vibration), then close old slot.
+                // Showing before closing means no gap in the notification shade.
                 self.registration.showNotification('Manawa Pace', {
                     body:               'Inhale',
-                    tag:                'hr-alert',
+                    tag:                showTag,
                     requireInteraction: false,
-                }).then(() => setTimeout(buzz, INHALE_BUZZ_INTERVAL_MS));
+                }).then(() => {
+                    self.registration.getNotifications({ tag: hideTag })
+                        .then(ns => ns.forEach(n => n.close()));
+                    setTimeout(buzz, INHALE_BUZZ_INTERVAL_MS);
+                });
             }
             buzz();
         }));
