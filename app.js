@@ -1945,8 +1945,10 @@ function updateCoherenceDisplay() {
 function buildInhaleVibration(inhaleSec) {
     // Pattern: opening pulse → accelerating buzz → closing pulse
     // Total duration fits within inhaleSec.
+    // on-ratio reduced (0.55 → 0.35) and opening/closing pulses shortened (120 → 70 ms)
+    // to reduce perceived intensity while keeping the frequency sweep unchanged.
     const totalMs    = Math.round(inhaleSec * 1000);
-    const openPulse  = 120, openGap = 40, closePulse = 120;
+    const openPulse  = 70, openGap = 40, closePulse = 70;
     const buzzMs     = totalMs - openPulse - openGap - closePulse;
     const pattern    = [openPulse, openGap];
     if (buzzMs > 0) {
@@ -1956,8 +1958,8 @@ function buildInhaleVibration(inhaleSec) {
         while (elapsed < buzzMs - closePulse - 20) {
             const t      = Math.min(1, elapsed / buzzMs);
             const period = startPeriod + (endPeriod - startPeriod) * t;
-            const on     = Math.max(15, Math.round(period * 0.55));
-            const off    = Math.max(10, Math.round(period * 0.45));
+            const on     = Math.max(10, Math.round(period * 0.35));
+            const off    = Math.max(10, Math.round(period * 0.65));
             pattern.push(on, off);
             elapsed += on + off;
         }
