@@ -1467,10 +1467,10 @@ function updateMediaSessionPlaybackState() {
 // sound via the keep-alive AudioContext which remains active.
 // The visible notification always appears regardless of vibration/sound settings.
 
-function _postSwNotify(text, vibrate, duration) {
+function _postSwNotify(text, vibrate, duration, silent = false) {
     if (!('serviceWorker' in navigator) || !navigator.serviceWorker.controller) return;
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
-    navigator.serviceWorker.controller.postMessage({ type: 'NOTIFY', text, vibrate, duration });
+    navigator.serviceWorker.controller.postMessage({ type: 'NOTIFY', text, vibrate, duration, silent });
 }
 
 function triggerNotification(stateText) {
@@ -2030,16 +2030,21 @@ function startInhaleVibration(inhaleSec) {
 }
 
 // Unified inhale alert — sound always via AudioContext (keep-alive keeps it active);
-// vibration and visible notification routed through SW when app is not visible.
-// notifDurationSec: how long to show the notification (= remaining inhale time).
+// when backgrounded, posts NOTIFY_INHALE to the SW which re-issues the notification
+// every INHALE_BUZZ_INTERVAL_MS, triggering the system default vibration each time
+// for the full inhale duration.  Custom patterns are not honoured by Android via SW.
+// notifDurationSec: how long the repeated buzzing should run (= remaining inhale time).
 function triggerInhaleAlert(inhaleSec, notifDurationSec) {
     startInhaleSound(inhaleSec);
     if (document.visibilityState === 'visible') {
         startInhaleVibration(inhaleSec);
     } else {
-        const vibPattern = (typeof RFB_VIBRATION !== 'undefined' && RFB_VIBRATION)
-            ? buildInhaleVibration(inhaleSec) : [];
-        _postSwNotify('Inhale', vibPattern, Math.round(notifDurationSec * 1000));
+        if (!('serviceWorker' in navigator) || !navigator.serviceWorker.controller) return;
+        if (!('Notification' in window) || Notification.permission !== 'granted') return;
+        navigator.serviceWorker.controller.postMessage({
+            type:     'NOTIFY_INHALE',
+            duration: Math.round(notifDurationSec * 1000),
+        });
     }
 }
 

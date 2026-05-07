@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hr-pacer-v1.2.217';
+const CACHE_NAME = 'hr-pacer-v1.2.218';
 const ASSETS = [
     '/',
     '/index.html',
@@ -73,33 +73,68 @@ self.addEventListener('fetch', event => {
 });
 
 // ─── Alert notifications ───────────────────────────────────────────────────────
-// When the app is not visible, triggerNotification() and triggerInhaleAlert() in
-// app.js post a NOTIFY message here.  We show a notification (providing the
-// mandatory visible flash), apply the vibration pattern, then auto-close after
-// the requested duration.
+// Two message types:
 //
-// Stale-timer guard: an incrementing token ensures that a close-timer from an
-// older notification cannot prematurely dismiss a newer one (e.g. a state-change
-// notification arriving while an inhale notification is still on-screen).
+// NOTIFY       — single notification (state changes, session end).  Shows once,
+//                applies vibration pattern per settings, auto-closes after duration.
+//
+// NOTIFY_INHALE — repeated notification for the RFB inhale period.  Android ignores
+//                custom vibrate patterns, so we re-show the same notification every
+//                INHALE_BUZZ_INTERVAL_MS.  Each re-show on the same tag triggers the
+//                system default vibration without adding a new shade entry.  Stops
+//                automatically after duration ms, or immediately if superseded.
+//
+// Stale-timer guard: _notifToken increments on every incoming message so that a
+// close-timer or buzz-loop from an older notification cannot affect a newer one.
 let _notifToken = 0;
+const INHALE_BUZZ_INTERVAL_MS = 600;
 
 self.addEventListener('message', event => {
-    if (!event.data || event.data.type !== 'NOTIFY') return;
-    const { text, vibrate, duration } = event.data;
-    const token = ++_notifToken;
+    if (!event.data) return;
+    const { type } = event.data;
 
-    event.waitUntil(
-        self.registration.showNotification('Manawa Pace', {
-            body:               text,
-            tag:                'hr-alert',   // single slot — newer replaces older
-            vibrate:            vibrate || [],
-            requireInteraction: false,
-        }).then(() => new Promise(resolve => {
-            setTimeout(() => {
-                if (_notifToken !== token) { resolve(); return; } // superseded
-                self.registration.getNotifications({ tag: 'hr-alert' })
-                    .then(ns => { ns.forEach(n => n.close()); resolve(); });
-            }, Math.max(duration, 0));
-        }))
-    );
+    if (type === 'NOTIFY') {
+        const { text, vibrate, duration, silent } = event.data;
+        const token = ++_notifToken;
+
+        event.waitUntil(
+            self.registration.showNotification('Manawa Pace', {
+                body:               text,
+                tag:                'hr-alert',
+                vibrate:            vibrate || [],
+                silent:             silent  || false,
+                requireInteraction: false,
+            }).then(() => new Promise(resolve => {
+                setTimeout(() => {
+                    if (_notifToken !== token) { resolve(); return; }
+                    self.registration.getNotifications({ tag: 'hr-alert' })
+                        .then(ns => { ns.forEach(n => n.close()); resolve(); });
+                }, Math.max(duration, 0));
+            }))
+        );
+
+    } else if (type === 'NOTIFY_INHALE') {
+        const { duration } = event.data;
+        const token = ++_notifToken;
+        const deadline = Date.now() + duration;
+
+        event.waitUntil(new Promise(resolve => {
+            function buzz() {
+                if (_notifToken !== token || Date.now() >= deadline) {
+                    // Superseded or time elapsed — close and finish.
+                    self.registration.getNotifications({ tag: 'hr-alert' })
+                        .then(ns => { ns.forEach(n => n.close()); resolve(); });
+                    return;
+                }
+                // Re-showing on the same tag replaces visually (no new shade entry)
+                // but triggers the system default vibration each time.
+                self.registration.showNotification('Manawa Pace', {
+                    body:               'Inhale',
+                    tag:                'hr-alert',
+                    requireInteraction: false,
+                }).then(() => setTimeout(buzz, INHALE_BUZZ_INTERVAL_MS));
+            }
+            buzz();
+        }));
+    }
 });
