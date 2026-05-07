@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hr-pacer-v1.2.216';
+const CACHE_NAME = 'hr-pacer-v1.2.217';
 const ASSETS = [
     '/',
     '/index.html',
@@ -69,5 +69,37 @@ self.addEventListener('fetch', event => {
                     }
                 });
             })
+    );
+});
+
+// ─── Alert notifications ───────────────────────────────────────────────────────
+// When the app is not visible, triggerNotification() and triggerInhaleAlert() in
+// app.js post a NOTIFY message here.  We show a notification (providing the
+// mandatory visible flash), apply the vibration pattern, then auto-close after
+// the requested duration.
+//
+// Stale-timer guard: an incrementing token ensures that a close-timer from an
+// older notification cannot prematurely dismiss a newer one (e.g. a state-change
+// notification arriving while an inhale notification is still on-screen).
+let _notifToken = 0;
+
+self.addEventListener('message', event => {
+    if (!event.data || event.data.type !== 'NOTIFY') return;
+    const { text, vibrate, duration } = event.data;
+    const token = ++_notifToken;
+
+    event.waitUntil(
+        self.registration.showNotification('Manawa Pace', {
+            body:               text,
+            tag:                'hr-alert',   // single slot — newer replaces older
+            vibrate:            vibrate || [],
+            requireInteraction: false,
+        }).then(() => new Promise(resolve => {
+            setTimeout(() => {
+                if (_notifToken !== token) { resolve(); return; } // superseded
+                self.registration.getNotifications({ tag: 'hr-alert' })
+                    .then(ns => { ns.forEach(n => n.close()); resolve(); });
+            }, Math.max(duration, 0));
+        }))
     );
 });

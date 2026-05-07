@@ -1393,6 +1393,13 @@ function startBackgroundKeepAlive() {
     }
     if (audioCtx.state === 'suspended') audioCtx.resume();
 
+    // Request notification permission now, while a user gesture is active.
+    // SW alert notifications require permission to be granted before the app
+    // goes to background — a background permission prompt is never shown.
+    if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission();
+    }
+
     // Idempotent — don't stack oscillators on repeated calls.
     if (_keepAliveOsc) return;
 
@@ -1453,17 +1460,39 @@ function updateMediaSessionPlaybackState() {
     navigator.mediaSession.playbackState =
         (isSessionRunning && currentState === 'pause') ? 'paused' : 'playing';
 }
-function triggerNotification() {
-    const vibLevel  = (typeof ALERT_VIBRATION !== 'undefined') ? ALERT_VIBRATION : 1;
-    const soundLevel = (typeof ALERT_SOUND    !== 'undefined') ? ALERT_SOUND     : 1;
+// ─── Alert routing ────────────────────────────────────────────────────────────
+// When the app is visible: vibrate directly + play sound (no visible notification).
+// When the app is not visible: post to the SW so it shows a brief notification
+// (mandatory when backgrounded) with the correct vibration pattern, then play
+// sound via the keep-alive AudioContext which remains active.
+// The visible notification always appears regardless of vibration/sound settings.
 
-    // Vibration
-    if ('vibrate' in navigator) {
-        if      (vibLevel === 1) navigator.vibrate([300, 100, 300]);
-        else if (vibLevel === 2) navigator.vibrate([150, 60, 150, 60, 150, 60, 400]);
+function _postSwNotify(text, vibrate, duration) {
+    if (!('serviceWorker' in navigator) || !navigator.serviceWorker.controller) return;
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    navigator.serviceWorker.controller.postMessage({ type: 'NOTIFY', text, vibrate, duration });
+}
+
+function triggerNotification(stateText) {
+    const vibLevel   = (typeof ALERT_VIBRATION !== 'undefined') ? ALERT_VIBRATION : 1;
+    const soundLevel = (typeof ALERT_SOUND     !== 'undefined') ? ALERT_SOUND     : 1;
+
+    if (document.visibilityState === 'visible') {
+        // Existing behaviour: vibrate directly, no visible notification.
+        if ('vibrate' in navigator) {
+            if      (vibLevel === 1) navigator.vibrate([300, 100, 300]);
+            else if (vibLevel === 2) navigator.vibrate([150, 60, 150, 60, 150, 60, 400]);
+        }
+    } else {
+        // Background: visible notification always shown; vibration per settings.
+        const vibPattern = vibLevel === 2 ? [150, 60, 150, 60, 150, 60, 400]
+                         : vibLevel === 1 ? [300, 100, 300]
+                         : [];
+        _postSwNotify(stateText, vibPattern, 3000);
     }
 
-    // Sound
+    // Sound: AudioContext is kept alive by the keep-alive oscillator so this works
+    // in both visible and hidden states.
     if (soundLevel === 0) return;
     try {
         if (!audioCtx) { const AC = window.AudioContext || window.webkitAudioContext; audioCtx = new AC(); }
@@ -2000,6 +2029,20 @@ function startInhaleVibration(inhaleSec) {
     if ('vibrate' in navigator) navigator.vibrate(buildInhaleVibration(inhaleSec));
 }
 
+// Unified inhale alert — sound always via AudioContext (keep-alive keeps it active);
+// vibration and visible notification routed through SW when app is not visible.
+// notifDurationSec: how long to show the notification (= remaining inhale time).
+function triggerInhaleAlert(inhaleSec, notifDurationSec) {
+    startInhaleSound(inhaleSec);
+    if (document.visibilityState === 'visible') {
+        startInhaleVibration(inhaleSec);
+    } else {
+        const vibPattern = (typeof RFB_VIBRATION !== 'undefined' && RFB_VIBRATION)
+            ? buildInhaleVibration(inhaleSec) : [];
+        _postSwNotify('Inhale', vibPattern, Math.round(notifDurationSec * 1000));
+    }
+}
+
 // ─── RFB Timeout Scheduler ────────────────────────────────────────────────────
 // Sound and vibration are scheduled using absolute time (rfbWallStartTime) so they
 // stay locked to the same phase as the graph overlay and dot animation regardless
@@ -2021,8 +2064,7 @@ function rfbScheduleNextCycle() {
         // then schedule the next full inhale at the top of the next cycle.
         const remainingSec = (inhaleMs - cyclePos) / 1000;
         if (remainingSec > 0.25) {
-            startInhaleSound(remainingSec);
-            startInhaleVibration(iSec);   // always use full pattern — it self-terminates
+            triggerInhaleAlert(remainingSec, remainingSec);
         }
         const msToNextInhale = totalMs - cyclePos;
         rfbScheduleTimer = setTimeout(rfbScheduleNextCycle, msToNextInhale);
@@ -2032,8 +2074,7 @@ function rfbScheduleNextCycle() {
         rfbScheduleTimer = setTimeout(() => {
             if (currentState !== 'reset' || !(typeof RFB_ENABLED !== 'undefined' && RFB_ENABLED)) return;
             const dur = rfbGetInhaleSec();
-            startInhaleSound(dur);
-            startInhaleVibration(dur);
+            triggerInhaleAlert(dur, dur);
             // After this inhale ends, re-enter scheduler (will find us mid-exhale → schedule next)
             rfbScheduleTimer = setTimeout(rfbScheduleNextCycle, dur * 1000);
         }, msToNextInhale);
@@ -2220,7 +2261,12 @@ function switchState(newState, isManual) {
                          : newState;
     document.getElementById('stateIndicator').className = `state-dot ${indicatorClass}`;
     updateSpeedometer(latestHR);
-    if (newState !== 'pause' && newState !== 'stopped') triggerNotification();
+    if (newState !== 'pause' && newState !== 'stopped') {
+        const notifLabel = newState === 'active' ? 'Active'
+                         : newState === 'rest'   ? 'Rest'
+                         :                         'Reset';
+        triggerNotification(notifLabel);
+    }
     updateMediaSessionPlaybackState();
 
     const descEl = document.getElementById('stateDescription');
@@ -2305,7 +2351,7 @@ function updateTimers(increment) {
                 const modal = document.getElementById('rbTimeUpModal');
                 if (!modal.classList.contains('visible')) {
                     rbSessionEndSeconds = sessionSeconds;
-                    triggerNotification();
+                    triggerNotification('Session complete');
                     modal.classList.add('visible');
                 }
             } else {
@@ -2328,7 +2374,7 @@ function updateTimers(increment) {
         hrvSecondsRemaining -= increment;
         if (hrvSecondsRemaining <= 0) {
             hrvSecondsRemaining = 0;
-            triggerNotification();
+            triggerNotification('Session complete');
             finishSession();
             return;
         }
