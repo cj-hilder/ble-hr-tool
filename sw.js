@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hr-pacer-v1.2.220';
+const CACHE_NAME = 'hr-pacer-v1.2.221';
 const ASSETS = [
     '/',
     '/index.html',
@@ -114,22 +114,23 @@ self.addEventListener('message', event => {
         );
 
     } else if (type === 'NOTIFY_BUZZ') {
-        // Close any existing hr-alert, then show fresh — the fresh show triggers
-        // the system default vibration reliably.
+        // No tag: each showNotification is unambiguously new to the system,
+        // guaranteeing vibration.  Close all existing notifications first to
+        // prevent accumulation in the shade.  Promise.all ensures all closes
+        // complete before the new show fires.
         event.waitUntil(
-            self.registration.getNotifications({ tag: 'hr-alert' })
-                .then(ns => ns.forEach(n => n.close()))
+            self.registration.getNotifications()
+                .then(ns => Promise.all(ns.map(n => n.close())))
                 .then(() => self.registration.showNotification('Manawa Pace', {
                     body:               'Inhale',
-                    tag:                'hr-alert',
                     requireInteraction: false,
                 }))
         );
 
     } else if (type === 'CLOSE_ALERT') {
         event.waitUntil(
-            self.registration.getNotifications({ tag: 'hr-alert' })
-                .then(ns => ns.forEach(n => n.close()))
+            self.registration.getNotifications()
+                .then(ns => Promise.all(ns.map(n => n.close())))
         );
     }
 });
