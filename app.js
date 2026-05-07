@@ -978,6 +978,7 @@ let rfbWallStartTime = 0;      // phase anchor: set once per session, never rese
 let rfbSessionClockStart = 0;  // Date.now() of the very first RFB entry this session (0 = not yet started)
 let rfbAnimFrame = null;
 let rfbScheduleTimer = null;
+let rfbExhaleTimer   = null;   // separate timer so exhale alerts can be cancelled cleanly
 let rfbAudioNodes = null;
 
 // ─── HRV Reading ──────────────────────────────────────────────────────────────
@@ -1474,7 +1475,6 @@ function _postSwNotify(text, vibrate, duration, silent = false) {
 }
 
 function triggerNotification(stateText) {
-    _stopInhaleNotif(); // cancel any running inhale buzz loop before showing state alert
     const vibLevel   = (typeof ALERT_VIBRATION !== 'undefined') ? ALERT_VIBRATION : 1;
     const soundLevel = (typeof ALERT_SOUND     !== 'undefined') ? ALERT_SOUND     : 1;
 
@@ -2023,7 +2023,6 @@ function stopInhaleSound() {
         try { rfbAudioNodes.source.stop(); } catch (e) {}
         rfbAudioNodes = null;
     }
-    _stopInhaleNotif(); // cancel any running SW buzz loop
 }
 
 function startInhaleVibration(inhaleSec) {
@@ -2031,41 +2030,29 @@ function startInhaleVibration(inhaleSec) {
     if ('vibrate' in navigator) navigator.vibrate(buildInhaleVibration(inhaleSec));
 }
 
-// ─── Background inhale notification timer ────────────────────────────────────
-// The app controls the buzz interval (reliable — kept alive by audio keep-alive)
-// rather than relying on a long-running SW timer.  Each NOTIFY_BUZZ message
-// causes the SW to close-then-show on the same tag, guaranteeing a fresh
-// notification to the system and reliably triggering the default vibration.
-const INHALE_BUZZ_INTERVAL_MS = 600;
-let _inhaleNotifTimer = null;
-
-function _stopInhaleNotif() {
-    if (_inhaleNotifTimer) { clearInterval(_inhaleNotifTimer); _inhaleNotifTimer = null; }
-    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-        navigator.serviceWorker.controller.postMessage({ type: 'CLOSE_ALERT' });
-    }
+// ─── RFB background alerts ────────────────────────────────────────────────────
+// When the app is visible: sound + vibration as before, no notification.
+// When the app is not visible: single SW notification (3 s) + single default
+// vibration pulse.  Repeated-buzz approaches proved unreliable on Android, so
+// we accept one pulse per breath phase as the background cue.
+function _rfbVibPattern() {
+    return (typeof RFB_VIBRATION !== 'undefined' && RFB_VIBRATION) ? [300, 100, 300] : [];
 }
 
-// Unified inhale alert — sound always via AudioContext (keep-alive keeps it active).
-// When backgrounded: app posts NOTIFY_BUZZ every INHALE_BUZZ_INTERVAL_MS for
-// notifDurationSec seconds; SW close-then-shows each time to guarantee vibration.
-// notifDurationSec: how long buzzing should run (= remaining inhale time).
-function triggerInhaleAlert(inhaleSec, notifDurationSec) {
-    startInhaleSound(inhaleSec); // internally calls stopInhaleSound → _stopInhaleNotif
+// Unified inhale alert — sound via AudioContext; notification via SW when hidden.
+function triggerInhaleAlert(inhaleSec) {
+    startInhaleSound(inhaleSec);
     if (document.visibilityState === 'visible') {
         startInhaleVibration(inhaleSec);
     } else {
-        if (!('serviceWorker' in navigator) || !navigator.serviceWorker.controller) return;
-        if (!('Notification' in window) || Notification.permission !== 'granted') return;
-        const sw = navigator.serviceWorker.controller;
-        const endMs = Date.now() + notifDurationSec * 1000;
-        sw.postMessage({ type: 'NOTIFY_BUZZ' }); // first buzz immediately
-        _inhaleNotifTimer = setInterval(() => {
-            if (Date.now() >= endMs || !navigator.serviceWorker.controller) {
-                _stopInhaleNotif(); return;
-            }
-            navigator.serviceWorker.controller.postMessage({ type: 'NOTIFY_BUZZ' });
-        }, INHALE_BUZZ_INTERVAL_MS);
+        _postSwNotify('Inhale', _rfbVibPattern(), 3000);
+    }
+}
+
+// Exhale alert — only active when hidden (visible UI has no exhale cue).
+function triggerExhaleAlert() {
+    if (document.visibilityState !== 'visible') {
+        _postSwNotify('Exhale', _rfbVibPattern(), 3000);
     }
 }
 
@@ -2073,8 +2060,12 @@ function triggerInhaleAlert(inhaleSec, notifDurationSec) {
 // Sound and vibration are scheduled using absolute time (rfbWallStartTime) so they
 // stay locked to the same phase as the graph overlay and dot animation regardless
 // of rAF jitter or tab backgrounding.
+//
+// rfbScheduleTimer  — fires at each inhale start
+// rfbExhaleTimer    — fires at each exhale start (scheduled alongside rfbScheduleTimer)
 function rfbScheduleNextCycle() {
     clearTimeout(rfbScheduleTimer); rfbScheduleTimer = null;
+    clearTimeout(rfbExhaleTimer);   rfbExhaleTimer   = null;
     if (currentState !== 'reset' || !(typeof RFB_ENABLED !== 'undefined' && RFB_ENABLED)) return;
 
     const iSec     = rfbGetInhaleSec();
@@ -2086,22 +2077,31 @@ function rfbScheduleNextCycle() {
     const cyclePos = elapsed - cycleIdx * totalMs;   // ms into current cycle
 
     if (cyclePos < inhaleMs) {
-        // Mid-inhale on first call (RFB just entered): fire sound for remaining inhale,
-        // then schedule the next full inhale at the top of the next cycle.
+        // Mid-inhale on first call (RFB just entered): fire alert for remaining inhale.
+        // Schedule exhale alert when this inhale ends, and the next full cycle thereafter.
         const remainingSec = (inhaleMs - cyclePos) / 1000;
-        if (remainingSec > 0.25) {
-            triggerInhaleAlert(remainingSec, remainingSec);
-        }
-        const msToNextInhale = totalMs - cyclePos;
+        if (remainingSec > 0.25) triggerInhaleAlert(remainingSec);
+        const msToExhale      = inhaleMs - cyclePos;
+        const msToNextInhale  = totalMs  - cyclePos;
+        rfbExhaleTimer   = setTimeout(() => {
+            if (currentState === 'reset' && (typeof RFB_ENABLED !== 'undefined' && RFB_ENABLED)) {
+                triggerExhaleAlert();
+            }
+        }, msToExhale);
         rfbScheduleTimer = setTimeout(rfbScheduleNextCycle, msToNextInhale);
     } else {
-        // In exhale: wait for next inhale start.
+        // In exhale: wait for next inhale start, then alternate inhale → exhale → …
         const msToNextInhale = totalMs - cyclePos;
         rfbScheduleTimer = setTimeout(() => {
             if (currentState !== 'reset' || !(typeof RFB_ENABLED !== 'undefined' && RFB_ENABLED)) return;
             const dur = rfbGetInhaleSec();
-            triggerInhaleAlert(dur, dur);
-            // After this inhale ends, re-enter scheduler (will find us mid-exhale → schedule next)
+            triggerInhaleAlert(dur);
+            // Schedule exhale alert when this inhale ends, and the next cycle thereafter.
+            rfbExhaleTimer   = setTimeout(() => {
+                if (currentState === 'reset' && (typeof RFB_ENABLED !== 'undefined' && RFB_ENABLED)) {
+                    triggerExhaleAlert();
+                }
+            }, dur * 1000);
             rfbScheduleTimer = setTimeout(rfbScheduleNextCycle, dur * 1000);
         }, msToNextInhale);
     }
@@ -2153,6 +2153,7 @@ function startRfbAnimation() {
 function stopRfbAnimation() {
     if (rfbAnimFrame) { cancelAnimationFrame(rfbAnimFrame); rfbAnimFrame = null; }
     clearTimeout(rfbScheduleTimer); rfbScheduleTimer = null;
+    clearTimeout(rfbExhaleTimer);   rfbExhaleTimer   = null;
     const indicator = document.getElementById('stateIndicator');
     if (indicator) { indicator.style.transform = ''; indicator.style.filter = ''; }
     const progressEl = document.getElementById('rfbProgress');

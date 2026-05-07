@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hr-pacer-v1.2.221';
+const CACHE_NAME = 'hr-pacer-v1.2.222';
 const ASSETS = [
     '/',
     '/index.html',
@@ -73,64 +73,32 @@ self.addEventListener('fetch', event => {
 });
 
 // ─── Alert notifications ───────────────────────────────────────────────────────
-// Three message types:
+// Handles NOTIFY messages for state changes, session end, and RFB breath-phase
+// cues (Inhale / Exhale) when the app is not visible.  Shows a notification for
+// `duration` ms then auto-closes.
 //
-// NOTIFY       — single notification for state changes and session end.
-//                Shows once with vibration per settings, auto-closes after duration ms.
-//
-// NOTIFY_BUZZ  — one inhale buzz, sent repeatedly by the app at INHALE_BUZZ_INTERVAL_MS.
-//                App-side timing is reliable (kept alive by audio keep-alive).
-//                Close-then-show on the same tag guarantees a fresh notification each
-//                time, reliably triggering the system default vibration.
-//
-// CLOSE_ALERT  — close the hr-alert notification (called when inhale ends or is
-//                superseded by a state change).
-//
-// Stale-timer guard on NOTIFY: _notifToken prevents an older close-timer from
-// dismissing a newer state-change notification.
+// Stale-timer guard: _notifToken increments on each message so a close-timer
+// from an older notification cannot dismiss a newer one.
 let _notifToken = 0;
 
 self.addEventListener('message', event => {
-    if (!event.data) return;
-    const { type } = event.data;
+    if (!event.data || event.data.type !== 'NOTIFY') return;
+    const { text, vibrate, duration, silent } = event.data;
+    const token = ++_notifToken;
 
-    if (type === 'NOTIFY') {
-        const { text, vibrate, duration, silent } = event.data;
-        const token = ++_notifToken;
-        event.waitUntil(
-            self.registration.showNotification('Manawa Pace', {
-                body:               text,
-                tag:                'hr-alert',
-                vibrate:            vibrate || [],
-                silent:             silent  || false,
-                requireInteraction: false,
-            }).then(() => new Promise(resolve => {
-                setTimeout(() => {
-                    if (_notifToken !== token) { resolve(); return; }
-                    self.registration.getNotifications({ tag: 'hr-alert' })
-                        .then(ns => { ns.forEach(n => n.close()); resolve(); });
-                }, Math.max(duration, 0));
-            }))
-        );
-
-    } else if (type === 'NOTIFY_BUZZ') {
-        // No tag: each showNotification is unambiguously new to the system,
-        // guaranteeing vibration.  Close all existing notifications first to
-        // prevent accumulation in the shade.  Promise.all ensures all closes
-        // complete before the new show fires.
-        event.waitUntil(
-            self.registration.getNotifications()
-                .then(ns => Promise.all(ns.map(n => n.close())))
-                .then(() => self.registration.showNotification('Manawa Pace', {
-                    body:               'Inhale',
-                    requireInteraction: false,
-                }))
-        );
-
-    } else if (type === 'CLOSE_ALERT') {
-        event.waitUntil(
-            self.registration.getNotifications()
-                .then(ns => Promise.all(ns.map(n => n.close())))
-        );
-    }
+    event.waitUntil(
+        self.registration.showNotification('Manawa Pace', {
+            body:               text,
+            tag:                'hr-alert',
+            vibrate:            vibrate || [],
+            silent:             silent  || false,
+            requireInteraction: false,
+        }).then(() => new Promise(resolve => {
+            setTimeout(() => {
+                if (_notifToken !== token) { resolve(); return; }
+                self.registration.getNotifications({ tag: 'hr-alert' })
+                    .then(ns => { ns.forEach(n => n.close()); resolve(); });
+            }, Math.max(duration, 0));
+        }))
+    );
 });
