@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hr-pacer-v1.2.219';
+const CACHE_NAME = 'hr-pacer-v1.2.220';
 const ASSETS = [
     '/',
     '/index.html',
@@ -73,21 +73,22 @@ self.addEventListener('fetch', event => {
 });
 
 // ─── Alert notifications ───────────────────────────────────────────────────────
-// Two message types:
+// Three message types:
 //
-// NOTIFY       — single notification (state changes, session end).  Shows once,
-//                applies vibration pattern per settings, auto-closes after duration.
+// NOTIFY       — single notification for state changes and session end.
+//                Shows once with vibration per settings, auto-closes after duration ms.
 //
-// NOTIFY_INHALE — repeated notification for the RFB inhale period.  Android ignores
-//                custom vibrate patterns, so we re-show the same notification every
-//                INHALE_BUZZ_INTERVAL_MS.  Each re-show on the same tag triggers the
-//                system default vibration without adding a new shade entry.  Stops
-//                automatically after duration ms, or immediately if superseded.
+// NOTIFY_BUZZ  — one inhale buzz, sent repeatedly by the app at INHALE_BUZZ_INTERVAL_MS.
+//                App-side timing is reliable (kept alive by audio keep-alive).
+//                Close-then-show on the same tag guarantees a fresh notification each
+//                time, reliably triggering the system default vibration.
 //
-// Stale-timer guard: _notifToken increments on every incoming message so that a
-// close-timer or buzz-loop from an older notification cannot affect a newer one.
+// CLOSE_ALERT  — close the hr-alert notification (called when inhale ends or is
+//                superseded by a state change).
+//
+// Stale-timer guard on NOTIFY: _notifToken prevents an older close-timer from
+// dismissing a newer state-change notification.
 let _notifToken = 0;
-const INHALE_BUZZ_INTERVAL_MS = 600;
 
 self.addEventListener('message', event => {
     if (!event.data) return;
@@ -96,7 +97,6 @@ self.addEventListener('message', event => {
     if (type === 'NOTIFY') {
         const { text, vibrate, duration, silent } = event.data;
         const token = ++_notifToken;
-
         event.waitUntil(
             self.registration.showNotification('Manawa Pace', {
                 body:               text,
@@ -113,41 +113,23 @@ self.addEventListener('message', event => {
             }))
         );
 
-    } else if (type === 'NOTIFY_INHALE') {
-        const { duration } = event.data;
-        const token = ++_notifToken;
-        const deadline = Date.now() + duration;
-        let slot = 0; // alternates 0 → 1 → 0 → 1 …
-
-        event.waitUntil(new Promise(resolve => {
-            function buzz() {
-                if (_notifToken !== token || Date.now() >= deadline) {
-                    // Close both slots and finish.
-                    ['hr-inhale-0', 'hr-inhale-1'].forEach(tag =>
-                        self.registration.getNotifications({ tag })
-                            .then(ns => ns.forEach(n => n.close()))
-                    );
-                    resolve();
-                    return;
-                }
-
-                const showTag = `hr-inhale-${slot % 2}`;
-                const hideTag = `hr-inhale-${(slot + 1) % 2}`;
-                slot++;
-
-                // Show on new slot first (triggers vibration), then close old slot.
-                // Showing before closing means no gap in the notification shade.
-                self.registration.showNotification('Manawa Pace', {
+    } else if (type === 'NOTIFY_BUZZ') {
+        // Close any existing hr-alert, then show fresh — the fresh show triggers
+        // the system default vibration reliably.
+        event.waitUntil(
+            self.registration.getNotifications({ tag: 'hr-alert' })
+                .then(ns => ns.forEach(n => n.close()))
+                .then(() => self.registration.showNotification('Manawa Pace', {
                     body:               'Inhale',
-                    tag:                showTag,
+                    tag:                'hr-alert',
                     requireInteraction: false,
-                }).then(() => {
-                    self.registration.getNotifications({ tag: hideTag })
-                        .then(ns => ns.forEach(n => n.close()));
-                    setTimeout(buzz, INHALE_BUZZ_INTERVAL_MS);
-                });
-            }
-            buzz();
-        }));
+                }))
+        );
+
+    } else if (type === 'CLOSE_ALERT') {
+        event.waitUntil(
+            self.registration.getNotifications({ tag: 'hr-alert' })
+                .then(ns => ns.forEach(n => n.close()))
+        );
     }
 });

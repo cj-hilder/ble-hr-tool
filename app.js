@@ -1474,6 +1474,7 @@ function _postSwNotify(text, vibrate, duration, silent = false) {
 }
 
 function triggerNotification(stateText) {
+    _stopInhaleNotif(); // cancel any running inhale buzz loop before showing state alert
     const vibLevel   = (typeof ALERT_VIBRATION !== 'undefined') ? ALERT_VIBRATION : 1;
     const soundLevel = (typeof ALERT_SOUND     !== 'undefined') ? ALERT_SOUND     : 1;
 
@@ -2022,6 +2023,7 @@ function stopInhaleSound() {
         try { rfbAudioNodes.source.stop(); } catch (e) {}
         rfbAudioNodes = null;
     }
+    _stopInhaleNotif(); // cancel any running SW buzz loop
 }
 
 function startInhaleVibration(inhaleSec) {
@@ -2029,22 +2031,41 @@ function startInhaleVibration(inhaleSec) {
     if ('vibrate' in navigator) navigator.vibrate(buildInhaleVibration(inhaleSec));
 }
 
-// Unified inhale alert — sound always via AudioContext (keep-alive keeps it active);
-// when backgrounded, posts NOTIFY_INHALE to the SW which re-issues the notification
-// every INHALE_BUZZ_INTERVAL_MS, triggering the system default vibration each time
-// for the full inhale duration.  Custom patterns are not honoured by Android via SW.
-// notifDurationSec: how long the repeated buzzing should run (= remaining inhale time).
+// ─── Background inhale notification timer ────────────────────────────────────
+// The app controls the buzz interval (reliable — kept alive by audio keep-alive)
+// rather than relying on a long-running SW timer.  Each NOTIFY_BUZZ message
+// causes the SW to close-then-show on the same tag, guaranteeing a fresh
+// notification to the system and reliably triggering the default vibration.
+const INHALE_BUZZ_INTERVAL_MS = 600;
+let _inhaleNotifTimer = null;
+
+function _stopInhaleNotif() {
+    if (_inhaleNotifTimer) { clearInterval(_inhaleNotifTimer); _inhaleNotifTimer = null; }
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({ type: 'CLOSE_ALERT' });
+    }
+}
+
+// Unified inhale alert — sound always via AudioContext (keep-alive keeps it active).
+// When backgrounded: app posts NOTIFY_BUZZ every INHALE_BUZZ_INTERVAL_MS for
+// notifDurationSec seconds; SW close-then-shows each time to guarantee vibration.
+// notifDurationSec: how long buzzing should run (= remaining inhale time).
 function triggerInhaleAlert(inhaleSec, notifDurationSec) {
-    startInhaleSound(inhaleSec);
+    startInhaleSound(inhaleSec); // internally calls stopInhaleSound → _stopInhaleNotif
     if (document.visibilityState === 'visible') {
         startInhaleVibration(inhaleSec);
     } else {
         if (!('serviceWorker' in navigator) || !navigator.serviceWorker.controller) return;
         if (!('Notification' in window) || Notification.permission !== 'granted') return;
-        navigator.serviceWorker.controller.postMessage({
-            type:     'NOTIFY_INHALE',
-            duration: Math.round(notifDurationSec * 1000),
-        });
+        const sw = navigator.serviceWorker.controller;
+        const endMs = Date.now() + notifDurationSec * 1000;
+        sw.postMessage({ type: 'NOTIFY_BUZZ' }); // first buzz immediately
+        _inhaleNotifTimer = setInterval(() => {
+            if (Date.now() >= endMs || !navigator.serviceWorker.controller) {
+                _stopInhaleNotif(); return;
+            }
+            navigator.serviceWorker.controller.postMessage({ type: 'NOTIFY_BUZZ' });
+        }, INHALE_BUZZ_INTERVAL_MS);
     }
 }
 
