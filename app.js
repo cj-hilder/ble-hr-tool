@@ -1875,8 +1875,7 @@ function rfbDebugText(r) {
         ? `${relLagSec >= 0 ? '+' : ''}${(Math.round(relLagSec * 2) / 2).toFixed(1)}` : '--';
     const amp     = r ? r.amplitudeBpm.toFixed(1) : '--';
     const tick    = (rfbEngaged || isResonanceBreathing) ? ' ✓' : '';
-    return `co:${co} freq:${freq}bpm lock:${lockStr} lag:${lagStr}sec ampl:${amp} 
-bpm${tick}`;
+    return `co:${co} freq:${freq}bpm lock:${lockStr} lag:${lagStr}sec ampl:${amp}bpm${tick}`;
 }
 
 function updateCoherenceDisplay() {
