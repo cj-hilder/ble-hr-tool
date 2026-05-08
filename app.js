@@ -1702,7 +1702,7 @@ function updateHRVDisplay() {
         if (pSensor > sessionPeakPSensor) sessionPeakPSensor = pSensor;
         coherVal.textContent = '--';
         coherVal.style.color = '#7c3aed';
-        if (showDebug) dbg.textContent = `sensor unreliable  pSensor:${(pSensor * 100).toFixed(1)}%`;
+        if (showDebug) dbg.textContent = `sensor unreliable - error rate:${(pSensor * 100).toFixed(1)}%`;
         currentHRVIndex = null;
         return;
     }
@@ -1875,7 +1875,7 @@ function rfbDebugText(r) {
         ? `${relLagSec >= 0 ? '+' : ''}${(Math.round(relLagSec * 2) / 2).toFixed(1)}` : '--';
     const amp     = r ? r.amplitudeBpm.toFixed(1) : '--';
     const tick    = (rfbEngaged || isResonanceBreathing) ? ' ✓' : '';
-    return `co: ${co} freq: ${freq} bpm lock: ${lockStr} lag: ${lagStr} sec ampl: ${amp} bpm${tick}`;
+    return `co:${co} freq:${freq} bpm lock:${lockStr} lag:${lagStr} sec ampl:${amp} bpm${tick}`;
 }
 
 function updateCoherenceDisplay() {

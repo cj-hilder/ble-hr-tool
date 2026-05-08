@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hr-pacer-v1.2.228';
+const CACHE_NAME = 'hr-pacer-v1.2.229';
 const ASSETS = [
     '/',
     '/index.html',
@@ -8,24 +8,35 @@ const ASSETS = [
     '/settings.js',
     '/summary.js',
     '/summary.css',
-    '/history.html',
+    '/history',
     '/history.js',
     '/history.css',
     '/manifest.json',
     '/icon.png',
-    '/quick_start_guide.html',
-    '/battery_settings_guide. html',
-    '/about.html',
+    '/quick_start_guide',
+    '/battery_settings_guide',
+    '/about',
     '/marked.min.js',
     '/README.md',
 ];
 
-// Install: pre-cache assets, but don't crash if one fails
+// Strip .html to get the canonical cache key, so lookups work regardless of
+// whether the server redirects /page.html → /page (e.g. Cloudflare) or serves
+// /page.html directly (e.g. Apache/Nginx).
+function canonicalPath(pathname) {
+    return pathname.endsWith('.html') ? pathname.slice(0, -5) : pathname;
+}
+
+// Install: pre-cache assets individually so one failure can't nuke the rest
 self.addEventListener('install', event => {
     event.waitUntil(
-        caches.open(CACHE_NAME).then(cache => {
-            return cache.addAll(ASSETS).catch(err => console.warn('Partial cache install:', err));
-        })
+        caches.open(CACHE_NAME).then(cache =>
+            Promise.all(
+                ASSETS.map(url =>
+                    cache.add(url).catch(err => console.warn('Failed to cache:', url, err))
+                )
+            )
+        )
     );
     self.skipWaiting();
 });
@@ -40,35 +51,33 @@ self.addEventListener('activate', event => {
     self.clients.claim();
 });
 
-// Fetch: NETWORK FIRST, fallback to cache
+// Fetch: CACHE FIRST, fallback to network, fallback to home screen
+// All reads and writes use the canonical (no-.html) key so there is exactly
+// one cache entry per page regardless of which URL form the browser requested.
 self.addEventListener('fetch', event => {
-    // Skip cross-origin (like Google Fonts or CDNs) and non-GET requests
     if (event.request.method !== 'GET' || !event.request.url.startsWith(self.location.origin)) {
         return;
     }
 
+    const canonical = canonicalPath(new URL(event.request.url).pathname);
+    const canonicalUrl = new URL(canonical, self.location.origin).href;
+    const canonicalRequest = new Request(canonicalUrl, { credentials: 'same-origin' });
+
     event.respondWith(
-        fetch(event.request)
-            .then(networkResponse => {
-                // If network succeeds, save a copy to the cache for later offline use
-                const responseClone = networkResponse.clone();
-                caches.open(CACHE_NAME).then(cache => {
-                    cache.put(event.request, responseClone);
+        caches.match(canonicalRequest).then(cached => {
+            if (cached) return cached;
+
+            // Not pre-cached — fetch, store, and return
+            return fetch(event.request)
+                .then(networkResponse => {
+                    const responseClone = networkResponse.clone();
+                    caches.open(CACHE_NAME).then(cache => cache.put(canonicalRequest, responseClone));
+                    return networkResponse;
+                })
+                .catch(() => {
+                    if (event.request.mode === 'navigate') return caches.match('/');
                 });
-                return networkResponse;
-            })
-            .catch(() => {
-                // If network fails (offline), return the cached version
-                return caches.match(event.request).then(cachedResponse => {
-                    if (cachedResponse) {
-                        return cachedResponse;
-                    }
-                    // Last resort: if they are offline and navigating to a missing page, show the home screen
-                    if (event.request.mode === 'navigate') {
-                        return caches.match('/');
-                    }
-                });
-            })
+        })
     );
 });
 
