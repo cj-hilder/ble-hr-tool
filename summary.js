@@ -159,6 +159,10 @@ window.RFB_STAR_LEVELS = {
         // ── HRV Index (HRV Reading sessions only) ─────────────────────────────
         if (isHRV) {
             const hrvVal    = s.hvIndexFinal != null ? String(Math.round(s.hvIndexFinal)) : '--';
+            // Effective duration = total time minus seconds where sensor was unreliable.
+            // Reflects accepted-data time; may be less than the nominal session length
+            // if the session was extended but ended early, or if the sensor never recovered.
+            const effectiveSec = Math.max(0, (s.sessionLengthSec || 0) - (s.hvSensorUnreliableSec || 0));
             const shortNote = s.hrvSessionTooShort
                 ? `<div class="hrv-card-short-note">⚠️ Short snapshot — less than 3 minutes. Result may be unreliable.</div>`
                 : '';
@@ -171,9 +175,9 @@ window.RFB_STAR_LEVELS = {
             <div class="stat-group">
                 <div class="stat-group-label hrv-label">💜 HRV Index</div>
                 <div class="stat-row">
-                    ${statItem(hrvVal,                   'HRV')}
-                    ${statItem(fmtT(s.sessionLengthSec), 'Duration')}
-                    ${statItem(fmtN(Math.round(s.avgHr)),   'Avg HR')}
+                    ${statItem(hrvVal,              'HRV')}
+                    ${statItem(fmtT(effectiveSec),  'Duration')}
+                    ${statItem(fmtN(Math.round(s.avgHr)), 'Avg HR')}
                 </div>
                 ${shortNote}
                 ${sensorNote}

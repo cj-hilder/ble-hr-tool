@@ -1016,8 +1016,11 @@ let sessionPeakPSensor = 0;
 // countdown can be extended on recovery. Reset at session start.
 // _sensorUnreliableAccSec: seconds accumulated while warning is active this burst.
 // _sensorWasUnreliable:    state flag to detect the reliable → unreliable transition.
-let _sensorUnreliableAccSec = 0;
-let _sensorWasUnreliable    = false;
+// _totalSensorUnreliableSec: cumulative unreliable seconds across all bursts (never
+//   reset on recovery) — used to compute accepted-data duration for HRV summary.
+let _sensorUnreliableAccSec   = 0;
+let _sensorWasUnreliable      = false;
+let _totalSensorUnreliableSec = 0;
 
 // Breath timing helpers — read live globals so changes take effect immediately.
 function rfbBreathPeriodMs() {
@@ -1687,11 +1690,10 @@ function updateHRVDisplay() {
         sdnn  = wE * _hrv60Stats.sdnn  + wW * winMetrics.sdnn;
     }
 
-    // Rolling 60s sensor artifact rate — consistent with the broken heart warning
-    // and with the session-extension logic. Using rolling rather than lifetime
-    // means the gate lifts as soon as the sensor has been clean for 60 seconds,
-    // which is appropriate given the session is extended to compensate for lost time.
-    const cutoff60    = now - 60000;
+    // Rolling 30s sensor artifact rate — consistent with the broken heart warning
+    // and with the session-extension logic. 30s gives a reasonable statistical
+    // sample (~30 beats at resting HR) while clearing within half a minute of recovery.
+    const cutoff60    = now - 30000;
     const recentArts  = sensorArtifactLog.filter(ts => ts >= cutoff60).length;
     const recentBeats = beatLog.filter(ts => ts >= cutoff60).length;
     const pSensor     = recentBeats > 0 ? recentArts / recentBeats : 0;
@@ -1814,15 +1816,17 @@ function computeResonance() {
 }
 
 // ─── Sensor warning (universal) ───────────────────────────────────────────────
-// Shows "💔 Sensor unreliable" below stateDescription whenever the rolling 60s
-// sensor artifact rate exceeds the activity-specific threshold. Independent of
-// session type and state — runs whenever a BLE packet arrives.
-// Thresholds: HRV Reading 2% (matches score gate); all other contexts 5%
-// (RFB FFT and amplitude gate already self-protect; warning is transparency only).
+// Shows "💔 Sensor unreliable" below stateDescription whenever the rolling 30s
+// sensor artifact rate exceeds the activity-specific threshold. 30s is used
+// rather than 60s so the warning clears within half a minute of recovery rather
+// than up to a full minute — the window is still ~30 beats at resting HR, which
+// is statistically meaningful, and the session-extension logic is unaffected
+// (it counts wall-clock seconds independently of the window size).
+// Thresholds: HRV Reading 2% (matches score gate); all other contexts 5%.
 // For HRV sessions, seconds spent unreliable are accumulated and added back to
 // hrvSecondsRemaining on recovery, so the measurement window stays complete.
 function updateSensorWarning() {
-    const cutoff          = Date.now() - 60000;
+    const cutoff          = Date.now() - 30000;
     const recentArtifacts = sensorArtifactLog.filter(ts => ts >= cutoff).length;
     const recentBeats     = beatLog.filter(ts => ts >= cutoff).length;
     const rollingPSensor  = recentBeats > 0 ? recentArtifacts / recentBeats : 0;
@@ -1836,6 +1840,7 @@ function updateSensorWarning() {
     if (isHRVReading && isSessionRunning) {
         if (unreliable) {
             _sensorUnreliableAccSec++;
+            _totalSensorUnreliableSec++;
             _sensorWasUnreliable = true;
         } else if (_sensorWasUnreliable) {
             // Just recovered — extend the remaining countdown by the lost seconds.
@@ -2964,6 +2969,9 @@ function computeSessionSummary() {
         // summary card, and for longitudinal signal-quality tracking.
         hvSensorUnreliable:   isHRVReading && sessionPeakPSensor > 0.02,
         hvSensorArtifactPct:  isHRVReading ? Math.round(sessionPeakPSensor * 1000) / 10 : null,
+        // Total seconds where rolling pSensor exceeded 2% — subtracted from
+        // sessionLengthSec in the summary to show accepted-data duration.
+        hvSensorUnreliableSec: isHRVReading ? _totalSensorUnreliableSec : null,
         // Ectopic beat tracking — all session types.
         // Reported as count + rate for longitudinal monitoring across full sessions.
         // Omitted from summary display when count is zero.
@@ -3211,7 +3219,7 @@ function startSession() {
     // Reset artifact counters and HRV index for fresh session
     sessionTotalBeats = 0; sessionSensorArtifacts = 0; sessionPhysioArtifacts = 0;
     sensorArtifactLog = []; beatLog = []; sessionPeakPSensor = 0;
-    _sensorUnreliableAccSec = 0; _sensorWasUnreliable = false;
+    _sensorUnreliableAccSec = 0; _sensorWasUnreliable = false; _totalSensorUnreliableSec = 0;
     currentHRVIndex = null; _lastHRVDisplayTs = 0; _hrv60Stats = null;
     setRbDisplayMode(isResonanceBreathing || isHRVReading);
     if (isResonanceBreathing) {
