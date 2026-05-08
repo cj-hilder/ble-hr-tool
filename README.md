@@ -216,13 +216,13 @@ When connected to a sensor that exposes raw beat-to-beat RR intervals, such as t
 
 ## Resonance Frequency Breathing (RFB)
 
-Resonance Frequency Breathing is a biofeedback technique. RFB has been studied extensively (notably by Lehrer and Gevirtz and colleagues) as a method for influencing autonomic balance. There is evidence for an increase in vagal tone from regular daily practice.
+Resonance Frequency Breathing is a biofeedback technique. RFB has been studied extensively (notably by Lehrer and Gevirtz and colleagues) as a method for influencing autonomic balance. There is evidence for an increase in vagal tone from regular daily practice. Sessions of 10-20 minutes are commonly used and 10 minutes twice daily has direct evidence of benefit in people with dysautonomia. Shorter sessions may have less therapeutic benefit, but if 10 minute sessions are not well tolerated, consistent daily practice within your tolerance is likely more important than session length.
 
 At a particular breathing rate respiratory and cardiac rhythms enter resonance. This is typically around 5–6 breaths per minute, but varying between individuals in the range of 4.5–7 bpm. The heart rate rises during each inhale and falls during each exhale. When breathing rate matches the body's resonance frequency the amplitude of these oscillations is maximised.
 
-This app integrates RFB directly into the Reset state, turning a  rest period into a structured, guided recovery practice.
+Manawa Pace allows you to practice resonance frequency breathing: choose "Resonance Breathing" from the activity drop-down menu.
 
-It also allows you to practice resonance frequency breathing on its own, as an activity type. To do this, choose "Resonance Breathing" from the activity drop-down menu.
+It also allows you to integrate RFB directly into the Reset state, turning a  rest period into a structured, guided recovery practice.
 
 **Note** If you have been exercising at a level that causes you to breathe heavily, wait until
 your breathing has settled down before attempting to follow the breathing guide, otherwise you will be depriving your system of oxygen by breathing too slowly. 
