@@ -213,6 +213,7 @@ window.RFB_STAR_LEVELS = {
             const rfbAvg  = rfbAvgRaw  != null ? `${rfbAvgRaw} ${rfbRating(rfbAvgRaw)}`  : '--';
             const rfbPeak = rfbPeakRaw != null ? `${rfbPeakRaw} ${rfbRating(rfbPeakRaw)}` : '--';
             const rfbPct  = s.rfbPctAboveStar1 != null ? s.rfbPctAboveStar1 + '%' : '--';
+            const rfbFreqCV = s.rfbFreqCV != null ? s.rfbFreqCV + '%' : '--';
             const rfbSensorNote = (s.rfbPeakSensorPct || 0) > 5
                 ? `<div class="ectopic-note">⚠️ Peak sensor artifact rate during session: ${s.rfbPeakSensorPct}%. Scores during noisy periods are protected by artifact filtering.</div>`
                 : '';
@@ -220,9 +221,13 @@ window.RFB_STAR_LEVELS = {
             <div class="stat-group">
                 <div class="stat-group-label rfb-label">💙 Resonance Index</div>
                 <div class="stat-row">
-                    ${statItem(rfbAvg,  'Avg RI')}
-                    ${statItem(rfbPeak, 'Peak RI')}
-                    ${statItem(rfbPct,  'Time ≥★')}
+                    ${statItem(rfbAvg,    'Avg RI')}
+                    ${statItem(rfbPeak,   'Peak RI')}
+                    ${statItem(rfbPct,    'Time ≥★')}
+                </div>
+                <div class="stat-row">
+                    ${statItem(rfbFreqCV, 'Freq variance')}
+                    <div></div><div></div>
                 </div>
                 ${rfbSensorNote}
             </div>`;
@@ -283,6 +288,7 @@ window.RFB_STAR_LEVELS = {
             const rfbAvg  = rfbAvgRaw  != null ? `${rfbAvgRaw} ${rfbRating(rfbAvgRaw)}`  : '--';
             const rfbPeak = rfbPeakRaw != null ? `${rfbPeakRaw} ${rfbRating(rfbPeakRaw)}` : '--';
             const rfbPct  = s.rfbPctAboveStar1 != null ? s.rfbPctAboveStar1 + '%' : '--';
+            const rfbFreqCV = s.rfbFreqCV != null ? s.rfbFreqCV + '%' : '--';
             const rfbSensorNote = (s.rfbPeakSensorPct || 0) > 5
                 ? `<div class="ectopic-note">⚠️ Peak sensor artifact rate during session: ${s.rfbPeakSensorPct}%. Scores during noisy periods are protected by artifact filtering.</div>`
                 : '';
@@ -290,13 +296,14 @@ window.RFB_STAR_LEVELS = {
             <div class="stat-group">
                 <div class="stat-group-label rfb-label">💙 Resonance Breathing</div>
                 <div class="stat-row">
-                    ${statItem(rfbAvg,  'Avg RI')}
-                    ${statItem(rfbPeak, 'Peak RI')}
-                    ${statItem(rfbPct,  'Time \u2265\u2605')}
+                    ${statItem(rfbAvg,    'Avg RI')}
+                    ${statItem(rfbPeak,   'Peak RI')}
+                    ${statItem(rfbPct,    'Time \u2265\u2605')}
                 </div>
                 <div class="stat-row">
                     ${statItem(fmtT(s.rfbPracticeTimeSec), 'Duration')}
-                    <div></div><div></div>
+                    ${statItem(rfbFreqCV, 'Freq variance')}
+                    <div></div>
                 </div>
                 ${rfbSensorNote}
             </div>`;

@@ -114,7 +114,7 @@ class HRVProcessor {
         const windowCenterTime  = cleanedTs.length > 1
             ? (cleanedTs[0] + cleanedTs[cleanedTs.length - 1]) / 2
             : cleanedTs[0] || 0;
-        return { coherence, peakFreq, breathingRate: peakFreq * 60, peakPhaseRad, windowCenterTime };
+        return { coherence, peakFreq, breathingRate: peakFreq * 60, widePeakFreq: wide.peakFreq, peakPhaseRad, windowCenterTime };
     }
     _isValidRR(rr)    { return rr > 300 && rr < 2000; }
     _trimBuffer() {
@@ -338,11 +338,17 @@ class HRVProcessor {
 
 const hrvProcessor = new HRVProcessor({ sampleRate: 4, windowSeconds: 64 });
 
-// Rolling history of valid in-band spectral peak frequencies, used for the
-// instability indicator only — not used to modify the coherence score.
+// Rolling history of narrow-band (±0.020 Hz) spectral peak frequencies.
+// Used for frequency lock and engagement detection only — anchored to guideFreq.
 // 64 entries (~64s at 1 Hz update rate) matches the coherence window length,
 // keeping stability and coherence on the same temporal reference frame.
+const peakEngagementFreqHistory = [];
+
+// Rolling history of full-band (HeartMath LF 0.04–0.24 Hz) spectral peak frequencies.
+// Reflects the actual cardiovascular resonant frequency including vasomotor-driven
+// drift. Used for display in debug line and CV calculation in session summary.
 const peakFreqHistory = [];
+
 const PEAK_FREQ_MAX_HISTORY = 64;
 
 // ─── RFB display phase thresholds ─────────────────────────────────────────────
@@ -428,6 +434,7 @@ function recordRrHistory(rrValuesMs, notifTs) {
         // timestamp reconstruction places burst beats correctly after the pre-freeze
         // data, so clearing them would discard valid graph data for no benefit.
         hrvProcessor.reset();
+        peakEngagementFreqHistory.length = 0;
         peakFreqHistory.length = 0;
         recordRrHistory._lastCleanRr = 0;
         recordRrHistory._pendingBeat = null;
@@ -1381,6 +1388,7 @@ document.addEventListener('visibilitychange', async () => {
         // so the graph shows a natural gap followed by the buffered period rather than
         // wiping history on every resume.
         hrvProcessor.reset();
+        peakEngagementFreqHistory.length = 0;
         peakFreqHistory.length = 0;
         recordRrHistory._lastCleanRr = 0;
         recordRrHistory._pendingBeat = null;
@@ -1764,16 +1772,22 @@ function computeResonance() {
     // Restricting to post-lead-in data means stability reflects only reliable readings.
     const rfbElapsedSec = rfbWallStartTime > 0 ? (Date.now() - rfbWallStartTime) / 1000 : 0;
     if (rfbElapsedSec >= RFB_DISPLAY_SEC) {
-        peakFreqHistory.push(result.peakFreq);
+        // Narrow-band peak (±0.020 Hz): used for frequency lock and engagement detection.
+        peakEngagementFreqHistory.push(result.peakFreq);
+        if (peakEngagementFreqHistory.length > PEAK_FREQ_MAX_HISTORY) peakEngagementFreqHistory.shift();
+        // Full-band peak (HeartMath LF 0.04–0.24 Hz): tracks actual cardiovascular
+        // resonant frequency including vasomotor-driven drift. Used for debug display
+        // and session-level frequency CV stored in rfbCoherenceRecording.
+        peakFreqHistory.push(result.widePeakFreq);
         if (peakFreqHistory.length > PEAK_FREQ_MAX_HISTORY) peakFreqHistory.shift();
     }
 
-    const freqLock = computeFrequencyLock(peakFreqHistory, guideFreq);
+    const freqLock = computeFrequencyLock(peakEngagementFreqHistory, guideFreq);
 
     // 15 post-lead-in samples (~15s) is sufficient for a reliable RMSD estimate
     // now that history contains only settled FFT readings. freqLockForIndex uses
     // 1.0 (neutral) until then to avoid a misleading early penalty on the RI.
-    const freqLockReady = peakFreqHistory.length >= 15;
+    const freqLockReady = peakEngagementFreqHistory.length >= 15;
     const freqLockForIndex = freqLockReady ? freqLock : 1.0;
 
     // Phase alignment — time-domain peak offset method.
@@ -1828,6 +1842,7 @@ function computeResonance() {
         ri,
         coherence:    result.coherence,
         peakFreq:     result.peakFreq,
+        widePeakFreq: result.widePeakFreq,
         amplitudeBpm,
         amplitudeOk,
         freqLock,
@@ -1886,9 +1901,11 @@ function updateSensorWarning() {
 let _lastCoherenceUpdateTs = 0;
 // Returns the consistent RFB debug line string.
 // All fields show '--' when data is unavailable; ✓ appended only when engaged.
+// freq: narrow-band (engagement-anchored); wfreq: full-band (actual cardiovascular resonance)
 function rfbDebugText(r) {
     const co      = r ? Math.round(r.coherence * 100) : '--';
     const freq    = r ? (r.peakFreq * 60).toFixed(1) : '--';
+    const wfreq   = r && r.widePeakFreq ? (r.widePeakFreq * 60).toFixed(1) : '--';
     const lockStr = r && r.freqLockReady ? `${Math.round(r.freqLock * 100)}%` : '--';
     const relLagSec = r && r.phaseDiffDeg != null
         ? (r.phaseDiffDeg / 360 * (rfbBreathPeriodMs() / 1000)) : null;
@@ -1896,7 +1913,7 @@ function rfbDebugText(r) {
         ? `${relLagSec >= 0 ? '+' : ''}${(Math.round(relLagSec * 2) / 2).toFixed(1)}` : '--';
     const amp     = r ? r.amplitudeBpm.toFixed(1) : '--';
     const tick    = (rfbEngaged || isResonanceBreathing) ? ' ✓' : '';
-    return `co:${co} freq:${freq}bpm lock:${lockStr} lag:${lagStr}sec ampl:${amp}bpm${tick}`;
+    return `co:${co} freq:${freq}(${wfreq})bpm lock:${lockStr} lag:${lagStr}sec ampl:${amp}bpm${tick}`;
 }
 
 function updateCoherenceDisplay() {
@@ -2029,6 +2046,7 @@ function updateCoherenceDisplay() {
                         ph:   r.phaseDiffDeg ?? null,
                         amp:  Math.round(r.amplitudeBpm * 10) / 10,
                         ps:   Math.round(pSensor * 1000) / 10,
+                        wf:   Math.round(r.widePeakFreq * 600) / 10,  // wide-band peak freq in bpm (1dp)
                     });
                 }
             }
@@ -2837,7 +2855,19 @@ function computeRfbSummary(recording, activeSec) {
     // Peak sensor artifact rate during scored recording — ps field absent on legacy sessions.
     const psVals = recording.map(s => s.ps ?? 0);
     const peakSensorPct = psVals.length ? Math.max(...psVals) : 0;
-    return { avg, peak, pctAboveStar1, totalSec, avgAmplitude, peakRiAmplitude, peakSensorPct };
+    // Frequency CV: coefficient of variation of the full-band peak frequency (wf field).
+    // Reflects vasomotor-driven frequency drift across the session. wf absent on
+    // legacy sessions — return null so the summary field stays blank for old data.
+    let freqCV = null;
+    const wfVals = recording.map(s => s.wf).filter(v => v != null);
+    if (wfVals.length >= 10) {
+        const wfMean = wfVals.reduce((a, b) => a + b, 0) / wfVals.length;
+        if (wfMean > 0) {
+            const wfVariance = wfVals.reduce((s, v) => s + (v - wfMean) ** 2, 0) / wfVals.length;
+            freqCV = Math.round(Math.sqrt(wfVariance) / wfMean * 1000) / 10; // percentage, 1dp
+        }
+    }
+    return { avg, peak, pctAboveStar1, totalSec, avgAmplitude, peakRiAmplitude, peakSensorPct, freqCV };
 }
 
 // ─── Session summary ──────────────────────────────────────────────────────────
@@ -2978,6 +3008,7 @@ function computeSessionSummary() {
         rfbPracticeTimeSec: Math.round(rfbPracticeTimeSec),
         // Peak sensor artifact rate during scored RFB recording (0 on legacy sessions).
         rfbPeakSensorPct:   rfbStats ? rfbStats.peakSensorPct    : null,
+        rfbFreqCV:          rfbStats ? rfbStats.freqCV            : null,
         // HRV Reading fields
         hvIndexFinal:      isHRVReading ? currentHRVIndex : null,
         // Short-session warning fires below 180s — at 179s the rolling window
@@ -3224,6 +3255,7 @@ function startSession() {
     hasRrData = false;
     lastRrTimestamp = 0;
     lastRrWallClock = 0;
+    peakEngagementFreqHistory.length = 0;
     peakFreqHistory.length = 0;
     hrvProcessor.reset();
     document.getElementById('homeBtn').style.display = 'none';
