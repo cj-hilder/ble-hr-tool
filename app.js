@@ -32,7 +32,10 @@ let deviceSupportsRR = false;
 
 // ─── HRV Pipeline (HRVProcessor) ─────────────────────────────────────────────
 // Spectral coherence: interpolates RR to 4 Hz, Hanning-windowed FFT,
-// HeartMath Coherence Ratio in the 0.04–0.26 Hz LF band (64-s window).
+// HeartMath Coherence Ratio using full 0.04–0.24 Hz LF band (64-s window).
+// Two-band strategy: narrow ±0.020 Hz band for engagement/frequency-lock,
+// full HeartMath LF band for coherence ratio — matches HeartMath's published
+// algorithm and tolerates vasomotor-driven frequency drift.
 class HRVProcessor {
     constructor(options = {}) {
         this.sampleRate    = options.sampleRate    || 4;    // Hz after interpolation
@@ -75,7 +78,17 @@ class HRVProcessor {
         padded.set(windowed);
         const fftResult = this._fft(padded);
         const freqs     = this._frequencyAxis(fftResult.magnitude.length);
-        const { peakFreq, peakBin, peakBandPower, totalPower } = this._computeBandMetrics(freqs, fftResult.magnitude, guideFreq);
+        // Two-band strategy:
+        //   Narrow band (useFullBand=false, ±0.020 Hz): locates peakFreq and peakBin
+        //     for engagement detection, frequency lock, and phase tracking.
+        //   Full HeartMath LF band (useFullBand=true, 0.04–0.24 Hz): computes
+        //     peakBandPower and totalPower for the coherence ratio, matching
+        //     HeartMath's published algorithm and tolerating vasomotor-driven
+        //     frequency drift without penalising the coherence score.
+        const narrow = this._computeBandMetrics(freqs, fftResult.magnitude, guideFreq, false);
+        const wide   = this._computeBandMetrics(freqs, fftResult.magnitude, guideFreq, true);
+        const { peakFreq, peakBin }          = narrow;
+        const { peakBandPower, totalPower }  = wide;
         if (totalPower === 0) return null;
         // HeartMath Coherence Ratio, normalised form: PBP / totalPower.
         // Algebraically equivalent to CR/(1+CR) where CR = PBP/(totalPower−PBP),
@@ -84,8 +97,9 @@ class HRVProcessor {
         // background noise drives it toward 0.
         //   (McCraty et al. 2009; McCraty & Childre 2010)
         const coherenceRaw = peakBandPower / totalPower;
-        // validBreathingRate is removed: the peak search is now anchored to guideFreq
-        // ± 0.020 Hz by construction, so any returned peak is by definition in-band.
+        // peakFreq is from the narrow band — anchored to guide frequency for
+        // engagement detection and frequency lock. coherenceRaw uses wide-band
+        // power so vasomotor-driven frequency drift does not suppress the score.
         const now      = this.timestamps.length ? this.timestamps[this.timestamps.length - 1] : Date.now();
         // No confidence ramp: FFT coherence is only displayed from 65s onwards (via the
         // phase-gated display in updateCoherenceDisplay), so early underestimation from
@@ -204,7 +218,7 @@ class HRVProcessor {
         for (let i = 0; i < N; i++) freqs.push((i * this.sampleRate) / N);
         return freqs;
     }
-    _computeBandMetrics(freqs, magnitudes, guideFreq) {
+    _computeBandMetrics(freqs, magnitudes, guideFreq, useFullBand = false, searchWidth = 0.020) {
         const N = freqs.length;
         // Only sum positive frequencies (i <= N/2) for power calculations.
         // The FFT of a real signal produces mirror-image bins for i > N/2 — summing
@@ -212,15 +226,22 @@ class HRVProcessor {
         // values use positive frequencies only, so restricting to i <= N/2 keeps our
         // scale in alignment with published benchmarks.
         //
-        // Peak search is constrained to guideFreq ± 0.020 Hz — wide enough to
-        // accommodate slight user drift from the guide pace (~±1.2 bpm at 6 bpm),
-        // tight enough to exclude unrelated LF artefacts and slow HR drift that
-        // previously inflated coherence when the FFT latched onto the wrong peak.
-        const SEARCH_WIDTH = 0.020;
+        // useFullBand controls the peak search window:
+        //   false: narrow band — guideFreq ± searchWidth (default ±0.020 Hz).
+        //     Used for engagement detection and frequency lock. Keeps those metrics
+        //     tightly anchored to the breathing guide frequency.
+        //   true: full HeartMath LF band (0.04–0.24 Hz).
+        //     Used for the coherence ratio. Matches HeartMath's published algorithm
+        //     and tolerates vasomotor-driven frequency drift without penalising the
+        //     coherence score. totalPower is always the full positive-frequency power.
+        const HM_LF_MIN = 0.04, HM_LF_MAX = 0.24;
         let totalPower = 0, peakPower = 0, peakFreq = guideFreq, peakBin = 0;
         for (let i = 0; i < freqs.length; i++) {
             const f = freqs[i], p = magnitudes[i] ** 2;
-            if (Math.abs(f - guideFreq) <= SEARCH_WIDTH && p > peakPower) {
+            const inSearchBand = useFullBand
+                ? (f >= HM_LF_MIN && f <= HM_LF_MAX)
+                : (Math.abs(f - guideFreq) <= searchWidth);
+            if (inSearchBand && p > peakPower) {
                 peakPower = p; peakFreq = f; peakBin = i;
             }
             if (i <= N / 2) totalPower += p;
