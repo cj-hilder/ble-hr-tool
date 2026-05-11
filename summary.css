@@ -94,6 +94,7 @@
 .settings-label { color: #888; }
 .rfb-label      { color: #1a7fff; }
 .hrv-label      { color: #7c3aed; }
+.hrv-variability-label { color: #7c3aed; }
 
 .stat-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 4px; }
 .stat-item { display: flex; flex-direction: column; align-items: center; text-align: center; }
@@ -132,3 +133,16 @@
     cursor: pointer; text-align: center;
 }
 .session-delete-btn:active { background: #2b0f0f; }
+
+/* ── HRV Variability row ── */
+.hrv-var-row {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding: 3px 0;
+}
+.hrv-var-key {
+    font-size: 10px; color: #555;
+    text-transform: uppercase; letter-spacing: 0.06em;
+}
+.hrv-var-val {
+    font-family: monospace; font-size: 14px; color: #ccc;
+}

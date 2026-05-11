@@ -54,6 +54,66 @@ window.RFB_STAR_LEVELS = {
         return `<div class="stat-item"><span>${escHtml(String(value))}</span><label>${escHtml(label)}</label></div>`;
     }
 
+    // ─── HRV Variability helpers ──────────────────────────────────────────────
+    function toDateKey(isoOrTimestamp) {
+        const d = new Date(isoOrTimestamp);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+
+    // Computes 7-day coefficient of variation (CV) of the HRV index for the
+    // current and previous 7-calendar-day windows.
+    // Requires ≥ 4 readings in a window before reporting that window's CV.
+    // Same-day readings are averaged before the CV is calculated.
+    // Returns { current: number|null, previous: number|null }.
+    function computeHrvVariability(sessions, referenceDate) {
+        const hrvSessions = sessions.filter(
+            s => s.activityId === 'hrv_reading' && s.hvIndexFinal != null
+        );
+
+        // Average same-day readings → one value per calendar day.
+        // hvIndexFinal ≈ ln(RMSSD) × 15, so averaging it directly is
+        // equivalent to averaging in log space for same-session variance.
+        const byDay = {};
+        for (const s of hrvSessions) {
+            const key = toDateKey(s.date);
+            if (!byDay[key]) byDay[key] = [];
+            byDay[key].push(s.hvIndexFinal);
+        }
+        const dailyValues = {};
+        for (const [key, vals] of Object.entries(byDay)) {
+            dailyValues[key] = vals.reduce((a, b) => a + b, 0) / vals.length;
+        }
+
+        // Anchor windows to the session date (or today if omitted).
+        const anchor = new Date(referenceDate || Date.now());
+        anchor.setHours(0, 0, 0, 0);
+
+        // Collect readings for current (days 0–6) and previous (days 7–13) windows.
+        const currentVals = [], previousVals = [];
+        for (let i = 0; i < 7; i++) {
+            const d = new Date(anchor);
+            d.setDate(d.getDate() - i);
+            const v = dailyValues[toDateKey(d)];
+            if (v !== undefined) currentVals.push(v);
+        }
+        for (let i = 7; i < 14; i++) {
+            const d = new Date(anchor);
+            d.setDate(d.getDate() - i);
+            const v = dailyValues[toDateKey(d)];
+            if (v !== undefined) previousVals.push(v);
+        }
+
+        function cv(vals) {
+            if (vals.length < 4) return null;
+            const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+            if (mean === 0) return null;
+            const variance = vals.reduce((a, b) => a + (b - mean) ** 2, 0) / vals.length;
+            return (Math.sqrt(variance) / mean) * 100;
+        }
+
+        return { current: cv(currentVals), previous: cv(previousVals) };
+    }
+
     // ─── Session type helpers ─────────────────────────────────────────────────
     function isHRVSession(s)  { return s.activityId === 'hrv_reading' || s.activityId === 'daytime_hrv' || !!s.activityIsHRV; }
     function isRFBSession(s)  { return s.activityId === 'resonance_breathing'; }
@@ -182,6 +242,13 @@ window.RFB_STAR_LEVELS = {
                 ${shortNote}
                 ${sensorNote}
             </div>`;
+        }
+
+        // ── HRV Variability placeholder (morning HRV sessions only) ──────────
+        // Populated lazily when the card is first opened; see history.js toggle
+        // handler. Avoids computing CV for every card on every page render.
+        if (s.activityId === 'hrv_reading') {
+            html += `<div class="stat-group" data-hrv-var-placeholder data-session-date="${escHtml(s.date || '')}"></div>`;
         }
 
         // ── Ectopic Beats (any session with RR data) ──────────────────────────
@@ -413,5 +480,6 @@ window.RFB_STAR_LEVELS = {
         buildCardHeaderHTML,
         statItem,
         rfbRating,
+        computeHrvVariability,
     };
 })();

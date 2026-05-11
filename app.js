@@ -3082,6 +3082,40 @@ function showSummaryModal(summary) {
             showDelete:   false,
             showGraphBtn: false,
         });
+
+        // For morning HRV sessions, populate the variability placeholder eagerly.
+        // Only one card exists in the modal so there is no list-rendering cost.
+        // The current session has not been saved yet, so we append it to the
+        // stored history so today's reading is included in the 7-day window.
+        if (summary.activityId === 'hrv_reading') {
+            const placeholder = container.querySelector('[data-hrv-var-placeholder]');
+            if (placeholder) {
+                try {
+                    const raw = localStorage.getItem(HISTORY_KEY);
+                    const history = raw ? JSON.parse(raw) : [];
+                    const variability = window.SummaryCard.computeHrvVariability(
+                        [...history, summary], summary.date
+                    );
+                    if (variability.current === null) {
+                        placeholder.remove();
+                    } else {
+                        let varText = `${variability.current.toFixed(1)}%`;
+                        if (variability.previous !== null) {
+                            const arrow = variability.current < variability.previous ? '\u2193' : '\u2191';
+                            varText += ` ${arrow} from ${variability.previous.toFixed(1)}%`;
+                        }
+                        placeholder.innerHTML = `
+                            <div class="stat-group-label hrv-variability-label">HRV Variability</div>
+                            <div class="hrv-var-row">
+                                <span class="hrv-var-key">7-Day Variability</span>
+                                <span class="hrv-var-val">${escHtml(varText)}</span>
+                            </div>`;
+                    }
+                } catch (e) {
+                    placeholder.remove();
+                }
+            }
+        }
     }
 
     document.getElementById('summaryNotes').value = '';

@@ -840,6 +840,49 @@ function generateSessionPDF(session) {
     doc.save(`hr-session-${fileDate}.pdf`);
 }
 
+// ── Lazy HRV variability population ──────────────────────────────────────────
+// The placeholder div is rendered for every morning HRV card at build time.
+// CV is only computed when the user first opens that card, avoiding redundant
+// work for all the collapsed cards on the page.
+// summary.js's toggle handler fires first (it was registered earlier), so by
+// the time this handler runs the card's 'open' class already reflects the new state.
+document.addEventListener('click', function (e) {
+    const el = e.target.closest('[data-action="toggle-card"]');
+    if (!el) return;
+    const cardId = el.getAttribute('data-card-id');
+    if (!cardId) return;
+    const card = document.getElementById(cardId);
+    if (!card || !card.classList.contains('open')) return;
+
+    const placeholder = card.querySelector('[data-hrv-var-placeholder]');
+    if (!placeholder) return;
+
+    // Remove the sentinel attribute so this block runs only once per card.
+    placeholder.removeAttribute('data-hrv-var-placeholder');
+
+    const sessionDate = placeholder.getAttribute('data-session-date');
+    const variability = window.SummaryCard.computeHrvVariability(allHistory, sessionDate);
+
+    if (variability.current === null) {
+        // Insufficient data — remove the empty div so it leaves no gap.
+        placeholder.remove();
+        return;
+    }
+
+    let varText = `${variability.current.toFixed(1)}%`;
+    if (variability.previous !== null) {
+        const arrow = variability.current < variability.previous ? '\u2193' : '\u2191';
+        varText += ` ${arrow} from ${variability.previous.toFixed(1)}%`;
+    }
+
+    placeholder.innerHTML = `
+        <div class="stat-group-label hrv-variability-label">HRV Variability</div>
+        <div class="hrv-var-row">
+            <span class="hrv-var-key">7-Day Variability</span>
+            <span class="hrv-var-val">${escHtml(varText)}</span>
+        </div>`;
+});
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
     initMenu();
