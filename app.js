@@ -1929,7 +1929,7 @@ let _lastCoherenceUpdateTs = 0;
 function rfbDebugText(r) {
     const co      = r ? Math.round(r.coherence * 100) : '--';
     const wfreq   = r && r.widePeakFreq ? (r.widePeakFreq * 60).toFixed(1) : '--';
-    const cvStr   = r && r.freqCV != null ? ('±' + r.freqCV * 100).toFixed(1) + '%' : '';
+    const cvStr   = r && r.freqCV != null ? '±' + (r.freqCV * 100).toFixed(1) + '%' : '';
     const relLagSec = r && r.phaseDiffDeg != null
         ? (r.phaseDiffDeg / 360 * (rfbBreathPeriodMs() / 1000)) : null;
     const lagStr  = relLagSec != null
