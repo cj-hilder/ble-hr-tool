@@ -793,6 +793,17 @@ function recordRrHistory(rrValuesMs, notifTs) {
                     rrHistory.push({ hr: hrPremature, state: beatState, ts: t, ectopic: true });
                 if (hrPause >= 24 && hrPause <= 240)
                     rrHistory.push({ hr: hrPause, state: beatState, ts: next.ts, ectopic: true });
+                // Feed synthetic baseline RR values to the HRV processor at the ectopic
+                // timestamps so the FFT interpolation sees no gap. The actual PVC RR values
+                // carry no vagal entrainment information; excluding them entirely leaves a
+                // linear bridge across ~2× normal RR that spreads spectral power away from
+                // the breathing frequency, unfairly suppressing coherence in users with
+                // higher ectopic burden. Substituting lastCleanRr tells the FFT that
+                // nothing changed at these timestamps — the most honest spectral representation.
+                if (lastCleanRr > 0) {
+                    hrvProcessor.addRR(lastCleanRr, t);
+                    hrvProcessor.addRR(lastCleanRr, next.ts);
+                }
                 // lastCleanRr NOT updated — baseline preserved through ectopic pair.
                 i += 2; continue;
             }
@@ -803,6 +814,11 @@ function recordRrHistory(rrValuesMs, notifTs) {
                 const hrPremature = Math.round(60000 / rr);
                 if (hrPremature >= 24 && hrPremature <= 240)
                     rrHistory.push({ hr: hrPremature, state: beatState, ts: t, ectopic: true });
+                // Feed a synthetic baseline RR value to the HRV processor at the PAC
+                // timestamp, preventing a single-beat gap in the interpolated signal.
+                // The follow-up beat (next) is a normal clean beat and will enter the
+                // processor via the normal clean-beat path on the next loop iteration.
+                if (lastCleanRr > 0) hrvProcessor.addRR(lastCleanRr, t);
                 // lastCleanRr NOT updated — next beat evaluated against original baseline.
                 i++; continue;
             }
