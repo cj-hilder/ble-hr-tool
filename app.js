@@ -52,6 +52,9 @@ class HRVProcessor {
         this._lagHistory        = []; // kept for reset() symmetry — not used for averaging
         this._lagEma            = null;  // EMA of per-cycle lag (seconds); null until first cycle
         this._LAG_EMA_ALPHA     = 0.2;   // α=0.2 → time constant ≈ 4–5 cycles (~40–50s at 6 bpm)
+        this._lagCycleCount     = 0;     // accepted cycles since last reset; outlier rejection
+                                         // only activates after 3 accepted cycles so a bad first
+                                         // value cannot permanently lock the EMA.
     }
     addRR(rrInterval, timestamp) {
         if (!this._isValidRR(rrInterval)) return;
@@ -331,6 +334,7 @@ class HRVProcessor {
         this._lastHrMaxTs = 0; this._lastInhaleEndTs = 0;
         this._lagHistory = [];
         this._lagEma     = null;
+        this._lagCycleCount = 0;
     }
 }
 
@@ -1576,23 +1580,30 @@ function triggerNotification(stateText) {
 // ─── Resonance Index ─────────────────────────────────────────────────────────
 // Single combined metric for display and longitudinal tracking.
 // Coherence (validated HeartMath RSA measure) is the primary signal.
-// Phase and freqLock act as trust multipliers — they can only reduce the score,
+// Phase and stability act as trust multipliers — they can only reduce the score,
 // never inflate it above the raw coherence value.
 //
 //   phaseMult = 0.75 + 0.25 × cos(phaseDiff)  → [0.5, 1.0]
 //     Inverted phase (180°) → 0.50 × coherence  (likely not genuine RSA)
 //     Aligned   (0°)        → 1.00 × coherence  (no penalty)
-//     No data               → 0.85 × coherence  (uncertainty discount)
+//     No data               → 1.00 × coherence  (neutral — see below)
 //
-//   stabMult  = 0.85 + 0.15 × freqLock         → [0.85, 1.00]
-//     freqLock is a gentle precision reward rather than a heavy penalty:
-//     coherence already captures frequency accuracy via the guideFreq-anchored
-//     peak search, so a 0.15 weight avoids double-penalising sub-window drift.
-//     Floor of 0.85 reflects that genuine coherence should not be heavily
-//     discounted for imperfect pace control (relevant for dysautonomia).
+//   stabilityMult = exp(-k × max(0, cv - CV_FREE_ZONE))  → (0, 1.0]
+//     Exponential decay above a free zone of 2% CV. No hard floor — the curve
+//     approaches 0 asymptotically but in practice:
+//       CV ≤ 2%  → 1.000 (no penalty)
+//       CV ~4%   → 0.975 (negligible — typical well-entrained session)
+//       CV ~15%  → 0.850 (matches old stabMult floor — substantially disrupted)
+//       CV ~50%  → 0.549 (chaotic session)
+//     k = 1.25 calibrated so CV_15% ≈ 0.85 (ln(0.85) / -0.13 ≈ 1.25).
+//     CV_FREE_ZONE = 0.02 (2%) — below this, penalty is exactly zero.
+//     Not ready until peakFreqHistory has ≥ 15 samples; defaults to 1.0.
 //
-// Worst case: coherence × 0.425.  Best case: coherence × 1.00.
-function computeResonanceIndex(coherence, freqLock, phaseDiffDeg) {
+// Worst case (chaos + inverted phase): coherence × ~0.27.
+// Best case: coherence × 1.00.
+const CV_FREE_ZONE = 0.02;
+const STABILITY_K  = 1.25;
+function computeResonanceIndex(coherence, freqCV, phaseDiffDeg) {
     // Add a small offset (PHASE_FLAT_K) to the cosine before scaling, then clamp
     // at 1.0. This flattens the top of the curve so that lags within the normal
     // healthy range (≈ ±1 s of the expected 2 s baroreflex delay, equivalent to
@@ -1604,8 +1615,12 @@ function computeResonanceIndex(coherence, freqLock, phaseDiffDeg) {
     const phaseMult = phaseDiffDeg != null
         ? Math.min(1, 0.75 + 0.25 * (Math.cos(phaseDiffDeg * Math.PI / 180) + PHASE_FLAT_K))
         : 1.0;
-    const stabMult  = 0.85 + 0.15 * freqLock;
-    return Math.min(1, coherence * phaseMult * stabMult);
+    // Exponential stability multiplier from full-band frequency CV.
+    // freqCV null means insufficient history — neutral (1.0), no penalty.
+    const stabilityMult = freqCV != null
+        ? Math.exp(-STABILITY_K * Math.max(0, freqCV - CV_FREE_ZONE))
+        : 1.0;
+    return Math.min(1, coherence * phaseMult * stabilityMult);
 }
 
 // ─── HRV Index ────────────────────────────────────────────────────────────────
@@ -1784,11 +1799,18 @@ function computeResonance() {
 
     const freqLock = computeFrequencyLock(peakEngagementFreqHistory, guideFreq);
 
-    // 15 post-lead-in samples (~15s) is sufficient for a reliable RMSD estimate
-    // now that history contains only settled FFT readings. freqLockForIndex uses
-    // 1.0 (neutral) until then to avoid a misleading early penalty on the RI.
+    // Rolling frequency CV from full-band peakFreqHistory — used as the stability
+    // multiplier input for RI. Requires ≥ 15 samples (same warmup as freqLock) for
+    // a reliable estimate; null before that so computeResonanceIndex defaults to 1.0.
+    let freqCV = null;
+    if (peakFreqHistory.length >= 15) {
+        const wfMean = peakFreqHistory.reduce((s, f) => s + f, 0) / peakFreqHistory.length;
+        if (wfMean > 0) {
+            const wfVariance = peakFreqHistory.reduce((s, f) => s + (f - wfMean) ** 2, 0) / peakFreqHistory.length;
+            freqCV = Math.sqrt(wfVariance) / wfMean; // fraction, not percent
+        }
+    }
     const freqLockReady = peakEngagementFreqHistory.length >= 15;
-    const freqLockForIndex = freqLockReady ? freqLock : 1.0;
 
     // Phase alignment — time-domain peak offset method.
     // Averages the last N finalised cycle lags for stability, then normalises
@@ -1834,8 +1856,13 @@ function computeResonance() {
         }
     }
     const amplitudeOk = amplitudeBpm >= RFB_AMP_GATE;
+    // stabilityMult computed here for debug display; computeResonanceIndex recomputes
+    // it internally — kept in sync by passing the same freqCV value.
+    const stabilityMult = freqCV != null
+        ? Math.exp(-STABILITY_K * Math.max(0, freqCV - CV_FREE_ZONE))
+        : 1.0;
     const ri = amplitudeOk
-        ? computeResonanceIndex(result.coherence, freqLockForIndex, phaseDiffDeg)
+        ? computeResonanceIndex(result.coherence, freqCV, phaseDiffDeg)
         : 0;
 
     return {
@@ -1845,8 +1872,10 @@ function computeResonance() {
         widePeakFreq: result.widePeakFreq,
         amplitudeBpm,
         amplitudeOk,
+        freqCV,
         freqLock,
         freqLockReady,
+        stabilityMult,
         phaseDiffDeg,
     };
 }
@@ -1901,19 +1930,21 @@ function updateSensorWarning() {
 let _lastCoherenceUpdateTs = 0;
 // Returns the consistent RFB debug line string.
 // All fields show '--' when data is unavailable; ✓ appended only when engaged.
-// freq: narrow-band (engagement-anchored); wfreq: full-band (actual cardiovascular resonance)
+// freq: full-band cardiovascular resonant frequency (wide band)
+// cv: coefficient of variation of full-band freq over rolling 64s window
+// stability: exponential stability multiplier as percentage
 function rfbDebugText(r) {
     const co      = r ? Math.round(r.coherence * 100) : '--';
-    const freq    = r ? (r.peakFreq * 60).toFixed(1) : '--';
     const wfreq   = r && r.widePeakFreq ? (r.widePeakFreq * 60).toFixed(1) : '--';
-    const lockStr = r && r.freqLockReady ? `${Math.round(r.freqLock * 100)}%` : '--';
+    const cvStr   = r && r.freqCV != null ? (r.freqCV * 100).toFixed(1) + '%' : '--';
+    const stabStr = r && r.stabilityMult != null ? Math.round(r.stabilityMult * 100) + '%' : '--';
     const relLagSec = r && r.phaseDiffDeg != null
         ? (r.phaseDiffDeg / 360 * (rfbBreathPeriodMs() / 1000)) : null;
     const lagStr  = relLagSec != null
         ? `${relLagSec >= 0 ? '+' : ''}${(Math.round(relLagSec * 2) / 2).toFixed(1)}` : '--';
     const amp     = r ? r.amplitudeBpm.toFixed(1) : '--';
     const tick    = (rfbEngaged || isResonanceBreathing) ? ' ✓' : '';
-    return `co:${co} freq:${freq}(${wfreq})bpm lock:${lockStr} lag:${lagStr}sec ampl:${amp}bpm${tick}`;
+    return `co:${co} freq:${wfreq}bpm cv:${cvStr} stab:${stabStr} lag:${lagStr}s ampl:${amp}bpm${tick}`;
 }
 
 function updateCoherenceDisplay() {
@@ -2042,7 +2073,7 @@ function updateCoherenceDisplay() {
                         t:    sessionSeconds,
                         c:    Math.round(r.coherence * 100),
                         ri:   riPct,
-                        lock: Math.round(r.freqLock * 100),
+                        stab: Math.round((r.stabilityMult ?? 1) * 100),
                         ph:   r.phaseDiffDeg ?? null,
                         amp:  Math.round(r.amplitudeBpm * 10) / 10,
                         ps:   Math.round(pSensor * 1000) / 10,
@@ -2714,19 +2745,30 @@ function _processHeartRatePacket(bytes, notifTs, skipStateTransitions) {
                 if (hrvProcessor._lastInhaleEndTs > 0 &&
                     hrvProcessor._lastHrMaxTs > hrvProcessor._lastInhaleEndTs) {
                     const finalisedLag = (hrvProcessor._lastHrMaxTs - hrvProcessor._lastInhaleEndTs) / 1000;
-                    // Outlier rejection: a lag more than half a breath period away from the
-                    // running EMA is almost certainly a misdetected cycle (wrong crossing beat,
-                    // or HR peak in the wrong phase). Discard rather than corrupt the EMA.
                     const breathPeriodSec = rfbBreathPeriodMs() / 1000;
-                    const isOutlier = hrvProcessor._lagEma !== null &&
+                    const exhaleSec       = rfbGetExhaleSec();
+                    // Physiological bounds: HR peak must occur within the exhale window.
+                    // A lag < 0 or > exhaleSec is impossible — the peak cannot precede
+                    // exhale start or occur after the next inhale has already begun.
+                    // This hard gate prevents any physiologically absurd value from
+                    // entering the EMA regardless of cycle count.
+                    const inBounds = finalisedLag >= 0 && finalisedLag <= exhaleSec;
+                    // Outlier rejection: only active after 3 accepted cycles. Before that
+                    // the EMA has too little history to be a trustworthy reference — a bad
+                    // first-cycle value would otherwise lock the EMA permanently by causing
+                    // every subsequent correct reading to exceed the outlier threshold.
+                    const LAG_WARMUP_CYCLES = 3;
+                    const isOutlier = inBounds &&
+                        hrvProcessor._lagCycleCount >= LAG_WARMUP_CYCLES &&
                         Math.abs(finalisedLag - hrvProcessor._lagEma) > breathPeriodSec * 0.4;
-                    if (!isOutlier) {
+                    if (inBounds && !isOutlier) {
                         if (hrvProcessor._lagEma === null) {
                             hrvProcessor._lagEma = finalisedLag;
                         } else {
                             hrvProcessor._lagEma = hrvProcessor._LAG_EMA_ALPHA * finalisedLag +
                                                    (1 - hrvProcessor._LAG_EMA_ALPHA) * hrvProcessor._lagEma;
                         }
+                        hrvProcessor._lagCycleCount++;
                     }
                 }
                 hrvProcessor._lastInhaleEndTs   = Date.now();
