@@ -1929,14 +1929,14 @@ let _lastCoherenceUpdateTs = 0;
 function rfbDebugText(r) {
     const co      = r ? Math.round(r.coherence * 100) : '--';
     const wfreq   = r && r.widePeakFreq ? (r.widePeakFreq * 60).toFixed(1) : '--';
-    const cvStr   = r && r.freqCV != null ? (r.freqCV * 100).toFixed(1) + '%' : '--';
+    const cvStr   = r && r.freqCV != null ? ('±' + r.freqCV * 100).toFixed(1) + '%' : '';
     const relLagSec = r && r.phaseDiffDeg != null
         ? (r.phaseDiffDeg / 360 * (rfbBreathPeriodMs() / 1000)) : null;
     const lagStr  = relLagSec != null
         ? `${relLagSec >= 0 ? '+' : ''}${(Math.round(relLagSec * 2) / 2).toFixed(1)}` : '--';
     const amp     = r ? r.amplitudeBpm.toFixed(1) : '--';
-    const tick    = (rfbEngaged || isResonanceBreathing) ? ' ✓' : '';
-    return `co:${co} freq:${wfreq}bpm cv:${cvStr} lag:${lagStr}s ampl:${amp}bpm${tick}`;
+    const tick    = (rfbEngaged && !isResonanceBreathing) ? ' ✓' : '';
+    return `coherence:${co} lag:${lagStr}s freq:${wfreq}bpm${cvStr} ampl:${amp}bpm${tick}`;
 }
 
 function updateCoherenceDisplay() {
