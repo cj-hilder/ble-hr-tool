@@ -1596,30 +1596,20 @@ function triggerNotification(stateText) {
 // ─── Resonance Index ─────────────────────────────────────────────────────────
 // Single combined metric for display and longitudinal tracking.
 // Coherence (validated HeartMath RSA measure) is the primary signal.
-// Phase and stability act as trust multipliers — they can only reduce the score,
-// never inflate it above the raw coherence value.
+// phaseMult is the only trust multiplier — it handles the one case coherence
+// cannot distinguish: a large oscillation that is phase-inverted relative to
+// the expected RSA pattern. Frequency stability is already captured implicitly
+// by coherence (a wandering spectral peak broadens, reducing the ratio), so
+// no separate stability multiplier is applied — that would double-account and
+// depart arbitrarily from the HeartMath algorithm.
 //
 //   phaseMult = 0.75 + 0.25 × cos(phaseDiff)  → [0.5, 1.0]
 //     Inverted phase (180°) → 0.50 × coherence  (likely not genuine RSA)
 //     Aligned   (0°)        → 1.00 × coherence  (no penalty)
-//     No data               → 1.00 × coherence  (neutral — see below)
+//     No data               → 1.00 × coherence  (neutral)
 //
-//   stabilityMult = exp(-k × max(0, cv - CV_FREE_ZONE))  → (0, 1.0]
-//     Exponential decay above a free zone of 2% CV. No hard floor — the curve
-//     approaches 0 asymptotically but in practice:
-//       CV ≤ 2%  → 1.000 (no penalty)
-//       CV ~4%   → 0.975 (negligible — typical well-entrained session)
-//       CV ~15%  → 0.850 (matches old stabMult floor — substantially disrupted)
-//       CV ~50%  → 0.549 (chaotic session)
-//     k = 1.25 calibrated so CV_15% ≈ 0.85 (ln(0.85) / -0.13 ≈ 1.25).
-//     CV_FREE_ZONE = 0.02 (2%) — below this, penalty is exactly zero.
-//     Not ready until peakFreqHistory has ≥ 15 samples; defaults to 1.0.
-//
-// Worst case (chaos + inverted phase): coherence × ~0.27.
-// Best case: coherence × 1.00.
-const CV_FREE_ZONE = 0.02;
-const STABILITY_K  = 1.25;
-function computeResonanceIndex(coherence, freqCV, phaseDiffDeg) {
+// Worst case (inverted phase): coherence × 0.50.  Best case: coherence × 1.00.
+function computeResonanceIndex(coherence, phaseDiffDeg) {
     // Add a small offset (PHASE_FLAT_K) to the cosine before scaling, then clamp
     // at 1.0. This flattens the top of the curve so that lags within the normal
     // healthy range (≈ ±1 s of the expected 2 s baroreflex delay, equivalent to
@@ -1631,12 +1621,7 @@ function computeResonanceIndex(coherence, freqCV, phaseDiffDeg) {
     const phaseMult = phaseDiffDeg != null
         ? Math.min(1, 0.75 + 0.25 * (Math.cos(phaseDiffDeg * Math.PI / 180) + PHASE_FLAT_K))
         : 1.0;
-    // Exponential stability multiplier from full-band frequency CV.
-    // freqCV null means insufficient history — neutral (1.0), no penalty.
-    const stabilityMult = freqCV != null
-        ? Math.exp(-STABILITY_K * Math.max(0, freqCV - CV_FREE_ZONE))
-        : 1.0;
-    return Math.min(1, coherence * phaseMult * stabilityMult);
+    return Math.min(1, coherence * phaseMult);
 }
 
 // ─── HRV Index ────────────────────────────────────────────────────────────────
@@ -1872,13 +1857,8 @@ function computeResonance() {
         }
     }
     const amplitudeOk = amplitudeBpm >= RFB_AMP_GATE;
-    // stabilityMult computed here for debug display; computeResonanceIndex recomputes
-    // it internally — kept in sync by passing the same freqCV value.
-    const stabilityMult = freqCV != null
-        ? Math.exp(-STABILITY_K * Math.max(0, freqCV - CV_FREE_ZONE))
-        : 1.0;
     const ri = amplitudeOk
-        ? computeResonanceIndex(result.coherence, freqCV, phaseDiffDeg)
+        ? computeResonanceIndex(result.coherence, phaseDiffDeg)
         : 0;
 
     return {
@@ -1891,7 +1871,6 @@ function computeResonance() {
         freqCV,
         freqLock,
         freqLockReady,
-        stabilityMult,
         phaseDiffDeg,
     };
 }
@@ -1946,21 +1925,18 @@ function updateSensorWarning() {
 let _lastCoherenceUpdateTs = 0;
 // Returns the consistent RFB debug line string.
 // All fields show '--' when data is unavailable; ✓ appended only when engaged.
-// freq: full-band cardiovascular resonant frequency (wide band)
-// cv: coefficient of variation of full-band freq over rolling 64s window
-// stability: exponential stability multiplier as percentage
+// freq: full-band cardiovascular resonant frequency; cv: coefficient of variation
 function rfbDebugText(r) {
     const co      = r ? Math.round(r.coherence * 100) : '--';
     const wfreq   = r && r.widePeakFreq ? (r.widePeakFreq * 60).toFixed(1) : '--';
     const cvStr   = r && r.freqCV != null ? (r.freqCV * 100).toFixed(1) + '%' : '--';
-    const stabStr = r && r.stabilityMult != null ? Math.round(r.stabilityMult * 100) + '%' : '--';
     const relLagSec = r && r.phaseDiffDeg != null
         ? (r.phaseDiffDeg / 360 * (rfbBreathPeriodMs() / 1000)) : null;
     const lagStr  = relLagSec != null
         ? `${relLagSec >= 0 ? '+' : ''}${(Math.round(relLagSec * 2) / 2).toFixed(1)}` : '--';
     const amp     = r ? r.amplitudeBpm.toFixed(1) : '--';
     const tick    = (rfbEngaged || isResonanceBreathing) ? ' ✓' : '';
-    return `co:${co} freq:${wfreq}bpm cv:${cvStr} stab:${stabStr} lag:${lagStr}s ampl:${amp}bpm${tick}`;
+    return `co:${co} freq:${wfreq}bpm cv:${cvStr} lag:${lagStr}s ampl:${amp}bpm${tick}`;
 }
 
 function updateCoherenceDisplay() {
@@ -2089,11 +2065,10 @@ function updateCoherenceDisplay() {
                         t:    sessionSeconds,
                         c:    Math.round(r.coherence * 100),
                         ri:   riPct,
-                        stab: Math.round((r.stabilityMult ?? 1) * 100),
                         ph:   r.phaseDiffDeg ?? null,
                         amp:  Math.round(r.amplitudeBpm * 10) / 10,
                         ps:   Math.round(pSensor * 1000) / 10,
-                        wf:   Math.round(r.widePeakFreq * 600) / 10,  // wide-band peak freq in bpm (1dp)
+                        wf:   Math.round(r.widePeakFreq * 600) / 10,
                     });
                 }
             }
