@@ -1596,20 +1596,64 @@ function triggerNotification(stateText) {
 // ─── Resonance Index ─────────────────────────────────────────────────────────
 // Single combined metric for display and longitudinal tracking.
 // Coherence (validated HeartMath RSA measure) is the primary signal.
-// phaseMult is the only trust multiplier — it handles the one case coherence
-// cannot distinguish: a large oscillation that is phase-inverted relative to
-// the expected RSA pattern. Frequency stability is already captured implicitly
-// by coherence (a wandering spectral peak broadens, reducing the ratio), so
-// no separate stability multiplier is applied — that would double-account and
-// depart arbitrarily from the HeartMath algorithm.
+// Two multipliers can only reduce the score, never inflate it above raw coherence.
 //
-//   phaseMult = 0.75 + 0.25 × cos(phaseDiff)  → [0.5, 1.0]
-//     Inverted phase (180°) → 0.50 × coherence  (likely not genuine RSA)
+// ── Why cvMult is necessary — the coherence noise floor problem ───────────────
+// Coherence is a ratio: peak band power / total LF power. Even with completely
+// disordered HR data and no genuine RSA entrainment whatsoever, the FFT will
+// find some bin that happens to hold the most random spectral energy. With a
+// 64-second window and a broad LF band, this produces coherence values of
+// 0.10–0.33 from pure noise — a non-zero noise floor that is a fundamental
+// property of the FFT power ratio rather than anything the user did.
+//
+// This creates an equity problem: a user with severe dysautonomia and genuinely
+// chaotic HR might score RI=33 from noise alone. As their autonomic system
+// develops real RSA entrainment their score might initially drop — say to RI=22
+// if the early genuine entrainment is slightly irregular — before rising to
+// reflect genuine improvement. The score moves in the wrong direction at the
+// most important moment.
+//
+// CV of the full-band FFT peak frequency distinguishes genuine entrainment from
+// noise. When the cardiovascular system is genuinely entrained, the dominant
+// spectral peak sits stably near the breathing frequency — CV is low. When HR is
+// chaotic, the peak wanders randomly across the LF band — CV is high (~0.33+).
+// Coherence and CV are partially correlated in the ordered case (a stable peak
+// is also a tall, narrow peak), but they diverge critically in the chaotic case:
+// coherence finds spurious order in noise while CV correctly identifies disorder.
+//
+//   cvMult: exponential decay from 1.0 (stable) to ~0.0 (chaotic)
+//     CV ≤ 0.05  → 1.000  stable entrainment, full score
+//     CV = 0.10  → 0.535  moderate drift — meaningful penalty begins
+//     CV = 0.20  → 0.153  substantial drift
+//     CV = 0.36  → 0.018  ≈ 0 — chaos threshold: peak wanders the full LF band
+//     CV > 0.36  → continues decaying, approaches 0
+//     CV null    → 1.000  insufficient history, neutral
+//   Threshold derivation: 0.05 corresponds to ±18° phase SD (CV = σ_phase / 360),
+//   matching the healthy baroreflex phase flat zone (±37° at 2σ). 0.36 matches
+//   the observed CV of completely chaotic sessions (~0.33–0.36) and is close to
+//   the theoretical uniform-random prediction (SD of uniform 0.04–0.24 Hz band /
+//   midpoint ≈ 0.058/0.14 ≈ 0.41). k=12.5 calibrated so exp(-12.5×0.31) ≈ 0.02.
+//
+//   phaseMult: handles inverted RSA — the one case coherence cannot distinguish
+//     Inverted phase (180°) → 0.55 × coherence  (likely not genuine RSA)
 //     Aligned   (0°)        → 1.00 × coherence  (no penalty)
+//     Flat zone ±37°        → no penalty (healthy baroreflex lag variation)
 //     No data               → 1.00 × coherence  (neutral)
 //
-// Worst case (inverted phase): coherence × 0.50.  Best case: coherence × 1.00.
-function computeResonanceIndex(coherence, phaseDiffDeg) {
+// Worst case (chaos + inverted phase): coherence × ~0.01.
+// Best case: coherence × 1.00.
+function cvMult(cv) {
+    if (cv == null) return 1.0;  // insufficient history — neutral
+    if (cv <= 0.05) return 1.0;  // stable entrainment — full score
+    // Exponential decay from 1.0 at cv=0.05 to approx 0.0 at cv=0.36.
+    // k=12.5 calibrated so that exp(-12.5 × 0.31) ≈ 0.02 — effectively zero
+    // at the chaos threshold while remaining gentle in the 0.05–0.10 range
+    // where vasomotor-driven drift may be present in dysautonomia users.
+    const k = 12.5;
+    return Math.exp(-k * (cv - 0.05));
+}
+
+function computeResonanceIndex(coherence, freqCV, phaseDiffDeg) {
     // Add a small offset (PHASE_FLAT_K) to the cosine before scaling, then clamp
     // at 1.0. This flattens the top of the curve so that lags within the normal
     // healthy range (≈ ±1 s of the expected 2 s baroreflex delay, equivalent to
@@ -1621,7 +1665,7 @@ function computeResonanceIndex(coherence, phaseDiffDeg) {
     const phaseMult = phaseDiffDeg != null
         ? Math.min(1, 0.75 + 0.25 * (Math.cos(phaseDiffDeg * Math.PI / 180) + PHASE_FLAT_K))
         : 1.0;
-    return Math.min(1, coherence * phaseMult);
+    return Math.min(1, coherence * cvMult(freqCV) * phaseMult);
 }
 
 // ─── HRV Index ────────────────────────────────────────────────────────────────
@@ -1858,7 +1902,7 @@ function computeResonance() {
     }
     const amplitudeOk = amplitudeBpm >= RFB_AMP_GATE;
     const ri = amplitudeOk
-        ? computeResonanceIndex(result.coherence, phaseDiffDeg)
+        ? computeResonanceIndex(result.coherence, freqCV, phaseDiffDeg)
         : 0;
 
     return {
