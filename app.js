@@ -1824,20 +1824,28 @@ function computeResonance() {
     const result = hrvProcessor.computeCoherence(guideFreq);
     if (result === null) return null;
 
-    // Only accumulate frequency history after the lead-in (rfbElapsedSec >= RFB_DISPLAY_SEC).
-    // During the lead-in the FFT buffer is shorter than 64s and the peak within the
-    // guideFreq ± 0.020 Hz search window can sit anywhere in that range, producing
-    // up to 0.020 Hz RMSD — well above MAX_RMSD — and pinning stability at 0%.
-    // Those readings then take PEAK_FREQ_MAX_HISTORY seconds to flush out.
-    // Restricting to post-lead-in data means stability reflects only reliable readings.
+    // Only accumulate frequency history after the relevant lead-in thresholds.
+    //
+    // peakEngagementFreqHistory (narrow ±0.020 Hz): gated at RFB_DISPLAY_SEC (65s).
+    //   During the lead-in the FFT buffer is shorter than 64s and the narrow peak
+    //   search can sit anywhere in the ±0.020 Hz range, producing misleading RMSD
+    //   values that take PEAK_FREQ_MAX_HISTORY seconds to flush out after 65s.
+    //
+    // peakFreqHistory (full LF band): gated at RFB_DEBUG_SEC (30s).
+    //   The full-band peak is much less sensitive to short FFT windows — the wide
+    //   band reliably finds the dominant LF peak even at 30s resolution. Starting
+    //   30s earlier ensures ≥ 35 samples are available the moment RI first shows
+    //   at 65s, so cvMult is active from the very first RI calculation rather than
+    //   defaulting to neutral (1.0) for the first 15 seconds of display.
     const rfbElapsedSec = rfbWallStartTime > 0 ? (Date.now() - rfbWallStartTime) / 1000 : 0;
     if (rfbElapsedSec >= RFB_DISPLAY_SEC) {
-        // Narrow-band peak (±0.020 Hz): used for frequency lock and engagement detection.
         peakEngagementFreqHistory.push(result.peakFreq);
         if (peakEngagementFreqHistory.length > PEAK_FREQ_MAX_HISTORY) peakEngagementFreqHistory.shift();
-        // Full-band peak (HeartMath LF 0.04–0.24 Hz): tracks actual cardiovascular
-        // resonant frequency including vasomotor-driven drift. Used for debug display
-        // and session-level frequency CV stored in rfbCoherenceRecording.
+    }
+    if (rfbElapsedSec >= RFB_DEBUG_SEC) {
+        // Full-band peak: tracks actual cardiovascular resonant frequency including
+        // vasomotor-driven drift. Used for cvMult in RI, debug display, and the
+        // session-level frequency CV stored in rfbCoherenceRecording.
         peakFreqHistory.push(result.widePeakFreq);
         if (peakFreqHistory.length > PEAK_FREQ_MAX_HISTORY) peakFreqHistory.shift();
     }
