@@ -2948,7 +2948,15 @@ function computeRfbSummary(recording, activeSec) {
     // Reflects vasomotor-driven frequency drift across the session. wf absent on
     // legacy sessions — return null so the summary field stays blank for old data.
     let freqCV = null;
-    const wfVals = recording.map(s => s.wf).filter(v => v != null);
+    // Filter wf values to the physiologically plausible RFB breathing rate range
+    // (3–12 BPM) before computing session CV. This excludes artifact readings from
+    // lead-in periods, background gaps, or momentary sensor noise that would
+    // otherwise inflate session CV dramatically. The rolling CV used for cvMult in
+    // RI is intentionally unfiltered — its job is to detect chaos. Session CV is a
+    // summary of how the session went during genuine practice, so filtering is correct.
+    const wfVals = recording
+        .map(s => s.wf)
+        .filter(v => v != null && v >= 3.0 && v <= 12.0);
     if (wfVals.length >= 10) {
         const wfMean = wfVals.reduce((a, b) => a + b, 0) / wfVals.length;
         if (wfMean > 0) {
