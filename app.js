@@ -350,10 +350,13 @@ const peakEngagementFreqHistory = [];
 
 // Rolling history of full-band (HeartMath LF 0.04–0.24 Hz) spectral peak frequencies.
 // Reflects the actual cardiovascular resonant frequency including vasomotor-driven
-// drift. Used for display in debug line and CV calculation in session summary.
+// drift. Used for cvMult in RI calculation and debug display.
+// 32 entries (~32s) — half the coherence window — gives faster response to changes
+// in cardiovascular frequency stability than the full 64s window would allow.
 const peakFreqHistory = [];
 
-const PEAK_FREQ_MAX_HISTORY = 64;
+const PEAK_FREQ_MAX_HISTORY = 64;  // engagement history length (seconds)
+const PEAK_FREQ_CV_HISTORY  = 32;  // CV history length (seconds) — responsive to state changes
 
 // ─── RFB display phase thresholds ─────────────────────────────────────────────
 // t < RFB_DISPLAY_SEC : progress animation shown; debug shows coherence from 30s
@@ -1847,16 +1850,17 @@ function computeResonance() {
         // vasomotor-driven drift. Used for cvMult in RI, debug display, and the
         // session-level frequency CV stored in rfbCoherenceRecording.
         peakFreqHistory.push(result.widePeakFreq);
-        if (peakFreqHistory.length > PEAK_FREQ_MAX_HISTORY) peakFreqHistory.shift();
+        if (peakFreqHistory.length > PEAK_FREQ_CV_HISTORY) peakFreqHistory.shift();
     }
 
     const freqLock = computeFrequencyLock(peakEngagementFreqHistory, guideFreq);
 
     // Rolling frequency CV from full-band peakFreqHistory — used as the stability
-    // multiplier input for RI. Requires ≥ 15 samples (same warmup as freqLock) for
-    // a reliable estimate; null before that so computeResonanceIndex defaults to 1.0.
+    // multiplier input for RI. Requires ≥ 10 samples for a reliable estimate
+    // (proportional minimum for the 32s window); null before that so cvMult
+    // defaults to 1.0 (neutral).
     let freqCV = null;
-    if (peakFreqHistory.length >= 15) {
+    if (peakFreqHistory.length >= 10) {
         const wfMean = peakFreqHistory.reduce((s, f) => s + f, 0) / peakFreqHistory.length;
         if (wfMean > 0) {
             const wfVariance = peakFreqHistory.reduce((s, f) => s + (f - wfMean) ** 2, 0) / peakFreqHistory.length;
