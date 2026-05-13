@@ -216,9 +216,9 @@ When connected to a sensor that exposes raw beat-to-beat RR intervals, such as t
 
 ## Resonance Frequency Breathing (RFB)
 
-Resonance Frequency Breathing is a biofeedback technique. RFB has been studied extensively (notably by Lehrer and Gevirtz and colleagues) as a method for influencing autonomic balance. There is evidence for an increase in vagal tone from regular daily practice. Sessions of 10-20 minutes are commonly used and 10 minutes twice daily has direct evidence of benefit in people with dysautonomia. Shorter sessions may have less therapeutic benefit, but if 10 minute sessions are not well tolerated, consistent daily practice within your tolerance is likely more important than session length.
+At a particular breathing rate respiratory and cardiac rhythms enter resonance. This is typically around 5–6 breaths per minute, but varying between individuals in the range of 4.5–7 bpm. The heart rate rises during each inhale and falls during each exhale. When breathing rate matches the body's resonance frequency the amplitude of these oscillations grows and the oscillations become smooth. 
 
-At a particular breathing rate respiratory and cardiac rhythms enter resonance. This is typically around 5–6 breaths per minute, but varying between individuals in the range of 4.5–7 bpm. The heart rate rises during each inhale and falls during each exhale. When breathing rate matches the body's resonance frequency the amplitude of these oscillations is maximised.
+Resonance Frequency Breathing has been studied extensively (notably by Lehrer and Gevirtz and colleagues) as a method for influencing autonomic balance. There is evidence for an increase in vagal tone from regular daily practice. Sessions of 10-20 minutes are commonly used and 10 minutes twice daily has direct evidence of benefit in people with dysautonomia. Shorter sessions may have less therapeutic benefit, but if 10 minute sessions are not well tolerated, consistent daily practice within your tolerance is likely more important than session length.
 
 Manawa Pace allows you to practice resonance frequency breathing: choose "Resonance Breathing" from the activity drop-down menu.
 
@@ -240,9 +240,9 @@ You can choose "Resonance Breathing" from the activity drop-down menu, or for an
 
 ### Resonance score
 
-If you are using a **Polar H10** chest strap (or any sensor that exposes raw RR intervals via the Bluetooth Heart Rate Measurement characteristic), the app can calculate a **live resonance score**. This is a combination of wave coherence and phase lag. It takes more than 60 seconds to gather enough data to calculate a score
+If you are using a **Polar H10** chest strap (or any sensor that exposes raw RR intervals via the Bluetooth Heart Rate Measurement characteristic), the app will calculate a **live resonance score**. 
 
-Once enough data has been gathered, the score appears as a number and a star rating beneath the state description. 
+Once enough data has been gathered, the score appears as a number and a star rating. 
 
 | Rating | Score | Resonance |
 | :--- | :--- | :--- |
@@ -251,9 +251,11 @@ Once enough data has been gathered, the score appears as a number and a star rat
 | ★★☆ | ≥ 45 | Moderate |
 | ★★★ | ≥ 65 | Strong |
 
-**A note on the score:** The score is a biofeedback signal, not a target to chase. It complements the graph and allows for session statistics to be calculated. With practice, healthy nervous systems are commonly capable of scores above 65 (three stars), though healthy older adults may find lower scores typical. With dysautonomia, scores in the 20–30 range early on are common and a reasonable starting point. What is informative longitudinally is stability and trend over weeks rather than any individual session score. A low score, or a flat HR line, is commonly observed when the ANS is fatigued or depleted. Scores often rise over time as the practice develops.
+**A note on the score:** The score complements the graph and allows for session statistics to be calculated. With practice, healthy nervous systems are commonly capable of scores above 65 (three stars), though healthy older adults may find lower scores typical. With dysautonomia, scores in the 20–30 range or a flat HR line early on are common and a reasonable starting point.
 
-Changes in the score during a session or during the day may be a useful cue to stop for the day, particularly if you have achieved a stable score that then declines during the session or over the day.
+The score naturally rises and falls during a session — this is normal and expected. During the session you will ideally increase the score and hold it stable for a period of time. Improvement will show as higher scores and longer periods of sustain over time.  
+
+Changes in the score during a session may be a useful cue to stop for the day, particularly if you have achieved a stable score that then declines and **stays low**. A low score is commonly observed when the ANS is fatigued or depleted. 
 
 Tracking your star rating and score over weeks may be of interest as one of several markers of autonomic state. However, the primary value of resonance frequency breathing is the practice itself; the score is intended to help you improve your practice.
 
@@ -296,7 +298,7 @@ Your resonance frequency is generally fairly stable, but can shift gradually ove
 
 ### How to Breathe: Light, Slow, and Low
 
-The most common mistake is taking large, heavy breaths. Over-breathing blows off too much carbon dioxide, which can trigger a stress response and produce dizziness or anxiety — the opposite of the intended effect. Instead, follow three rules:
+The most common mistake is taking large, heavy breaths. Over-breathing blows off too much carbon dioxide, which can trigger a stress response. This may initially show as a temporary drop in resonance score during the session and may produce dizziness or anxiety. Follow three rules:
 
 **Breathe lightly.** Take in the same small volume of air you would while sitting quietly. Do not fill your lungs to capacity.
 
@@ -310,7 +312,7 @@ The most common mistake is taking large, heavy breaths. Over-breathing blows off
 
 If your nervous system is currently deconditioned, it will fatigue quickly. Pushing through that fatigue may backfire and produce a stress response. Consider stopping the RFB session if you notice any of the following:
 
-**The resonance crash.** If your score has been sitting in the ★☆☆ or ★★☆ range and then suddenly drops to ☆☆☆ or near-zero, this may suggest your autonomic system is tiring — analogous to muscular fatigue. A reasonable response is to stop for the day.
+**The resonance crash.** If your score has been sitting in the ★☆☆ or ★★☆ range and then drops to ☆☆☆ or near-zero and stays low, this may suggest your autonomic system is tiring — analogous to muscular fatigue. A reasonable response is to stop for the day.
 
 **Brain fog or frustration.** Paced breathing requires sustained focus. If your mind is wandering, you feel agitated, or you are struggling to hold the rhythm, your cognitive battery is empty.
 
