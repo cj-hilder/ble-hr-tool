@@ -1643,17 +1643,21 @@ function triggerNotification(stateText) {
 //     Flat zone ±37°        → no penalty (healthy baroreflex lag variation)
 //     No data               → 1.00 × coherence  (neutral)
 //
-// Worst case (chaos + inverted phase): coherence × ~0.01.
+// Worst case (chaos + inverted phase): coherence × 0.0.
 // Best case: coherence × 1.00.
 function cvMult(cv) {
     if (cv == null) return 1.0;  // insufficient history — neutral
-    if (cv <= 0.05) return 1.0;  // stable entrainment — full score
-    // Exponential decay from 1.0 at cv=0.05 to approx 0.0 at cv=0.36.
-    // k=12.5 calibrated so that exp(-12.5 × 0.31) ≈ 0.02 — effectively zero
-    // at the chaos threshold while remaining gentle in the 0.05–0.10 range
-    // where vasomotor-driven drift may be present in dysautonomia users.
-    const k = 12.5;
-    return Math.exp(-k * (cv - 0.05));
+    if (cv <= 0.05) return 1.0;  // ordered entrainment — full score
+    if (cv >= 0.34) return 0.0;  // chaos threshold — zero score
+    // Linear decay from 1.0 at cv=0.05 to 0.0 at cv=0.34.
+    // No theoretical basis exists for a specific curve shape between the two
+    // known endpoints (ordered entrainment at 0.05, unstructured breathing at
+    // 0.34), so a straight line is the maximum entropy choice — it makes the
+    // minimum number of assumptions about behaviour in the transition zone.
+    // Upper threshold 0.34: observed CV of unstructured breathing (~0.30–0.34);
+    // below the theoretical uniform-random prediction (~0.41) reflecting that
+    // real unstructured breathing retains some residual cardiovascular structure.
+    return 1.0 - (cv - 0.05) / (0.34 - 0.05);
 }
 
 function computeResonanceIndex(coherence, freqCV, phaseDiffDeg) {
@@ -1859,11 +1863,15 @@ function computeResonance() {
     // multiplier input for RI. Requires ≥ 10 samples for a reliable estimate
     // (proportional minimum for the 32s window); null before that so cvMult
     // defaults to 1.0 (neutral).
+    // Filtered to 3–12 BPM before computing CV — same range as the session summary
+    // filter. Without this, a single out-of-range artifact entering the 32-second
+    // window suppresses RI via an artificially inflated CV for up to 32 seconds.
     let freqCV = null;
-    if (peakFreqHistory.length >= 10) {
-        const wfMean = peakFreqHistory.reduce((s, f) => s + f, 0) / peakFreqHistory.length;
+    const filteredWf = peakFreqHistory.filter(f => f * 60 >= 3.0 && f * 60 <= 12.0);
+    if (filteredWf.length >= 10) {
+        const wfMean = filteredWf.reduce((s, f) => s + f, 0) / filteredWf.length;
         if (wfMean > 0) {
-            const wfVariance = peakFreqHistory.reduce((s, f) => s + (f - wfMean) ** 2, 0) / peakFreqHistory.length;
+            const wfVariance = filteredWf.reduce((s, f) => s + (f - wfMean) ** 2, 0) / filteredWf.length;
             freqCV = Math.sqrt(wfVariance) / wfMean; // fraction, not percent
         }
     }
