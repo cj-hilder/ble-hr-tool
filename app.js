@@ -1335,11 +1335,11 @@ function restoreSessionUI() {
             if (rfbPhase) {
                 descEl.innerText = `RFB — ${formatTime(Math.ceil(rfbSecondsRemaining))} remaining`;
             } else {
-                descEl.innerText = resetCount >= NUM_RESETS_B4_WARN ? '⚠️ Finish this session ASAP' : 'Reset to resting HR';
+                descEl.innerText = (NUM_RESETS_B4_WARN > 0 && resetCount >= NUM_RESETS_B4_WARN) ? '⚠️ Finish this session ASAP' : 'Reset to resting HR';
             }
             startRfbAnimation();
         } else {
-            descEl.innerText = resetCount >= NUM_RESETS_B4_WARN ? '⚠️ Finish this session ASAP' : 'Reset to resting HR';
+            descEl.innerText = (NUM_RESETS_B4_WARN > 0 && resetCount >= NUM_RESETS_B4_WARN) ? '⚠️ Finish this session ASAP' : 'Reset to resting HR';
             descEl.style.color = '#dc3545';
         }
     } else if (currentState === 'pause') {
@@ -2522,7 +2522,7 @@ function switchState(newState, isManual) {
             descEl.innerText = `HRV — ${formatTime(Math.ceil(hrvSecondsRemaining))} remaining`;
             descEl.style.color = '#7c3aed';
         } else {
-            descEl.innerText = resetCount >= NUM_RESETS_B4_WARN ? '⚠️ Finish this session ASAP' : 'Reset to resting HR';
+            descEl.innerText = (NUM_RESETS_B4_WARN > 0 && resetCount >= NUM_RESETS_B4_WARN) ? '⚠️ Finish this session ASAP' : 'Reset to resting HR';
             descEl.style.color = rfbOn ? '#1a7fff' : '#dc3545';
             if (rfbOn) startRfbAnimation();
         }
@@ -2565,8 +2565,8 @@ function updateTimers(increment) {
     }
     updateBudgetTimerDisplay();
     if (currentState === 'rest') {
-        if (stateSeconds > MAX_RECOVERY_PERIOD) switchState('reset', false);
-        else if (timeOfMaxHrInRest > MAX_RESPONSE_LAG) switchState('reset', false);
+        if (MAX_RECOVERY_PERIOD > 0 && stateSeconds > MAX_RECOVERY_PERIOD) switchState('reset', false);
+        else if (MAX_RESPONSE_LAG > 0 && timeOfMaxHrInRest > MAX_RESPONSE_LAG) switchState('reset', false);
     }
     // Accumulate real RFB time regardless of extended/modal state
     if (currentState === 'reset' && rfbPhase) rfbActiveSeconds += increment;
@@ -3521,11 +3521,11 @@ function onReconnectSuccess() {
             if (rfbPhase) {
                 descEl.innerText = `RFB — ${formatTime(Math.ceil(rfbSecondsRemaining))} remaining`;
             } else {
-                descEl.innerText = resetCount >= NUM_RESETS_B4_WARN ? '⚠️ Finish this session ASAP' : 'Reset to resting HR';
+                descEl.innerText = (NUM_RESETS_B4_WARN > 0 && resetCount >= NUM_RESETS_B4_WARN) ? '⚠️ Finish this session ASAP' : 'Reset to resting HR';
             }
             startRfbAnimation();
         } else {
-            descEl.innerText = resetCount >= NUM_RESETS_B4_WARN ? '⚠️ Finish this session ASAP' : 'Reset to resting HR';
+            descEl.innerText = (NUM_RESETS_B4_WARN > 0 && resetCount >= NUM_RESETS_B4_WARN) ? '⚠️ Finish this session ASAP' : 'Reset to resting HR';
             descEl.style.color = '#dc3545';
         }
     } else if (currentState === 'pause') {

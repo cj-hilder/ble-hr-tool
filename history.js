@@ -740,9 +740,9 @@ function generateSessionPDF(session) {
         // Thresholds defined in summary.js (window.RFB_STAR_LEVELS).
         const SL = window.RFB_STAR_LEVELS || { STAR1: 30, STAR2: 45, STAR3: 65 };
         const THRESHOLDS = [
-            { pct: SL.STAR3, label: '★★★ Diamond',  rgb: [160, 120, 255] },
-            { pct: SL.STAR2, label: '★★☆ Sapphire', rgb: [80,  140, 255] },
-            { pct: SL.STAR1, label: '★☆☆ Amethyst', rgb: [180, 100, 220] },
+            { pct: SL.STAR3, label: '3 star', rgb: [160, 120, 255] },
+            { pct: SL.STAR2, label: '2 star', rgb: [80,  140, 255] },
+            { pct: SL.STAR1, label: '1 star', rgb: [180, 100, 220] },
         ];
         for (const th of THRESHOLDS) {
             const ty = cToY(th.pct);
@@ -762,7 +762,7 @@ function generateSessionPDF(session) {
             doc.setDrawColor(210, 210, 210); doc.setLineWidth(0.15);
             doc.line(C_PX, y, C_PX + C_PW, y);
             doc.setFontSize(7); doc.setTextColor(140, 140, 140);
-            doc.text(pct + '%', C_PX - 2, y + 1.5, { align: 'right' });
+            doc.text(String(pct), C_PX - 2, y + 1.5, { align: 'right' });
         }
 
         // ── X-axis grid and labels (same steps as page 1) ────────────────────
@@ -808,7 +808,7 @@ function generateSessionPDF(session) {
 
         // ── Axis labels ───────────────────────────────────────────────────────
         doc.setTextColor(80, 80, 80); doc.setFontSize(8);
-        doc.text('Resonance Index (%)', C_PX - 16, C_PY + C_PH / 2, { angle: 90, align: 'center' });
+        doc.text('RI', C_PX - 16, C_PY + C_PH / 2, { angle: 90, align: 'center' });
         doc.text('Time (mm:ss)',   C_PX + C_PW / 2, C_PY + C_PH + 11, { align: 'center' });
 
         // ── Title ─────────────────────────────────────────────────────────────
@@ -826,7 +826,7 @@ function generateSessionPDF(session) {
         const rfbMetaLine2 = [
             rfbAvgRI  != null ? `Avg RI: ${rfbAvgRI}`                            : null,
             rfbPeakRI != null ? `Peak RI: ${rfbPeakRI}`                          : null,
-            session.rfbPctAboveStar1 != null ? `Time >=*: ${session.rfbPctAboveStar1}%` : null,
+            session.rfbPctAboveStar1 != null ? `Time >= 1 star: ${session.rfbPctAboveStar1}%` : null,
             session.rfbTotalSec      != null ? `RFB duration: ${formatTime(session.rfbTotalSec)}` : null,
         ].filter(Boolean).join('   ·   ');
         doc.text(rfbMetaLine1, C_PX, 18);

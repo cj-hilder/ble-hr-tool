@@ -179,9 +179,9 @@ Which setting is right for you depends on your own situation and any guidance fr
 
 **Recovery limits**
 Adjust these based on how long it typically takes your heart to respond when you stop activity. Tuning these settings is a personal trade-off between exercise volume and symptom load; adjust based on your own observation, your tolerance, and any guidance from your healthcare provider.
-- *Max recovery period* — The total time allowed in 'Rest or pull back' before a forced heart rate Reset.
-- *Max response lag* — How long HR is allowed to keep rising after entering 'Rest or pull back' before a heart rate Reset is forced. 
-- *Resets before warning* — How many heart rate Resets trigger the end-session advisory.
+- *Max recovery period* — The total time allowed in 'Rest or pull back' before a forced heart rate Reset. Set to 0 to disable.
+- *Max response lag* — How long HR is allowed to keep rising after entering 'Rest or pull back' before a heart rate Reset is forced. Set to 0 to disable.
+- *Resets before warning* — How many heart rate Resets trigger the end-session advisory. Set to 0 to disable.
 
 **Alerts**
 - *Vibration / Sound* — Intensity of the state-transition alerts (Off / Subtle / Intense). Note that the default system vibration is used when the app is not visible — for example, if you switch to another app or turn the screen off.
