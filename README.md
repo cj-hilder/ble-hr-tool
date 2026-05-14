@@ -218,14 +218,16 @@ When connected to a sensor that exposes raw beat-to-beat RR intervals, such as t
 
 At a particular breathing rate respiratory and cardiac rhythms enter resonance. This is typically around 5–6 breaths per minute, but varying between individuals in the range of 4.5–7 bpm. The heart rate rises during each inhale and falls during each exhale. When breathing rate matches the body's resonance frequency the amplitude of these oscillations grows and the oscillations become smooth. 
 
-Resonance Frequency Breathing has been studied extensively (notably by Lehrer and Gevirtz and colleagues) as a method for influencing autonomic balance. There is evidence for an increase in vagal tone from regular daily practice. Sessions of 10-20 minutes are commonly used and 10 minutes twice daily has direct evidence of benefit in people with dysautonomia. Shorter sessions may have less therapeutic benefit, but if 10 minute sessions are not well tolerated, consistent daily practice within your tolerance is likely more important than session length.
+Resonance Frequency Breathing has been studied extensively (notably by Lehrer and Gevirtz and colleagues) as a method for influencing autonomic balance. There is evidence for an increase in vagal tone from regular daily practice. 
+
+We recommend you start with 3-5 minutes once daily and build gradually toward 5–10 minutes twice daily, but only when sessions feel stable throughout. Research protocols vary widely — some clinical studies use sessions up to 20 minutes — but the consistent finding is that regular short sessions produce real benefit, and daily practice matters more than session length.
 
 Manawa Pace allows you to practice resonance frequency breathing: choose "Resonance Breathing" from the activity drop-down menu.
 
 It also allows you to integrate RFB directly into the Reset state, turning a  rest period into a structured, guided recovery practice.
 
 **Note** If you have been exercising at a level that causes you to breathe heavily, wait until
-your breathing has settled down before attempting to follow the breathing guide, otherwise you will be depriving your system of oxygen by breathing too slowly. 
+your breathing has settled down before attempting to follow the breathing guide, otherwise you will be breathing too slowly for your current metabolic demand. 
 
 ### How it works
 
@@ -235,7 +237,7 @@ You can choose "Resonance Breathing" from the activity drop-down menu, or for an
 - **A sine wave overlay** appears on the HR graph, showing the HR pattern your heart *could* produce if breathing is well coupled to the breath pacer. This gives you a visual target for coherence. Your HR will not follow the overlay exactly; what you are looking for is a smooth regular oscillation, not a perfect fit to the overlay. 
 >The overlay is only shown when connected to an RR-capable sensor such as the Polar H10 — a rolling-averaged HR signal from a watch cannot meaningfully track these oscillations.
 - **Sound guidance** — a rising filtered noise during each inhale, brightening in frequency as the inhale progresses, then falling silent during the exhale. Allows you to follow the breath without watching the screen.
-- **Vibration guidance** — an opening pulse at the start of each inhale, followed by a buzzing that accelerates in frequency through the inhale, and a closing pulse at the end. Provides a tactile breath guide. Note that vibration pattern is different when if the app is not visible — for example, if you switch to another app or turn the screen off. This is a limitation of the web app.
+- **Vibration guidance** — an opening pulse at the start of each inhale, followed by a buzzing that accelerates in frequency through the inhale, and a closing pulse at the end. Provides a tactile breath guide. Note that vibration pattern is different when the app is not visible — for example, if you switch to another app or turn the screen off. This is a limitation of the web app.
 - **During heart rate Reset, once your HR has returned to your resting HR**, the app enters an extended RFB phase — shown as a countdown timer — before returning you to Continue activity. The default is 2 minutes. This promotes staying in the resonance breathing state after the HR has settled, extending the breathing practice before returning to exertion.
 
 ### Resonance score
@@ -290,11 +292,25 @@ Your resonance frequency is generally fairly stable, but can shift gradually ove
 - **Inhale / exhale** — Display only. Shows the seconds per half-breath calculated from the bpm and inhale percentage.
 - **RFB duration** — How long to remain in the RFB phase after resting HR is achieved. Default is 2 minutes.
 - **Inhale sound guide** — Toggle the rising noise guide.
-- **Inhale vibration guide** — Toggle the tactile buzz guide. Note that vibration pattern is different when if the app is not visible — for example, if you switch to another app or turn the screen off. This is a limitation of the web app.
+- **Inhale vibration guide** — Toggle the tactile buzz guide. Note that vibration pattern is different when the app is not visible — for example, if you switch to another app or turn the screen off. This is a limitation of the web app.
 
 ---
 
 ## Getting the Most from Your RFB Sessions
+
+### Body Position
+
+Body position affects how readily resonance builds. 
+
+Seated is the standard. Most research protocols use seated upright, feet flat on the floor. This is the recommended starting point for most users.
+
+Lying down is easier — coherence builds more readily and scores are often higher. This makes lying down a useful option if you are new to RFB, if your seated coherence is consistently poor, or if you are in a period of autonomic depletion. Be aware that it may promote drowsiness.
+
+If you have orthostatic intolerance, seated upright may itself be a postural challenge. Practise lying down or reclined rather than pushing through postural symptoms that will compete with coherence.
+
+Avoid standing. Upright posture suppresses HRV and makes coherence significantly harder to achieve.
+
+>Compare like with like. Position affects your resonance score, so track your progress using a consistent position.
 
 ### How to Breathe: Light, Slow, and Low
 

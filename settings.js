@@ -69,7 +69,7 @@ const RB_DEFAULTS = {
     RFB_ENABLED:            1,   // always on — not user-editable
     RFB_INHALE_SEC:         4.0,
     RFB_EXHALE_SEC:         6.0,
-    RFB_DURATION:           10.0, // session length in minutes
+    RFB_DURATION:           3.0, // session length in minutes
     RFB_SOUND:              1,
     RFB_VIBRATION:          1,
     RFB_SHOW_DEBUG:         0,
